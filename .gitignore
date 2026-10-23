@@ -1,0 +1,35 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+
+# Video, audio, and PDF files
+*.pdf
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.webm
+*.m4v
+*.flv
+*.wmv
+*.mpg
+*.mpeg
+*.wav
+*.flac
+*.mp3
+*.ogg
+*.m4a
+*.aac
+
+# Compiled Implicate containers, caches, and local model weights
+*.implicate
+.implicate_cache/
+*.gguf
+*.bin
+*.safetensors
+
+# Environment & editor files
+.DS_Store
+*.swp
+*~
+.env

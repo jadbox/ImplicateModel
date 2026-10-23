@@ -1,0 +1,9 @@
+[package]
+name = "implicate-math"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+clifford.workspace = true
+serde.workspace = true
