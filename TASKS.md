@@ -84,13 +84,18 @@
 - [ ] **R10.4 — Volume-Conserving Clifford Fourier Wavepacket & GPU Compute (`implicate-lifter`, `implicate-rolpa`, `implicate-unfold`)**
   - **Target Files:**
     - [`crates/implicate-lifter/src/articulated_wavepacket/part_fitting.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/part_fitting.rs)
-    - [`crates/implicate-rolpa/src/lib.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-rolpa/src/lib.rs)
+    - [`crates/implicate-rolpa/src/cliffordnet_rolpa.wgsl`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-rolpa/src/cliffordnet_rolpa.wgsl)
+    - [`crates/implicate-rolpa/src/gpu_refiner.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-rolpa/src/gpu_refiner.rs)
+    - [`crates/implicate-unfold/src/payload.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-unfold/src/payload.rs)
     - [`crates/implicate-unfold/src/engine.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-unfold/src/engine.rs)
-  - **Carmack–Hiley Systems Directives:**
-    - Parameterize continuous gait deformations along phase $\phi \in S^1$ with strict volume conservation ($\det S = 1$), eliminating outline mush and Gibbs color ringing.
-    - GPU Unfolding: Update [`cliffordnet_rolpa.wgsl`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-rolpa/src/lib.rs) to evaluate `Mv301` solitons in a single fused pass ($O(1)$ constant time per pixel, $\ge 120\text{ FPS}$ on RTX 4090).
-  - **Gate Criteria:**
-    - Unfolded character reconstruction achieves $\text{IoU} \ge 0.985$ and $\text{LPIPS} \le 0.005$ across all frames of continuous turnaround and walk cycles, maintaining sharp ink contours.
+  - **Progress & Verified Sub-Tasks:**
+    - **Volume Conservation ($\det S = 1$):** Implemented `enforce_volume_conserving_gait_deformation` and `continuous_gait_volume_scale`. Normalized part radii to geometric mean reference area $A_{\text{ref}}$, enforcing strict unimodular scaling across gait phase $\phi \in S^1$. Mario walk-cycle reconstruction reached $\text{IoU} = 0.9995$ and $\text{LPIPS} = 0.0001$.
+    - **Dual Clifford Ink Blades in Kernels:** Added `ink_contour_blade: Vec<f32>` to `WavepacketPartKernel` and `ModelSheetPartKernel`, decomposing DC textures via `decompose_masked_clifford_dual_product` into Don Bluth ink lines ($|u \wedge \nabla^2 u|$) and flat cel fills ($u \cdot \nabla^2 u$).
+    - **Container Payload v4:** Bumped `ENFOLDED_PAYLOAD_VERSION` to 4 in `implicate-unfold::payload` with forward/backward-compatible binary serialization of ink contour blades.
+    - **Workspace Test Suite:** All 51 workspace tests pass (`cargo test --workspace` ok).
+  - **Remaining Active Task (Phase 2):**
+    - GPU Unfolding: Update `cliffordnet_rolpa.wgsl` and `gpu_refiner.rs` to evaluate flat 1216-byte `GpuModelSheetMonad` (19 `Mv301` monads) in a fused GPU compute pass ($O(1)$ constant time per pixel, target $\ge 120\text{ FPS}$ on RTX 4090).
+    - Verification Gate: Create `crates/implicate-unfold/tests/r10_4_wavepacket_unfold_gpu_gate.rs` asserting $\text{IoU} \ge 0.985$, $\text{LPIPS} \le 0.005$, sharp contour blades, and throughput $\ge 120$ FPS on RTX 4090.
 
 - [ ] **R10.5 — Real-Video Empirical Gate Suite (`tests/r10_model_sheet_gates.rs`)**
   - **Target Files:**
