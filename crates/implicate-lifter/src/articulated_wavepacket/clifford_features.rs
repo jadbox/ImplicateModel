@@ -60,6 +60,149 @@ pub fn compute_cliffordnet_laplacian_features(rgb: &[u8], w: usize, h: usize) ->
     out
 }
 
+/// Dual Clifford Geometric Product Decomposition ($u \nabla^2 u = u \cdot \nabla^2 u + u \wedge \nabla^2 u$).
+///
+/// In the Implicate Video Engine (Track R10.2, Whitepaper §1, §2.3):
+/// - Grade 0 scalar inner product $D(\mathbf{x}) = u \cdot \nabla^2 u$ measures cel paint fill coherence and vitality diffusion.
+/// - Grade 2 bivector wedge product $W(\mathbf{x}) = u \wedge \nabla^2 u$ measures boundary vorticity blades (Don Bluth ink contours).
+#[derive(Clone, Debug, PartialEq)]
+pub struct CliffordDualDecomposition {
+    pub width: usize,
+    pub height: usize,
+    /// Cel paint fill scalar coherence field $D(\mathbf{x}) = \langle u \cdot \nabla^2 u \rangle_0 \in [0, 1]$ per pixel.
+    pub cel_fill: Vec<f32>,
+    /// Ink contour blade bivector vorticity magnitude field $W(\mathbf{x}) = \|\langle u \wedge \nabla^2 u \rangle_2\| \in [0, 1]$ per pixel.
+    pub ink_contour: Vec<f32>,
+    /// Statistical noise floor τ_W derived from MAD on non-zero wedge vorticity.
+    pub ink_blade_threshold: f32,
+    /// Discrete binary ink contour blade mask ($W(\mathbf{x}) \ge \tau_W$).
+    pub ink_blade_mask: Vec<bool>,
+    /// Discrete binary cel paint fill mask (silhouette interior where $W(\mathbf{x}) < \tau_W$).
+    pub cel_fill_mask: Vec<bool>,
+}
+
+/// Decompose an RGB image into its Clifford dual product components:
+/// $u \nabla^2 u = u \cdot \nabla^2 u + u \wedge \nabla^2 u$.
+pub fn decompose_clifford_dual_product(rgb: &[u8], w: usize, h: usize) -> CliffordDualDecomposition {
+    decompose_masked_clifford_dual_product(rgb, None, w, h)
+}
+
+/// Decompose an RGB image with an optional silhouette mask into its Clifford dual product components.
+pub fn decompose_masked_clifford_dual_product(
+    rgb: &[u8],
+    mask: Option<&[bool]>,
+    w: usize,
+    h: usize,
+) -> CliffordDualDecomposition {
+    let n = w * h;
+    if n == 0 {
+        return CliffordDualDecomposition {
+            width: 0,
+            height: 0,
+            cel_fill: Vec::new(),
+            ink_contour: Vec::new(),
+            ink_blade_threshold: 0.0,
+            ink_blade_mask: Vec::new(),
+            cel_fill_mask: Vec::new(),
+        };
+    }
+
+    let mut state = vec![[0.0f32; 4]; n];
+    for i in 0..n {
+        let r = rgb[i * 3] as f32 / 255.0;
+        let g = rgb[i * 3 + 1] as f32 / 255.0;
+        let b = rgb[i * 3 + 2] as f32 / 255.0;
+        let y = 0.299 * r + 0.587 * g + 0.114 * b;
+        state[i] = [r, g, b, y];
+    }
+
+    let smooth1 = box_blur_3x3(&state, w, h);
+    let smooth2 = box_blur_3x3(&smooth1, w, h);
+
+    let mut cel_fill = vec![0.0f32; n];
+    let mut ink_contour = vec![0.0f32; n];
+    let mut non_zero_w = Vec::with_capacity(n / 4);
+
+    for i in 0..n {
+        if let Some(m) = mask {
+            if !m[i] {
+                continue;
+            }
+        }
+
+        let u = state[i];
+        let mut lap = [0.0f32; 4];
+        for c in 0..4 {
+            lap[c] = smooth2[i][c] - u[c];
+        }
+
+        // 1. Grade 0 Scalar Inner Product: u · ∇²u
+        let dot = u[0] * lap[0] + u[1] * lap[1] + u[2] * lap[2] + u[3] * lap[3];
+
+        // 2. Grade 2 Bivector Exterior Wedge Product: u ∧ ∇²u
+        // 6 independent bivector components in 4D:
+        let mut wedge_sq = 0.0f32;
+        for j in 0..4 {
+            for k in (j + 1)..4 {
+                let w_jk = u[j] * lap[k] - u[k] * lap[j];
+                wedge_sq += w_jk * w_jk;
+            }
+        }
+        let w_mag = (wedge_sq.sqrt() * 4.0).clamp(0.0, 1.0);
+        ink_contour[i] = w_mag;
+
+        if w_mag > 1e-4 {
+            non_zero_w.push(w_mag);
+        }
+
+        // Cel paint fill vitality: smooth inner product coherence modulated by absence of wedge vorticity
+        let coherence = (-0.5 * (w_mag / 0.25).powi(2)).exp();
+        let vitality = (u[3] + dot.abs()).clamp(0.0, 1.0);
+        cel_fill[i] = (vitality * coherence).clamp(0.0, 1.0);
+    }
+
+    // Statistical noise floor for ink blade detection τ_W = median + 1.5 * 1.4826 * MAD
+    let tau_w = if !non_zero_w.is_empty() {
+        non_zero_w.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let med = non_zero_w[non_zero_w.len() / 2];
+        let mut devs: Vec<f32> = non_zero_w.iter().map(|&x| (x - med).abs()).collect();
+        devs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let mad = devs[devs.len() / 2];
+        (med + 1.5 * 1.4826 * mad).clamp(0.06, 0.40)
+    } else {
+        0.12
+    };
+
+    let mut ink_blade_mask = vec![false; n];
+    let mut cel_fill_mask = vec![false; n];
+
+    for i in 0..n {
+        let inside = mask.map_or(true, |m| m[i]);
+        if inside {
+            if ink_contour[i] >= tau_w {
+                ink_blade_mask[i] = true;
+            } else if state[i][3] > 0.02 || state[i][0] > 0.02 || state[i][1] > 0.02 || state[i][2] > 0.02 {
+                cel_fill_mask[i] = true;
+            }
+        }
+    }
+
+    CliffordDualDecomposition {
+        width: w,
+        height: h,
+        cel_fill,
+        ink_contour,
+        ink_blade_threshold: tau_w,
+        ink_blade_mask,
+        cel_fill_mask,
+    }
+}
+
+/// Decompose a character observation into its Clifford dual product components.
+pub fn decompose_observation_dual_product(obs: &CharacterObservation) -> CliffordDualDecomposition {
+    decompose_masked_clifford_dual_product(&obs.rgb, Some(&obs.mask), obs.width(), obs.height())
+}
+
 fn box_blur_3x3(src: &[[f32; 4]], w: usize, h: usize) -> Vec<[f32; 4]> {
     let mut dst = vec![[0.0f32; 4]; w * h];
     for y in 0..h {
@@ -292,4 +435,67 @@ fn downsample_patch_2x(rgb: &[u8], w: usize, h: usize) -> Vec<u8> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clifford_dual_product_separates_contour_from_cel_fill() {
+        // Construct a 32x32 image with a flat red cel fill disk surrounded by a dark ink contour
+        let w = 32usize;
+        let h = 32usize;
+        let mut rgb = vec![255u8; w * h * 3]; // white background
+        let mut mask = vec![false; w * h];
+        let center = [16.0f64, 16.0f64];
+        let radius_inner = 9.0f64;
+        let radius_outer = 11.0f64;
+
+        for y in 0..h {
+            for x in 0..w {
+                let d = ((x as f64 - center[0]).powi(2) + (y as f64 - center[1]).powi(2)).sqrt();
+                let idx = y * w + x;
+                if d <= radius_inner {
+                    // Cel paint fill (pure red)
+                    rgb[idx * 3] = 230;
+                    rgb[idx * 3 + 1] = 40;
+                    rgb[idx * 3 + 2] = 40;
+                    mask[idx] = true;
+                } else if d <= radius_outer {
+                    // Don Bluth ink contour line (dark pigment)
+                    rgb[idx * 3] = 20;
+                    rgb[idx * 3 + 1] = 15;
+                    rgb[idx * 3 + 2] = 25;
+                    mask[idx] = true;
+                }
+            }
+        }
+
+        let decomp = decompose_masked_clifford_dual_product(&rgb, Some(&mask), w, h);
+
+        // Center pixel (16, 16) is deep inside the cel paint fill:
+        // Wedge vorticity u ∧ ∇²u must be very small, and it must be classified as cel fill.
+        let center_idx = 16 * w + 16;
+        assert!(decomp.ink_contour[center_idx] < decomp.ink_blade_threshold,
+            "Center cel fill wedge vorticity ({:.4}) must be below threshold ({:.4})",
+            decomp.ink_contour[center_idx], decomp.ink_blade_threshold);
+        assert!(decomp.cel_fill_mask[center_idx], "Center must be in cel_fill_mask");
+        assert!(!decomp.ink_blade_mask[center_idx], "Center must not be in ink_blade_mask");
+
+        // Boundary pixels near r = 10 must have strong wedge vorticity and be marked as ink blade
+        let mut ink_count = 0usize;
+        let mut cel_count = 0usize;
+        for i in 0..w * h {
+            if decomp.ink_blade_mask[i] {
+                ink_count += 1;
+            }
+            if decomp.cel_fill_mask[i] {
+                cel_count += 1;
+            }
+        }
+
+        assert!(ink_count > 20, "Must detect ink contour blade along the boundary (got {})", ink_count);
+        assert!(cel_count > 150, "Must detect cel paint fill in the disk interior (got {})", cel_count);
+    }
 }

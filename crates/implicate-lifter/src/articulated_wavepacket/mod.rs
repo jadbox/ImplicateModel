@@ -8,20 +8,157 @@
 pub mod clifford_features;
 pub mod part_fitting;
 
-use implicate_math::{CliffordDensityElement, Motor};
+use implicate_math::{CliffordDensityElement, Motor, Mv301};
 use serde::{Deserialize, Serialize};
 
 use crate::enfold2d::{Rect, RgbImage8};
 
 pub use clifford_features::{
-    ArticulatedComparisonReport, compute_cliffordnet_laplacian_features,
-    compute_perceptual_patch_lpips, evaluate_vs_single_box_baseline,
+    ArticulatedComparisonReport, CliffordDualDecomposition,
+    compute_cliffordnet_laplacian_features, compute_perceptual_patch_lpips,
+    decompose_clifford_dual_product, decompose_masked_clifford_dual_product,
+    decompose_observation_dual_product, evaluate_vs_single_box_baseline,
     evaluate_vs_single_box_baseline_with_parts, mask_iou,
 };
 use part_fitting::{
     accumulate_part_wavepacket_kernel, assign_view_idempotent_cells_and_cft_phases,
     fit_part_gaussian_pose, learn_part_prototypes, median_obs_dims,
 };
+
+/// 3D PGA Line of Action ($L_{\text{spine}} \in \mathbb{G}_{3,0,1}$) and kinematic mass inertia envelope.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LineOfAction {
+    /// 3D PGA line bivector L_spine ∈ G(3,0,1) packed into the 64-byte Mv301 monad.
+    pub spine_bivector: Mv301,
+    /// Center of mass in observation coordinates [cx, cy].
+    pub center_of_mass: [f64; 2],
+    /// Unit direction vector of the Line of Action [dx, dy] along the principal spine.
+    pub direction: [f64; 2],
+    /// Principal orientation angle θ in radians [-π, π].
+    pub angle_rad: f64,
+    /// Longitudinal spread (standard deviation σ_∥ along the spine axis).
+    pub spread_parallel: f64,
+    /// Transverse spread (standard deviation σ_⊥ perpendicular to the spine axis).
+    pub spread_perpendicular: f64,
+    /// Dynamic quadratic spinal curvature κ (measure of spinal C-curve / S-curve flexion).
+    pub curvature: f64,
+    /// Total mass (pixel count or weighted vitality sum).
+    pub total_mass: f64,
+}
+
+/// Extract the Line of Action from a silhouette mask.
+pub fn extract_line_of_action(mask: &[bool], w: usize, h: usize) -> Option<LineOfAction> {
+    extract_line_of_action_weighted(mask, None, w, h, [0.0, 0.0])
+}
+
+/// Extract the Line of Action from a weighted silhouette mask with an optional world origin offset.
+pub fn extract_line_of_action_weighted(
+    mask: &[bool],
+    weights: Option<&[f32]>,
+    w: usize,
+    h: usize,
+    world_offset: [f64; 2],
+) -> Option<LineOfAction> {
+    let mut total_mass = 0.0f64;
+    let mut sum_x = 0.0f64;
+    let mut sum_y = 0.0f64;
+
+    for y in 0..h {
+        for x in 0..w {
+            let idx = y * w + x;
+            if mask[idx] {
+                let wt = weights.map_or(1.0f64, |wts| wts[idx] as f64).max(0.01);
+                total_mass += wt;
+                sum_x += x as f64 * wt;
+                sum_y += y as f64 * wt;
+            }
+        }
+    }
+
+    if total_mass < 1.0 {
+        return None;
+    }
+
+    let cx = sum_x / total_mass;
+    let cy = sum_y / total_mass;
+
+    // Second central spatial moments (spatial mass inertia tensor)
+    let mut mu20 = 0.0f64;
+    let mut mu02 = 0.0f64;
+    let mut mu11 = 0.0f64;
+
+    for y in 0..h {
+        for x in 0..w {
+            let idx = y * w + x;
+            if mask[idx] {
+                let wt = weights.map_or(1.0f64, |wts| wts[idx] as f64).max(0.01);
+                let dx = x as f64 - cx;
+                let dy = y as f64 - cy;
+                mu20 += dx * dx * wt;
+                mu02 += dy * dy * wt;
+                mu11 += dx * dy * wt;
+            }
+        }
+    }
+
+    mu20 /= total_mass;
+    mu02 /= total_mass;
+    mu11 /= total_mass;
+
+    // Principal axis angle θ
+    let angle_rad = 0.5 * (2.0 * mu11).atan2(mu20 - mu02);
+    let (sin_t, cos_t) = angle_rad.sin_cos();
+    let dir = [cos_t, sin_t];
+
+    // Eigenvalues of covariance (spread parallel and perpendicular)
+    let diff = mu20 - mu02;
+    let discr = (0.25 * diff * diff + mu11 * mu11).sqrt();
+    let trace_half = 0.5 * (mu20 + mu02);
+    let lambda1 = (trace_half + discr).max(0.0);
+    let lambda2 = (trace_half - discr).max(0.0);
+    let spread_parallel = lambda1.sqrt();
+    let spread_perpendicular = lambda2.sqrt();
+
+    // Quadratic spinal curvature κ: fit transverse coordinate η = κ * ξ^2
+    let mut num_curv = 0.0f64;
+    let mut den_curv = 0.0f64;
+    for y in 0..h {
+        for x in 0..w {
+            let idx = y * w + x;
+            if mask[idx] {
+                let wt = weights.map_or(1.0f64, |wts| wts[idx] as f64).max(0.01);
+                let dx = x as f64 - cx;
+                let dy = y as f64 - cy;
+                let xi = dx * cos_t + dy * sin_t;
+                let eta = -dx * sin_t + dy * cos_t;
+                let xi2 = xi * xi;
+                num_curv += wt * xi2 * eta;
+                den_curv += wt * xi2 * xi2;
+            }
+        }
+    }
+    let curvature = if den_curv > 1e-6 {
+        num_curv / den_curv
+    } else {
+        0.0
+    };
+
+    // 3D PGA Line bivector L_spine in Mv301:
+    let p_3d = [(cx + world_offset[0]) as f32, (cy + world_offset[1]) as f32, 0.0];
+    let d_3d = [cos_t as f32, sin_t as f32, 0.0];
+    let spine_bivector = Mv301::from_line(p_3d, d_3d);
+
+    Some(LineOfAction {
+        spine_bivector,
+        center_of_mass: [cx, cy],
+        direction: dir,
+        angle_rad,
+        spread_parallel,
+        spread_perpendicular,
+        curvature,
+        total_mass,
+    })
+}
 
 /// Maximum number of sub-holon parts per articulated character ($P \in \{1..8\}$).
 pub const MAX_SUB_HOLONS: usize = 8;
@@ -38,6 +175,8 @@ pub struct CharacterObservation {
     /// True when the silhouette touches the frame edge: the holon is only partially in view, so the
     /// observation informs kinematics but not appearance.
     pub truncated: bool,
+    /// Line of Action: 3D PGA screw axis blade L_spine ∈ G(3,0,1) and mass inertia envelope.
+    pub line_of_action: Option<LineOfAction>,
 }
 
 impl CharacterObservation {
@@ -53,6 +192,12 @@ impl CharacterObservation {
     pub fn world_center(&self) -> [f64; 2] {
         let c = self.bbox.center();
         [c[0] + self.camera_offset[0], c[1] + self.camera_offset[1]]
+    }
+
+    /// Line of Action: 3D PGA screw axis blade L_spine ∈ G(3,0,1) and mass inertia envelope.
+    pub fn line_of_action(&self) -> Option<LineOfAction> {
+        self.line_of_action
+            .or_else(|| extract_line_of_action(&self.mask, self.width(), self.height()))
     }
 }
 
@@ -208,6 +353,16 @@ pub fn choose_part_and_view_counts(observations: &[CharacterObservation]) -> (us
     }
     let rec = rigid_recurrence_iou(observations);
     if rec >= HOLON_MODEL_QUALITY_IOU {
+        return (1, view_count_for(n, 1));
+    }
+    let m1 = fit_articulated_holon(observations, Some(1));
+    let iou1: f64 = observations
+        .iter()
+        .enumerate()
+        .map(|(oi, o)| mask_iou(&o.mask, &render_articulated_holon_observation(&m1, o, oi).0))
+        .sum::<f64>()
+        / n as f64;
+    if iou1 >= HOLON_MODEL_QUALITY_IOU {
         return (1, view_count_for(n, 1));
     }
     let mut best = (0.0f64, ARTICULATED_PART_CANDIDATES[ARTICULATED_PART_CANDIDATES.len() - 1]);
@@ -687,18 +842,64 @@ pub fn render_with_poses(
     (out_mask, out_rgb)
 }
 
-/// Per-channel residual (8-bit) above which a pixel differs from the reconstructed background.
-const FOREGROUND_RESIDUAL: i32 = 26;
-/// Minimum foreground pixel count for an observation to carry a recognizable silhouette.
-const MIN_OBSERVATION_PIXELS: usize = 12;
 /// Maximum frame gap bridged by frame-to-frame linking (short flicker / missed detections).
-const MAX_LINK_GAP: usize = 4;
-/// Maximum chroma-weighted colour distance (8-bit max-channel) for two observations of one holon.
-const MAX_APPEARANCE_DIST: f32 = 55.0;
-/// Maximum ratio between successive silhouette extents of one holon.
-const MAX_EXTENT_RATIO: f64 = 1.6;
+const MAX_LINK_GAP: usize = 8;
 /// Minimum number of observations for a track to define a holon.
 const MIN_TRACK_LEN: usize = 4;
+
+/// Compute the statistical lattice noise floor tau = median(I_nz) + 3 * 1.4826 * MAD(I_nz)
+/// derived from the non-zero lattice-tolerant residual multivector |ΔΨ|.
+pub fn compute_shot_noise_floor(
+    frames: &[crate::video_io::RawFrame],
+    atlas: &crate::multiplane_atlas::MultiPlaneAtlas,
+) -> f64 {
+    let n = frames.len();
+    if n == 0 {
+        return 18.0;
+    }
+    let stride = (n / 8).max(1);
+    let mut sample_res = Vec::new();
+    let (ay0, ay1) = atlas.active_y_range;
+    let w = atlas.width;
+    let h = atlas.height;
+
+    for fi in (0..n).step_by(stride) {
+        let f = &frames[fi];
+        let bg = atlas.reconstruct_background_frame(fi);
+        for y in (ay0..ay1).step_by(2) {
+            for x in (0..w).step_by(2) {
+                let c = f.pixel(x as u32, y as u32);
+                let mut best_d = i32::MAX;
+                for dy in -1i32..=1 {
+                    for dx in -1i32..=1 {
+                        let (bx, by) = (x as i32 + dx, y as i32 + dy);
+                        if bx >= 0 && by >= 0 && bx < w as i32 && by < h as i32 {
+                            let b = bg.pixel(bx as usize, by as usize);
+                            let d = (0..3).map(|k| (c[k] as i32 - b[k] as i32).abs()).max().unwrap_or(0);
+                            best_d = best_d.min(d);
+                        }
+                    }
+                }
+                if best_d > 0 && best_d != i32::MAX {
+                    sample_res.push(best_d as f64);
+                }
+            }
+        }
+    }
+
+    if sample_res.is_empty() {
+        return 18.0;
+    }
+
+    sample_res.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median = sample_res[sample_res.len() / 2];
+    let mut devs: Vec<f64> = sample_res.iter().map(|&x| (x - median).abs()).collect();
+    devs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mad = devs[devs.len() / 2];
+
+    let tau = median + 3.0 * MAD_TO_SIGMA * mad;
+    tau.clamp(6.0, 36.0)
+}
 
 /// Chroma-weighted mean colour: saturated pixels dominate, so dark outlines and specular
 /// highlights do not wash out a holon's identifying hue.
@@ -727,16 +928,17 @@ pub fn chroma_weighted_color(rgb: &[u8], mask: &[bool]) -> [f32; 3] {
     }
 }
 
-/// Screen pixels whose value never departs from the first frame by more than the foreground
+/// Screen pixels whose value never departs from the first frame by more than the noise floor
 /// residual. Such pixels are camera-locked (HUDs, letter/pillar-box bars, masked borders, logos)
 /// and cannot contain a moving holon. `None` when the shot is too short to tell.
-fn screen_static_mask(frames: &[crate::video_io::RawFrame]) -> Option<Vec<bool>> {
+fn screen_static_mask(frames: &[crate::video_io::RawFrame], tau: f64) -> Option<Vec<bool>> {
     let first = frames.first()?;
     if frames.len() < MIN_TRACK_LEN {
         return None;
     }
     let (w, h) = (first.width as usize, first.height as usize);
     let mut stat = vec![true; w * h];
+    let tau_i = tau.round() as i32;
     for f in &frames[1..] {
         if f.width as usize != w || f.height as usize != h {
             return None;
@@ -749,7 +951,7 @@ fn screen_static_mask(frames: &[crate::video_io::RawFrame]) -> Option<Vec<bool>>
                 }
                 let a = first.pixel(x as u32, y as u32);
                 let b = f.pixel(x as u32, y as u32);
-                if (0..3).any(|k| (a[k] as i32 - b[k] as i32).abs() > FOREGROUND_RESIDUAL) {
+                if (0..3).any(|k| (a[k] as i32 - b[k] as i32).abs() > tau_i) {
                     stat[i] = false;
                 }
             }
@@ -758,11 +960,9 @@ fn screen_static_mask(frames: &[crate::video_io::RawFrame]) -> Option<Vec<bool>>
     Some(stat)
 }
 
-/// Components smaller than this fraction of the largest are residual debris, not body parts.
-const MIN_COMPONENT_FRACTION: usize = 4;
-
-/// Keep the largest 8-connected component of `mask` plus any component at least
-/// `1 / MIN_COMPONENT_FRACTION` of its area (detached limbs, props held by the body).
+/// Keep the largest 8-connected component of `mask` plus any component that falls
+/// within the Line of Action support envelope (preserving detached props such as
+/// Mrs. Brisby's amulet, Jeremy's red string, trailing cape tips, and billowing cloaks).
 pub fn dominant_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
     let mut label = vec![0u32; w * h];
     let mut sizes: Vec<usize> = vec![0];
@@ -793,10 +993,126 @@ pub fn dominant_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
             }
         }
     }
-    let largest = sizes.iter().copied().max().unwrap_or(0);
+
+    if sizes.len() <= 1 {
+        return vec![false; w * h];
+    }
+
+    // Find the primary (largest) component
+    let mut primary_id = 0u32;
+    let mut largest_size = 0usize;
+    for (id, &sz) in sizes.iter().enumerate().skip(1) {
+        if sz > largest_size {
+            largest_size = sz;
+            primary_id = id as u32;
+        }
+    }
+
+    if largest_size == 0 {
+        return vec![false; w * h];
+    }
+
+    // Primary component mask
+    let primary_mask: Vec<bool> = label.iter().map(|&l| l == primary_id).collect();
+    let primary_loa = extract_line_of_action(&primary_mask, w, h);
+
+    // Compute primary component bounding extents and spatial support radius
+    let (mut px0, mut py0, mut px1, mut py1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+    for y in 0..h {
+        for x in 0..w {
+            if label[y * w + x] == primary_id {
+                let (ix, iy) = (x as i32, y as i32);
+                px0 = px0.min(ix);
+                py0 = py0.min(iy);
+                px1 = px1.max(ix);
+                py1 = py1.max(iy);
+            }
+        }
+    }
+    let p_extent = ((px1 - px0 + 1).max(py1 - py0 + 1) as f64).max(8.0);
+    let support_radius = if let Some(ref loa) = primary_loa {
+        // Line of action support radius: maximum of body extent and 3 sigma_parallel
+        (loa.spread_parallel * 3.0).max(p_extent * 0.75).max(12.0)
+    } else {
+        p_extent
+    };
+
+    // For each candidate component, evaluate its inclusion in the Line of Action envelope
+    let mut keep = vec![false; sizes.len()];
+    keep[primary_id as usize] = true;
+
+    for id in 1..sizes.len() {
+        if id as u32 == primary_id {
+            continue;
+        }
+        let comp_sz = sizes[id];
+        if comp_sz == 0 {
+            continue;
+        }
+
+        // Compute component centroid and min distance to primary component
+        let mut sum_cx = 0.0f64;
+        let mut sum_cy = 0.0f64;
+        let mut min_dist_to_primary = f64::MAX;
+
+        for y in 0..h {
+            for x in 0..w {
+                if label[y * w + x] == id as u32 {
+                    sum_cx += x as f64;
+                    sum_cy += y as f64;
+
+                    // Distance to primary bounding box
+                    let (ix, iy) = (x as i32, y as i32);
+                    let dx = if ix < px0 {
+                        px0 - ix
+                    } else if ix > px1 {
+                        ix - px1
+                    } else {
+                        0
+                    };
+                    let dy = if iy < py0 {
+                        py0 - iy
+                    } else if iy > py1 {
+                        iy - py1
+                    } else {
+                        0
+                    };
+                    let d = ((dx * dx + dy * dy) as f64).sqrt();
+                    min_dist_to_primary = min_dist_to_primary.min(d);
+                }
+            }
+        }
+
+        let cand_cx = sum_cx / comp_sz as f64;
+        let cand_cy = sum_cy / comp_sz as f64;
+
+        // Check 1: Distance to primary mass is within kinematic reach / support envelope
+        let in_distance_envelope = min_dist_to_primary <= support_radius;
+
+        // Check 2: Position along the Line of Action principal corridor
+        let in_corridor = if let Some(ref loa) = primary_loa {
+            let dx = cand_cx - loa.center_of_mass[0];
+            let dy = cand_cy - loa.center_of_mass[1];
+            let xi = dx * loa.direction[0] + dy * loa.direction[1];
+            let eta = -dx * loa.direction[1] + dy * loa.direction[0];
+            let max_eta = (loa.spread_perpendicular * 3.0).max(loa.spread_parallel * 1.5).max(10.0);
+            let max_xi = (loa.spread_parallel * 3.5).max(p_extent * 1.25);
+            eta.abs() <= max_eta && xi.abs() <= max_xi
+        } else {
+            false
+        };
+
+        // Retain props, capes, and limbs:
+        // Any component with >= 2 pixels within the envelope or corridor is kept.
+        // Even 1-pixel components within tight proximity (<= 3 px) are kept.
+        if (in_distance_envelope || in_corridor) && (comp_sz >= 2 || min_dist_to_primary <= 3.0) {
+            keep[id] = true;
+        }
+    }
+
     label
         .iter()
-        .map(|&l| l != 0 && sizes[l as usize] * MIN_COMPONENT_FRACTION >= largest)
+        .map(|&l| l != 0 && keep[l as usize])
         .collect()
 }
 
@@ -804,15 +1120,16 @@ fn color_dist(a: [f32; 3], b: [f32; 3]) -> f32 {
     (a[0] - b[0]).abs().max((a[1] - b[1]).abs()).max((a[2] - b[2]).abs())
 }
 
-struct TrackCand {
-    obs: CharacterObservation,
-    color: [f32; 3],
+#[derive(Clone, Debug)]
+pub struct TrackCand {
+    pub obs: CharacterObservation,
+    pub color: [f32; 3],
     /// Silhouette centre in world (atlas) coordinates: screen + camera trajectory.
-    world: [f64; 2],
+    pub world: [f64; 2],
 }
 
 impl TrackCand {
-    fn extent(&self) -> f64 {
+    pub fn extent(&self) -> f64 {
         self.obs.width().max(self.obs.height()) as f64
     }
 }
@@ -827,32 +1144,46 @@ fn tracklet_velocity(tr: &[TrackCand], at_end: bool) -> [f64; 2] {
     [(b.world[0] - a.world[0]) / dt, (b.world[1] - a.world[1]) / dt]
 }
 
-/// Number of observations at a tracklet end used for robust (median) extent estimates.
-const EXTENT_WINDOW: usize = 5;
+/// Compute Hiley CDE Bilinear Geodesic Affinity A(tr, cand) in [0, 1].
+/// Unifies intrinsic spinor/chromatic coherence, squash/stretch log-area scale,
+/// and geodesic spatial continuity across the gap.
+pub fn cde_bilinear_geodesic_affinity(tr: &[TrackCand], cand: &TrackCand) -> f64 {
+    let last = tr.last().unwrap();
+    let gap = cand.obs.frame_idx.saturating_sub(last.obs.frame_idx) as f64;
+    if gap <= 0.0 || gap > MAX_LINK_GAP as f64 {
+        return 0.0;
+    }
 
-/// Median silhouette extent `(w, h)` over the last (or first) `EXTENT_WINDOW` observations, so a
-/// single observation contaminated by a merge does not redefine the holon's size.
-fn robust_extent(tr: &[TrackCand], at_end: bool) -> (usize, usize) {
-    let n = tr.len().min(EXTENT_WINDOW);
-    let slice = if at_end { &tr[tr.len() - n..] } else { &tr[..n] };
-    let mut ws: Vec<usize> = slice.iter().map(|c| c.obs.width()).collect();
-    let mut hs: Vec<usize> = slice.iter().map(|c| c.obs.height()).collect();
-    ws.sort_unstable();
-    hs.sort_unstable();
-    (ws[ws.len() / 2], hs[hs.len() / 2])
-}
+    // 1. Intrinsic Spinor / Chromatic Coherence: C_color in [0, 1]
+    let cdist = color_dist(cand.color, last.color) as f64;
+    let c_affinity = (-0.5 * (cdist / 36.0).powi(2)).exp();
 
-fn extents_compatible(a: (usize, usize), b: (usize, usize)) -> bool {
-    let r = |x: usize, y: usize| x.max(y) as f64 / x.min(y).max(1) as f64;
-    r(a.0, b.0) <= MAX_EXTENT_RATIO && r(a.1, b.1) <= MAX_EXTENT_RATIO
+    // 2. Scale / Log-Area Invariance (Squash & Stretch volume conservation): S_scale in [0, 1]
+    let area_cand = cand.obs.mask.iter().filter(|&&m| m).count().max(1) as f64;
+    let area_last = last.obs.mask.iter().filter(|&&m| m).count().max(1) as f64;
+    let log_area_ratio = (area_cand / area_last).ln().abs();
+    let s_affinity = (-0.5 * (log_area_ratio / 0.85).powi(2)).exp();
+
+    // 3. Geodesic Spatial Continuity: K_geodesic in [0, 1]
+    let v = tracklet_velocity(tr, true);
+    let pred_inertial = [last.world[0] + v[0] * gap, last.world[1] + v[1] * gap];
+    let d_inertial = (cand.world[0] - pred_inertial[0]).hypot(cand.world[1] - pred_inertial[1]);
+    let d_stationary = (cand.world[0] - last.world[0]).hypot(cand.world[1] - last.world[1]);
+
+    // A holon may coast inertially along its Line of Action or come to a sudden halt / hold.
+    let d_spatial = d_inertial.min(d_stationary);
+    let char_extent = last.extent().max(cand.extent()).max(8.0);
+    let diffusion_radius = char_extent * gap.sqrt();
+    let k_affinity = (-0.5 * (d_spatial / diffusion_radius).powi(2)).exp();
+
+    c_affinity * s_affinity * k_affinity
 }
 
 /// Extract spatially and chromatically coherent `CharacterObservation` tracks for up to
 /// `max_tracks` distinct moving characters/holons from a `MultiPlaneAtlas` and its source frames.
 ///
-/// Kinematics are evaluated in world coordinates (screen + camera trajectory) so scenery that merely
-/// scrolls with the camera is recognised as stationary. Linking gates are relative to each holon's
-/// own extent and velocity; fragments split by occlusion are re-joined by reachability.
+/// Kinematics are evaluated in world coordinates (screen + camera trajectory) using Hiley CDE
+/// Bilinear Geodesic Affinity on the statistical residual noise floor tau.
 pub fn extract_character_observation_tracks(
     frames: &[crate::video_io::RawFrame],
     atlas: &crate::multiplane_atlas::MultiPlaneAtlas,
@@ -866,8 +1197,10 @@ pub fn extract_character_observation_tracks(
             .map(|t| [t[0] as f64, t[1] as f64])
             .unwrap_or([0.0, 0.0])
     };
+    let tau = compute_shot_noise_floor(frames, atlas);
+    let tau_i = tau.round() as i32;
     let mut tracks: Vec<Vec<TrackCand>> = Vec::new();
-    let screen_static = screen_static_mask(frames);
+    let screen_static = screen_static_mask(frames, tau);
 
     for (fi, frame) in frames.iter().enumerate() {
         let Some(boxes) = atlas.actor_boxes_per_frame.get(fi) else {
@@ -893,7 +1226,7 @@ pub fn extract_character_observation_tracks(
                     let locked = screen_static
                         .as_ref()
                         .is_some_and(|m| m[fy as usize * frame.width as usize + fx as usize]);
-                    residual[(fy - y0) as usize * bw0 + (fx - x0) as usize] = d > FOREGROUND_RESIDUAL && !locked;
+                    residual[(fy - y0) as usize * bw0 + (fx - x0) as usize] = d > tau_i && !locked;
                 }
             }
             let silhouette = dominant_silhouette(&residual, bw0, bh0);
@@ -907,7 +1240,7 @@ pub fn extract_character_observation_tracks(
                 tx1 = tx1.max(fx);
                 ty1 = ty1.max(fy);
             }
-            if fg_cnt < MIN_OBSERVATION_PIXELS {
+            if fg_cnt < 8 {
                 continue;
             }
             let tight = Rect::new(tx0, ty0, tx1, ty1);
@@ -927,6 +1260,7 @@ pub fn extract_character_observation_tracks(
             let color = chroma_weighted_color(&rgb, &mask);
             let cam = camera(fi);
             let c = tight.center();
+            let loa = extract_line_of_action(&mask, bw, bh);
             frame_cands.push(TrackCand {
                 obs: CharacterObservation {
                     frame_idx: fi,
@@ -938,40 +1272,24 @@ pub fn extract_character_observation_tracks(
                         || ty0 == 0
                         || tx1 == frame.width as i32 - 1
                         || ty1 == frame.height as i32 - 1,
+                    line_of_action: loa,
                 },
                 color,
                 world: [c[0] + cam[0], c[1] + cam[1]],
             });
         }
 
-        // Global greedy assignment of candidates to live tracks by normalized prediction cost.
+        // Global greedy assignment of candidates to live tracks by maximum CDE bilinear geodesic affinity.
         let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
         for (ci, cand) in frame_cands.iter().enumerate() {
             for (ti, tr) in tracks.iter().enumerate() {
-                let last = tr.last().unwrap();
-                let gap = fi.saturating_sub(last.obs.frame_idx);
-                if gap == 0 || gap > MAX_LINK_GAP {
-                    continue;
+                let aff = cde_bilinear_geodesic_affinity(tr, cand);
+                if aff >= 0.05 {
+                    pairs.push((aff, ci, ti));
                 }
-                if !extents_compatible((cand.obs.width(), cand.obs.height()), robust_extent(tr, true)) {
-                    continue;
-                }
-                let cdist = color_dist(cand.color, last.color);
-                if cdist > MAX_APPEARANCE_DIST {
-                    continue;
-                }
-                let v = tracklet_velocity(tr, true);
-                let pred = [last.world[0] + v[0] * gap as f64, last.world[1] + v[1] * gap as f64];
-                let err = (cand.world[0] - pred[0]).hypot(cand.world[1] - pred[1]);
-                // One body extent of unexplained displacement per elapsed frame.
-                let scale = last.extent().max(cand.extent()) * gap as f64;
-                if err > scale {
-                    continue;
-                }
-                pairs.push((err / scale + (cdist / MAX_APPEARANCE_DIST) as f64, ci, ti));
             }
         }
-        pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         let mut cand_slot: Vec<Option<TrackCand>> = frame_cands.into_iter().map(Some).collect();
         let mut track_used = vec![false; tracks.len()];
         for (_, ci, ti) in pairs {
@@ -1002,21 +1320,6 @@ pub fn extract_character_observation_tracks(
     let mut scored: Vec<(usize, Vec<CharacterObservation>)> = tracks
         .into_iter()
         .filter(|tr| tr.len() >= MIN_TRACK_LEN || max_tracks == 1)
-        .filter(|tr| {
-            if max_tracks == 1 || tr.len() <= 1 {
-                return true;
-            }
-            // A holon must move relative to the world by more than half its own extent. The robust
-            // (inter-decile) spread of world positions ignores centroid jitter from partial silhouettes.
-            let spread = |axis: usize| {
-                let mut v: Vec<f64> = tr.iter().map(|c| c.world[axis]).collect();
-                v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                let q = |f: f64| v[((v.len() - 1) as f64 * f).round() as usize];
-                q(0.9) - q(0.1)
-            };
-            let mean_extent = tr.iter().map(TrackCand::extent).sum::<f64>() / tr.len() as f64;
-            spread(0).hypot(spread(1)) > 0.5 * mean_extent
-        })
         .map(|tr| {
             let total_fg: usize = tr.iter().map(|c| c.obs.mask.iter().filter(|&&m| m).count()).sum();
             let score = tr.len() * 1000 + total_fg;
@@ -1028,14 +1331,12 @@ pub fn extract_character_observation_tracks(
 }
 
 /// Re-join tracklets fragmented by occlusion or silhouette merging: tracklet `B` continues `A`
-/// when it starts after `A` ends, shares its appearance and extent, and lies within the region
-/// reachable at the pair's observed speed plus one body extent.
+/// when it starts after `A` ends and shares high CDE bilinear geodesic affinity across the gap.
 fn stitch_tracklets(tracks: &mut Vec<Vec<TrackCand>>) {
     loop {
         let mut best: Option<(f64, usize, usize)> = None;
         for (ai, a) in tracks.iter().enumerate() {
             let a_last = a.last().unwrap();
-            let va = tracklet_velocity(a, true);
             for (bi, b) in tracks.iter().enumerate() {
                 if ai == bi {
                     continue;
@@ -1044,24 +1345,15 @@ fn stitch_tracklets(tracks: &mut Vec<Vec<TrackCand>>) {
                 if b_first.obs.frame_idx <= a_last.obs.frame_idx {
                     continue;
                 }
-                if !extents_compatible(robust_extent(a, true), robust_extent(b, false)) {
+                let gap = b_first.obs.frame_idx - a_last.obs.frame_idx;
+                if gap > 16 {
                     continue;
                 }
-                let cdist = color_dist(a_last.color, b_first.color);
-                if cdist > MAX_APPEARANCE_DIST {
-                    continue;
-                }
-                let gap = (b_first.obs.frame_idx - a_last.obs.frame_idx) as f64;
-                let vb = tracklet_velocity(b, false);
-                let speed = va[0].hypot(va[1]).max(vb[0].hypot(vb[1]));
-                let reach = a_last.extent().max(b_first.extent()) + speed * gap;
-                let d = (b_first.world[0] - a_last.world[0]).hypot(b_first.world[1] - a_last.world[1]);
-                if d > reach {
-                    continue;
-                }
-                let cost = d / reach + (cdist / MAX_APPEARANCE_DIST) as f64;
-                if best.is_none_or(|(c, _, _)| cost < c) {
-                    best = Some((cost, ai, bi));
+                let aff = cde_bilinear_geodesic_affinity(a, b_first);
+                if aff >= 0.05 {
+                    if best.is_none_or(|(score, _, _)| aff > score) {
+                        best = Some((aff, ai, bi));
+                    }
                 }
             }
         }
@@ -1086,4 +1378,97 @@ pub fn extract_dominant_character_observations(
 
 pub fn observation_to_rgb_image(obs: &CharacterObservation) -> RgbImage8 {
     RgbImage8::from_raw(obs.width(), obs.height(), obs.rgb.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_line_of_action_extraction() {
+        // Construct a vertical elliptical character mask (spine along y-axis)
+        let w = 40usize;
+        let h = 80usize;
+        let mut mask = vec![false; w * h];
+        let (cx, cy) = (20.0f64, 40.0f64);
+        for y in 0..h {
+            for x in 0..w {
+                let dx = (x as f64 - cx) / 8.0;
+                let dy = (y as f64 - cy) / 24.0;
+                if dx * dx + dy * dy <= 1.0 {
+                    mask[y * w + x] = true;
+                }
+            }
+        }
+
+        let loa = extract_line_of_action(&mask, w, h).expect("extract LineOfAction");
+        assert!((loa.center_of_mass[0] - cx).abs() < 0.5);
+        assert!((loa.center_of_mass[1] - cy).abs() < 0.5);
+
+        // Direction along y axis (vertical spine): dx ≈ 0, |dy| ≈ 1
+        assert!(loa.direction[0].abs() < 0.05);
+        assert!((loa.direction[1].abs() - 1.0).abs() < 0.05);
+
+        // Spread parallel (along y) must be substantially larger than spread perpendicular (along x)
+        assert!(loa.spread_parallel > loa.spread_perpendicular * 2.5);
+
+        // Plücker condition: d · m = 0
+        assert!(loa.spine_bivector.is_valid_line(1e-4));
+    }
+
+    #[test]
+    fn test_dominant_silhouette_preserves_detached_prop_and_cape() {
+        let w = 64usize;
+        let h = 64usize;
+        let mut mask = vec![false; w * h];
+
+        // 1. Main body mass (Mrs. Brisby's torso): 16x24 box = 384 pixels
+        for y in 20..44 {
+            for x in 24..40 {
+                mask[y * w + x] = true;
+            }
+        }
+        let body_count = mask.iter().filter(|&&m| m).count();
+        assert_eq!(body_count, 384);
+
+        // 2. Detached held prop (Mrs. Brisby's amulet): 4x4 box = 16 pixels
+        // Situated at y=14..18, x=29..33 (detached by 2 pixels from neck)
+        // Note: 16 * 4 = 64 < 384! Under MIN_COMPONENT_FRACTION = 4, this was amputated!
+        for y in 14..18 {
+            for x in 29..33 {
+                mask[y * w + x] = true;
+            }
+        }
+
+        // 3. Trailing cape tip: 4x5 box = 20 pixels
+        // Situated at y=48..53, x=22..26 (detached by 4 pixels below skirt)
+        // 20 * 4 = 80 < 384! Under MIN_COMPONENT_FRACTION = 4, this was also amputated!
+        for y in 48..53 {
+            for x in 22..26 {
+                mask[y * w + x] = true;
+            }
+        }
+
+        // 4. Far background noise speck in upper-left corner: 1 pixel at (2, 2)
+        mask[2 * w + 2] = true;
+
+        let filtered = dominant_silhouette(&mask, w, h);
+
+        // Verify amulet is PRESERVED (100% of its 16 pixels retained)
+        for y in 14..18 {
+            for x in 29..33 {
+                assert!(filtered[y * w + x], "Amulet prop pixel at ({}, {}) must be preserved", x, y);
+            }
+        }
+
+        // Verify trailing cape tip is PRESERVED (100% of its 20 pixels retained)
+        for y in 48..53 {
+            for x in 22..26 {
+                assert!(filtered[y * w + x], "Cape tip pixel at ({}, {}) must be preserved", x, y);
+            }
+        }
+
+        // Verify far background noise speck in upper-left corner was REJECTED
+        assert!(!filtered[2 * w + 2], "Far background noise speck must be rejected");
+    }
 }

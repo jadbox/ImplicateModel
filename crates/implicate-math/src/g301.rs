@@ -93,6 +93,110 @@ impl Mv301 {
         [self.c[2], self.c[3], self.c[4]]
     }
 
+    /// Embed a 3D Plücker line passing through `point` with direction `dir` as a grade-2 bivector $L \in \mathbb{G}_{3,0,1}$.
+    ///
+    /// Plücker line representation: direction $\mathbf{d} = (d_x, d_y, d_z)$ in $(e_{23}, e_{31}, e_{12})$
+    /// and moment $\mathbf{m} = \mathbf{p} \times \mathbf{d}$ in $(e_{01}, e_{02}, e_{03})$.
+    #[inline]
+    pub fn from_line(point: [f32; 3], dir: [f32; 3]) -> Self {
+        let mut c = [0.0; 16];
+        let norm = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt().max(1e-9);
+        let d = [dir[0] / norm, dir[1] / norm, dir[2] / norm];
+        // Direction vector in (e23, e31, e12)
+        c[9] = d[0];  // e23
+        c[10] = d[1]; // e31
+        c[8] = d[2];  // e12
+        // Moment vector m = p × d in (e01, e02, e03)
+        c[5] = point[1] * d[2] - point[2] * d[1]; // e01
+        c[6] = point[2] * d[0] - point[0] * d[2]; // e02
+        c[7] = point[0] * d[1] - point[1] * d[0]; // e03
+        Self { c }
+    }
+
+    /// Embed a 2D line passing through `point` $(x, y)$ with direction `dir` $(dx, dy)$ in the $z=0$ plane.
+    #[inline]
+    pub fn from_line_2d(point: [f32; 2], dir: [f32; 2]) -> Self {
+        Self::from_line([point[0], point[1], 0.0], [dir[0], dir[1], 0.0])
+    }
+
+    /// Extract unit line direction vector $(d_x, d_y, d_z)$ from $(e_{23}, e_{31}, e_{12})$.
+    #[inline]
+    pub fn line_direction(&self) -> [f32; 3] {
+        self.euclidean_bivector()
+    }
+
+    /// Extract line moment vector $(m_x, m_y, m_z)$ from $(e_{01}, e_{02}, e_{03})$.
+    #[inline]
+    pub fn line_moment(&self) -> [f32; 3] {
+        self.ideal_bivector()
+    }
+
+    /// Extract the 6-component bivector line blade $[d_x, d_y, d_z, m_x, m_y, m_z]$ in $\mathbb{G}_{3,0,1}$.
+    #[inline]
+    pub fn line_bivector_blade6(&self) -> [f32; 6] {
+        [
+            self.c[9],  // e23 = dx
+            self.c[10], // e31 = dy
+            self.c[8],  // e12 = dz
+            self.c[5],  // e01 = mx
+            self.c[6],  // e02 = my
+            self.c[7],  // e03 = mz
+        ]
+    }
+
+    /// Construct a line bivector from a 6-component blade $[d_x, d_y, d_z, m_x, m_y, m_z]$.
+    #[inline]
+    pub fn from_bivector_blade6(blade: [f32; 6]) -> Self {
+        let mut c = [0.0; 16];
+        c[9] = blade[0];
+        c[10] = blade[1];
+        c[8] = blade[2];
+        c[5] = blade[3];
+        c[6] = blade[4];
+        c[7] = blade[5];
+        Self { c }
+    }
+
+    /// Distance from a 3D point to this line bivector: $\|\mathbf{p} \times \mathbf{d} - \mathbf{m}\|$.
+    #[inline]
+    pub fn distance_to_line(&self, point: [f32; 3]) -> f32 {
+        let d = self.line_direction();
+        let m = self.line_moment();
+        let px = point[1] * d[2] - point[2] * d[1] - m[0];
+        let py = point[2] * d[0] - point[0] * d[2] - m[1];
+        let pz = point[0] * d[1] - point[1] * d[0] - m[2];
+        (px * px + py * py + pz * pz).sqrt()
+    }
+
+    /// Closest point on this line bivector to a given 3D point:
+    /// $\mathbf{p}_{\text{proj}} = (\mathbf{d} \times \mathbf{m}) + (\mathbf{p} \cdot \mathbf{d})\mathbf{d}$.
+    #[inline]
+    pub fn closest_point_on_line(&self, point: [f32; 3]) -> [f32; 3] {
+        let d = self.line_direction();
+        let m = self.line_moment();
+        let d_cross_m = [
+            d[1] * m[2] - d[2] * m[1],
+            d[2] * m[0] - d[0] * m[2],
+            d[0] * m[1] - d[1] * m[0],
+        ];
+        let p_dot_d = point[0] * d[0] + point[1] * d[1] + point[2] * d[2];
+        [
+            d_cross_m[0] + p_dot_d * d[0],
+            d_cross_m[1] + p_dot_d * d[1],
+            d_cross_m[2] + p_dot_d * d[2],
+        ]
+    }
+
+    /// Check if this multivector represents a valid PGA simple line blade (satisfying $\mathbf{d} \cdot \mathbf{m} = 0$).
+    #[inline]
+    pub fn is_valid_line(&self, eps: f32) -> bool {
+        let d = self.line_direction();
+        let m = self.line_moment();
+        let dot = d[0] * m[0] + d[1] * m[1] + d[2] * m[2];
+        let norm_d = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        dot.abs() <= eps && (norm_d - 1.0).abs() <= eps
+    }
+
     #[inline]
     pub fn add(self, rhs: Self) -> Self {
         let mut c = [0.0; 16];
@@ -294,4 +398,44 @@ pub fn mat3_vec(r: [[f32; 3]; 3], v: [f32; 3]) -> [f32; 3] {
         r[1][0] * v[0] + r[1][1] * v[1] + r[1][2] * v[2],
         r[2][0] * v[0] + r[2][1] * v[1] + r[2][2] * v[2],
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_line_bivector_plucker_properties() {
+        let pt = [10.0f32, 20.0, 5.0];
+        let dir = [0.0f32, 1.0, 0.0]; // Y axis line through (10, 20, 5)
+        let line = Mv301::from_line(pt, dir);
+
+        assert!(line.is_valid_line(1e-5), "Line must satisfy Plücker condition d · m = 0");
+        let d = line.line_direction();
+        assert!((d[0] - 0.0).abs() < 1e-6);
+        assert!((d[1] - 1.0).abs() < 1e-6);
+        assert!((d[2] - 0.0).abs() < 1e-6);
+
+        // Point on line: (10, 50, 5)
+        let test_pt_on_line = [10.0, 50.0, 5.0];
+        assert!(line.distance_to_line(test_pt_on_line) < 1e-5);
+        let closest = line.closest_point_on_line(test_pt_on_line);
+        assert!((closest[0] - 10.0).abs() < 1e-5);
+        assert!((closest[1] - 50.0).abs() < 1e-5);
+        assert!((closest[2] - 5.0).abs() < 1e-5);
+
+        // Point off line: (13, 20, 5) -> dist = 3.0
+        let test_pt_off = [13.0, 20.0, 5.0];
+        let dist = line.distance_to_line(test_pt_off);
+        assert!((dist - 3.0).abs() < 1e-5);
+        let closest_off = line.closest_point_on_line(test_pt_off);
+        assert!((closest_off[0] - 10.0).abs() < 1e-5);
+        assert!((closest_off[1] - 20.0).abs() < 1e-5);
+        assert!((closest_off[2] - 5.0).abs() < 1e-5);
+
+        // Blade6 round-trip
+        let b6 = line.line_bivector_blade6();
+        let reconstructed = Mv301::from_bivector_blade6(b6);
+        assert_eq!(line.c, reconstructed.c);
+    }
 }

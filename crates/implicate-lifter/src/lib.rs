@@ -14,11 +14,14 @@ pub mod shot_segmenter;
 pub mod video_io;
 
 pub use articulated_wavepacket::{
-    ArticulatedComparisonReport, ArticulatedHolon, CharacterObservation, SubHolonPose,
-    WavepacketPartKernel, choose_part_and_view_counts, compute_cliffordnet_laplacian_features,
-    compute_perceptual_patch_lpips, evaluate_vs_single_box_baseline,
+    ArticulatedComparisonReport, ArticulatedHolon, CharacterObservation, CliffordDualDecomposition,
+    LineOfAction, SubHolonPose, WavepacketPartKernel, choose_part_and_view_counts,
+    compute_cliffordnet_laplacian_features, compute_perceptual_patch_lpips,
+    decompose_clifford_dual_product, decompose_masked_clifford_dual_product,
+    decompose_observation_dual_product, dominant_silhouette, evaluate_vs_single_box_baseline,
     evaluate_vs_single_box_baseline_with_parts,
     extract_character_observation_tracks, extract_dominant_character_observations,
+    extract_line_of_action, extract_line_of_action_weighted,
     fit_articulated_holon, mask_iou, render_articulated_holon_observation,
 };
 pub use enfold2d::{

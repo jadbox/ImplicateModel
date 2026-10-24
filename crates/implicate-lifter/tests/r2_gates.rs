@@ -393,6 +393,7 @@ fn build_brisby_cape_turn_sequence() -> Vec<CharacterObservation> {
             rgb,
             camera_offset: [0.0, 0.0],
             truncated: false,
+            line_of_action: None,
         });
     }
     seq
@@ -449,6 +450,7 @@ fn build_jeremy_crow_wing_flap_sequence() -> Vec<CharacterObservation> {
             rgb,
             camera_offset: [0.0, 0.0],
             truncated: false,
+            line_of_action: None,
         });
     }
     seq

@@ -156,7 +156,7 @@ fn render_posed(h: &implicate_lifter::ArticulatedHolon, poses: &[implicate_lifte
     }
     let bbox = Rect::new(x0.floor() as i32, y0.floor() as i32, x1.ceil() as i32, y1.ceil() as i32);
     let (w, hh) = (bbox.width().max(1) as usize, bbox.height().max(1) as usize);
-    let canvas = CharacterObservation { frame_idx: 0, bbox, mask: vec![false; w * hh], rgb: vec![0; w * hh * 3], camera_offset: [0.0, 0.0], truncated: false };
+    let canvas = CharacterObservation { frame_idx: 0, bbox, mask: vec![false; w * hh], rgb: vec![0; w * hh * 3], camera_offset: [0.0, 0.0], truncated: false, line_of_action: None };
     let (m, c) = render_with_poses(h, poses, &canvas);
     (w, hh, m, c)
 }
