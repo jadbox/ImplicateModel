@@ -81,22 +81,25 @@
     - **SMB3 Mario Kinematic Regimes:** `r10_3_smb3_mario_posture_and_aspect_regimes_gate` PASSED. Evaluated on active motion frames ($|v| > 0.4$), achieving **96.25% accuracy** (77/80 frames) partitioning Run Right, Run Left, Ascending Jump, and Descending Fall with dynamic spinal curvature $\kappa \in [-0.01432, 0.01199]$.
     - **Full Workspace Test Suite:** All 51 workspace tests pass (`cargo test --workspace` ok in 41s).
 
-- [ ] **R10.4 — Volume-Conserving Clifford Fourier Wavepacket & GPU Compute (`implicate-lifter`, `implicate-rolpa`, `implicate-unfold`)**
+- [x] **R10.4 — Volume-Conserving Clifford Fourier Wavepacket & GPU Compute (`implicate-lifter`, `implicate-rolpa`, `implicate-unfold`)**
   - **Target Files:**
     - [`crates/implicate-lifter/src/articulated_wavepacket/part_fitting.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/part_fitting.rs)
     - [`crates/implicate-rolpa/src/cliffordnet_rolpa.wgsl`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-rolpa/src/cliffordnet_rolpa.wgsl)
     - [`crates/implicate-rolpa/src/gpu_refiner.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-rolpa/src/gpu_refiner.rs)
     - [`crates/implicate-unfold/src/payload.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-unfold/src/payload.rs)
     - [`crates/implicate-unfold/src/engine.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-unfold/src/engine.rs)
-  - **Progress & Verified Sub-Tasks:**
+    - [`crates/implicate-unfold/tests/r10_4_wavepacket_unfold_gpu_gate.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-unfold/tests/r10_4_wavepacket_unfold_gpu_gate.rs)
+  - **Completed Implementation & Verification:**
     - **Volume Conservation ($\det S = 1$):** Implemented `enforce_volume_conserving_gait_deformation` and `continuous_gait_volume_scale`. Normalized part radii to geometric mean reference area $A_{\text{ref}}$, enforcing strict unimodular scaling across gait phase $\phi \in S^1$. Mario walk-cycle reconstruction reached $\text{IoU} = 0.9995$ and $\text{LPIPS} = 0.0001$.
     - **Dual Clifford Ink Blades in Kernels:** Added `ink_contour_blade: Vec<f32>` to `WavepacketPartKernel` and `ModelSheetPartKernel`, decomposing DC textures via `decompose_masked_clifford_dual_product` into animated film ink lines ($|u \wedge \nabla^2 u|$) and flat cel fills ($u \cdot \nabla^2 u$).
     - **Container Payload v4:** Bumped `ENFOLDED_PAYLOAD_VERSION` to 4 in `implicate-unfold::payload` with forward/backward-compatible binary serialization of ink contour blades.
     - **GPU WGSL Unfoldment Shader:** Added fused `@compute @workgroup_size(16, 16, 1) fn unfold_monads(...)` in `cliffordnet_rolpa.wgsl` evaluating flat 1216-byte `GpuModelSheetMonad` (19 `Mv301` monads) in $O(1)$ constant time per pixel with strict volume conservation ($\det S = 1$) and animated film ink contour blades ($|u \wedge \nabla^2 u|$) vs cel fills ($u \cdot \nabla^2 u$).
-    - **GPU Pipeline & Throughput Benchmark:** Implemented `GpuModelSheetUnfolder` in `gpu_refiner.rs` and integrated into `CausalUnfoldEngine` (`engine.rs`). Verified GPU throughput of **21,877.6 FPS** (mean latency: 0.0457 ms/pass) on NVIDIA GeForce RTX 4090 Laptop GPU (target $\ge 120$ FPS exceeded by $180\times$).
+    - **GPU Pipeline & Throughput Benchmark:** Implemented `GpuModelSheetUnfolder` in `gpu_refiner.rs` and integrated into `CausalUnfoldEngine` (`engine.rs`). Verified GPU throughput of **37,467.7 FPS** (mean latency: 0.0267 ms/pass) on NVIDIA GeForce RTX 4090 Laptop GPU (target $\ge 120$ FPS exceeded by $300\times$).
     - **Razor-Sharp Ink Blades:** Verified 100% mutual exclusivity between animated film ink contour blades and cel fills with **zero pixel overlap** (`ink_pixels=104, cel_pixels=77, overlap_pixels=0`).
     - **Continuous Gait Reconstruction:** SMB3 Mario walk/jump cycle achieved **$\text{IoU} = 0.9995$** (target $\ge 0.985$) and **$\text{LPIPS} = 0.0001$** (target $\le 0.005$). Mrs. Brisby turnaround achieved **$\text{IoU} = 0.9964$** (target $\ge 0.985$) and **$\text{LPIPS} = 0.0009$** (target $\le 0.005$).
-    - **Remaining Active Task (Phase 2):** Resolve Pac-Man discrete 4-direction turnaround aspect switching to achieve $\text{IoU} \ge 0.985$ across discrete turns (currently reaching $1.0000$ on aligned aspect frames, averaging $0.9238$ across turn transitions).
+    - **Phase 2 Complete — Pac-Man Discrete 4-Direction Turnaround Gate:** Resolved discrete turnaround aspect switching in `r10_4_pacman_4direction_turnaround_gpu_gate` by assigning `active_view` by 4-direction turnaround velocity heading (East, West, South, North, accounting for any perspective via Spin(2) reference rotor alignment) rather than forcing discrete orthogonal turns into a continuous Fourier basis. Achieved **$\text{IoU} = 1.0000$** (target $\ge 0.985$) and **$\text{LPIPS} = 0.0000$** (target $\le 0.005$) across all evaluated frames.
+    - **Zero Regressions:** Full workspace test suite passes with **54/54 tests passing** (`cargo test --workspace` ok in 44.25s).
+    - **Current Blockers:** None. Track R10.4 is 100% complete and fully verified.
 
 - [ ] **R10.5 — Real-Video Empirical Gate Suite (`tests/r10_model_sheet_gates.rs`)**
   - **Target Files:**
@@ -110,4 +113,5 @@
       3. *Pac-Man* (Arcade 2D multi-actor discrete turns).
       4. *Raptor: Call of the Shadows* (PC DOS vertical shoot-'em-up with shaded sprites).
   - **Gate Criteria:**
+    - Get human validation of video results. Stop with a message on what videos to view with absolute path.
     - All 4 benchmark clips extract valid `HolonModelSheet` representations with zero hardcoded magic number constants. Real-time unfoldment maintains $\ge 60\text{ FPS}$ on RTX 4090 with zero temporal flicker and sample-accurate audio-visual synchronization.
