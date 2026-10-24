@@ -39,9 +39,8 @@
 
 - **Philosophy & Conceptual Foundations:** [`docs/implicate_model_philosophy.md`](./docs/implicate_model_philosophy.md)
 - **Mathematical & Systems Whitepaper:** [`docs/implicate_model_whitepaper.md`](./docs/implicate_model_whitepaper.md)
-- **Architecture & Crate Roadmap:** [`PLAN.md`](./PLAN.md)
+- **Current milestong engineering design and brainstorming:** [`PLAN.md`](./PLAN.md)
 - **Milestone Gates & Empirical Benchmarks:** [`TASKS.md`](./TASKS.md)
-- **Active Engineering Notes:** [`notes.md`](./notes.md)
 - **Foundational Field-First Whitepaper:** `/home/jdunlap/github/jadbox/implicate_order/dzoglang/docs/field_first_whitepaper.md`
 
 ---

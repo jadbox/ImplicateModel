@@ -27,6 +27,7 @@
 *.gguf
 *.bin
 *.safetensors
+*_ignore/
 
 # Environment & editor files
 .DS_Store
