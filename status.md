@@ -37,3 +37,14 @@ All 19 research and production milestones (`R1.1`–`R8.5`) and `42/42` workspac
 - [x] **R8.3:** Semantic role matching (`match_holon_to_wavepacket`) prevents pure energy drones (`Plasma_Drone`, pellets, talismans) from adopting arbitrary enemy sprites.
 - [x] **R8.4:** Single continuous shot isolation via `StreamingShotSegmenter`, temporal median fallback in `layer_accum.rs`, refiner weights tuned $[0.10, -0.04, 0.05, 0.05]$ eliminating 16x16 tile block seams.
 - [x] **R8.5:** End-to-end visual regression gate suite (`tests/r8_gates.rs`) verified across all benchmark scenes.
+
+---
+
+## Active Milestone: Track R9 — General-Purpose Semantic Generalization & Rigorous Clifford Abstraction
+
+- [ ] **R9.1:** Semantic spinor inner-product dispatch $\langle \psi_{\text{prompt}}, \psi_{\text{asset}} \rangle$ replacing character name heuristics.
+- [ ] **R9.2:** Physical constitutive routing ($C \ge 0.5$ matter vs $C < 0.5, L > 0$ field solitons).
+- [ ] **R9.3:** Resolution-invariant normalized projective coordinates $[0, 1]^2$.
+- [ ] **R9.4:** Milieu retrieval via $\text{Spin}(16)$ geodesic distance.
+- [ ] **R9.5:** Zero-heuristic static audit and generalization gate suite (`tests/r9_gates.rs`).
+

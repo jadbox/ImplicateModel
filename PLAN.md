@@ -162,3 +162,63 @@ Following human visual inspection of the generated benchmark outputs in `/tmp/op
   - Implement bone-chain hierarchy and angular deflection damping on articulated sub-holon parts.
 * **Task R8.5 — Visual Exit Gate Suite (`tests/r8_gates.rs`):**
   - Add end-to-end pixel validation asserting actor visibility, motion delta $> 0$ across frames, non-occlusion by HUD, and lack of tile boundary seams.
+
+---
+
+## 7. Track R9 — General-Purpose Semantic Generalization & Rigorous Clifford Abstraction
+
+### Architectural Problem Statement
+Video generation engines that rely on hardcoded string branching (`"mario"`, `"pacman"`, `"raptor"`, `"brisby"`), magic coordinate constants (`y=192.0`), or domain-specific heuristics are fundamentally brittle and fail the requirement of being a general-purpose implicate video engine. Track R9 purges all remaining content-specific code, replacing it with rigorous Clifford algebra, $\text{Spin}(16)$ semantic spinor inner products, physical constitutive classification, and resolution-invariant projective coordinates.
+
+### Design Plan
+
+```text
+                  Prompt Text / DzogLang Spec
+                              │
+               ConceptLexicon::embed_text(...)
+                              ▼
+           Prompt Semantic Spinor ψ_prompt ∈ Spin(16)
+           Constitutive Tuple (C, ρ, K, L)
+           Normalized Coordinates x ∈ [0, 1]²
+                              │
+       ┌──────────────────────┴──────────────────────┐
+       ▼                                             ▼
+Spinor Inner Product                          Constitutive Type
+⟨ψ_prompt, ψ_enfolded⟩                        Classification
+       │                                             │
+       ├─► Milieu Retrieval (clip selection)         ├─► C → 1.0 (Articulated Holon)
+       └─► Entity Dispatch (character track)         ├─► C → 0.0, L > 0 (Field Soliton)
+                                                     └─► M(t) = 1 (Camera-Locked HUD)
+```
+
+### Execution Tasks
+
+1. **Task R9.1 — $\text{Spin}(16)$ Semantic Inner-Product Dispatch (`implicate-unfold`):**
+   - Remove `match_holon_to_wavepacket` character name matching.
+   - Attach a concept spinor $\psi_{\text{holon}} \in \text{Spin}(16)$ to every `ArticulatedHolon` during enfoldment.
+   - Dispatch prompt holons to enfolded wavepackets via maximal spinor inner product:
+     $$\text{art\_holon} = \arg\max_{k} \langle \psi_{\text{prompt}}, \psi_{\text{holon},k} \rangle, \quad \text{subject to } \langle \psi_{\text{prompt}}, \psi_{\text{holon},k} \rangle \ge \tau_{\text{sim}}$$
+   - If no enfolded track exceeds $\tau_{\text{sim}}$ or the entity is non-articulated, fall back cleanly to procedural field synthesis.
+
+2. **Task R9.2 — Physical Constitutive Routing ($C, \rho, K, \mathbf{L}$):**
+   - Remove string checks for `"drone"`, `"plasma"`, `"pellet"`, `"amulet"`.
+   - Route entities based on constitutive material parameters:
+     - **Articulated Matter ($C \ge 0.5, \rho > 0, L_0 \approx 0$):** Renders via `ArticulatedHolon` multi-part CFT wavepackets.
+     - **Field Solitons / Luminescent Excitons ($C < 0.5, L_0 > 0$):** Injected directly into the Yee lattice $(p, \mathbf{v}, \mathbf{L})$ as energetic wave sources.
+     - **Camera-Locked Interface:** Identified strictly by the camera-relative kinematic constraint $M_{\text{holon}}(t) = M_{\text{cam}}(t)$.
+
+3. **Task R9.3 — Resolution-Invariant Projective Coordinates $[0, 1]^2$ (`implicate-math`, `implicate-unfold`):**
+   - Parameterize all initial positions, velocities, radii, and boundary blades in continuous normalized coordinates $\mathbf{x} \in [0, 1]^2$.
+   - Map normalized coordinates to arbitrary render viewports $(W, H)$ via homogeneous projective scaling:
+     $$P_{\text{raster}} = S \cdot P_{\text{canonical}}, \quad S = \text{diag}(W, H, 1) \in PGL(3)$$
+   - Purge all hardcoded pixel numbers ($y=42$, $y=192$, $y=288$) from scene prompts.
+
+4. **Task R9.4 — Milieu Retrieval via Semantic Spinor Distance:**
+   - Eliminate `domain_sub` string checks on scene IDs (`"pacman"`, `"smb3"`, `"raptor"`, `"NIMH"`).
+   - Match scene milieu to enfolded clips using the geodesic distance on $\text{Spin}(16)$:
+     $$\mathcal{D}(\psi_{\text{scene}}, \psi_{\text{clip}}) = \arccos |\langle \psi_{\text{scene}}, \psi_{\text{clip}} \rangle|$$
+   - Automatically select the enfolded clip with the closest aesthetic, kinematic, and semantic milieu.
+
+5. **Task R9.5 — Zero-Heuristic Verification Gate (`tests/r9_gates.rs`):**
+   - Codebase static audit asserting zero character name strings (`"mario"`, `"pacman"`, `"brisby"`, `"raptor"`, `"blinky"`, `"goomba"`) exist in `crates/implicate-unfold/src/`.
+   - Unfold test scenes with novel/fictional entity names (e.g., `"Vanguard_Knight"`, `"Aether_Soliton"`) verifying correct constitutive routing and spinor-matched wavepacket synthesis.

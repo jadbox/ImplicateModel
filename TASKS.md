@@ -167,3 +167,28 @@
   - **Objective:** Comprehensive visual test verifying non-zero frame-to-frame actor motion, absence of opaque HUD stomping, and lack of compute shader tile seams.
   - **Verified Result:** Implemented `crates/implicate-unfold/tests/r8_gates.rs` verifying all 5 sub-gates in 1.62s. Generated `.mp4` video outputs across `pacman`, `smb3`, `raptor`, and *The Secret of NIMH* visually verified: continuous animation, correct spatial ground, zero parasite sprites, clean cinematic background.
   - **Uncertainty Rating:** Resolved (0%).
+
+---
+
+## Track R9: General-Purpose Semantic Generalization & Rigorous Clifford Abstraction (Active)
+
+- [ ] **R9.1 — $\text{Spin}(16)$ Semantic Inner-Product Dispatch (`implicate-unfold`)**
+  - **Objective:** Attach `Spinor16` concepts to `ArticulatedHolon` during enfoldment. In `engine.rs`, replace string-based character matching in `match_holon_to_wavepacket` with maximal semantic spinor inner product $\langle \psi_{\text{prompt}}, \psi_{\text{asset}} \rangle$.
+  - **Gate:** Dispatch character wavepackets purely through spinor projection without hardcoded character name checks.
+
+- [ ] **R9.2 — Physical Constitutive Parameter Routing ($C, \rho, K, \mathbf{L}$) (`implicate-unfold`)**
+  - **Objective:** Replace entity name string heuristics (`"drone"`, `"plasma"`, `"pellet"`) with constitutive classification: $C \ge 0.5$ routes to articulated matter wavepackets, $C < 0.5, L > 0$ routes to Yee wave-lattice luminescence.
+  - **Gate:** Arbitrary novel entities with physical parameters route accurately to either field solitons or articulated bodies.
+
+- [ ] **R9.3 — Resolution-Invariant Projective Canonical Coordinates $[0, 1]^2$ (`implicate-math`, `implicate-unfold`)**
+  - **Objective:** Standardize scene definitions to continuous normalized coordinates $\mathbf{x} \in [0, 1]^2$ with projective scaling $S \in PGL(3)$ to viewport $(W, H)$.
+  - **Gate:** Prompts define scenes in resolution-independent $[0, 1]^2$; arbitrary render dimensions $(W, H)$ scale correctly without magic pixel numbers.
+
+- [ ] **R9.4 — Milieu Retrieval via Geodesic Distance on $\text{Spin}(16)$ (`implicate-unfold`)**
+  - **Objective:** Remove `domain_sub` substring checks. Match scene prompts to enfolded clips using geodesic distance $\mathcal{D}(\psi_{\text{scene}}, \psi_{\text{clip}}) = \arccos |\langle \psi_{\text{scene}}, \psi_{\text{clip}} \rangle|$.
+  - **Gate:** Automated clip selection by semantic spinor distance without scene ID parsing.
+
+- [ ] **R9.5 — Zero-Heuristic Verification Gate Suite (`tests/r9_gates.rs`)**
+  - **Objective:** Static code audit ensuring zero domain/character name strings exist in engine dispatch logic; novel scene unfoldment verifying generalized routing.
+  - **Gate:** All tests pass with zero hardcoded character string checks in `crates/implicate-unfold/src/engine.rs`.
+
