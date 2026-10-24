@@ -147,6 +147,23 @@ pub struct ModelSheetPartKernel {
     /// Continuous Clifford Fourier deformation wavepacket coefficients (5 modes).
     pub cft_deformation_coeffs: Vec<[f32; 5]>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SubHolonPartSpec {
+    pub part_id: usize,
+    pub name: String,
+    pub parent_part_id: Option<usize>,
+    /// Fluid-structure / aerodynamic coupling to ambient lattice flow v(x,t) - v_root (e.g. 0.0 for rigid, 4.5 for flowing).
+    pub flow_compliance: f32,
+    /// Restoring harmonic spring stiffness.
+    pub spring_stiffness: f32,
+    /// Joint angular damping.
+    pub damping: f32,
+    /// Local attachment anchor in parent frame.
+    pub anchor_local: [f32; 2],
+    /// Rest angle in radians.
+    pub rest_angle: f32,
+}
 ```
 
 ---

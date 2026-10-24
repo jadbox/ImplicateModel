@@ -25,67 +25,71 @@ To achieve both mathematical rigor and mechanical sympathy with modern SIMD/GPU 
 
 ## 1. System Architecture & End-to-End Pipeline
 
-```text
-====================================================================================================
-                        PHASE I: ENFOLDMENT (Explicate Video -> Implicate Lexicon)
-====================================================================================================
+```mermaid
+flowchart TD
+    subgraph P1["Phase I: Enfoldment (Video → Implicate Lexicon)"]
+        direction TD
+        V_IN["Input: Video & Audio Stream<br/>(1080p Cinema / 2D Arcade)"] --> S0["0. Shot & Camera Segmenter<br/>(CFT Cross-Power & Flow)"]
+        S0 --> S1A["1A. Semantic Stream<br/>(llama.cpp Qwen-VL + GBNF)"]
+        S0 --> S1B["1B. Clifford Soliton Lifter<br/>(Ink Blades + Cel Fills + Model Sheets)"]
+        S1A --> S2[("2. Implicate Lexicon Store<br/>(.implicate / 64-byte Mv301)")]
+        S1B --> S2
+    end
 
-[ Input Video + Audio Stream ] (e.g., Raptor, SMB3, Pac-Man, or "The Secret of NIMH" 1080p)
-       │
-       ├──> 0. Streaming Shot & Camera Regime Segmenter (CFT Cross-Power + Divergence ∇·v)
-       │       └── Splits stream into contiguous shots S_m; classifies camera motor M_cam(t) ∈ Spin(3,0,1)
-       │           (Ortho2D-Static, Ortho2D-Scroll, MultiPlane-2.5D, Perspective-3D)
-       │
-       ├──> 1A. Semantic Stream (llama.cpp Qwen-VL + llama-embedding + Thin SVD)
-       │       └── Extracts GBNF-constrained Scene Graphs:
-       │           • Milieu (lighting, medium viscosity, atmosphere)
-       │           • Holon Nouns (character/prop identity, material class, part tree) -> Spinors ψ_noun ∈ (G_2,0^+)^K
-       │           • Process Verbs ((Holon A) --[Verb]--> (Holon B))                 -> Spinors ψ_verb ∈ (G_2,0^+)^K
-       │
-       └──> 1B. Clifford Idempotent Soliton (CIS) Lifter (`implicate-lifter`)
-               ├── Reconstructs depth-stratified ghost-free background atlases A_l(x) (1/z_l layers)
-               ├── Evaluates Active Information Residual ΔΨ with statistical noise floor τ = median(I) + 3*MAD(I)
-               ├── Dual Exterior/Interior Projection:
-               │     • Exterior Wedge (u ∧ ∇²u): Invariant Don Bluth Ink Contour Blades (100% prop/cape preservation)
-               │     • Inner Product  (u · ∇²u): Cel Paint Coherence & Active Vitality Density ρ = tr(ρ_c)
-               ├── Extracts 3D PGA Line of Action (Kinematic Spine Blade) L_spine ∈ G(3,0,1)
-               ├── Factors temporal covariance Γ into Don Bluth Model Sheets: primitive idempotents {ε_v} (Front/3/4/Profile)
-               └── Extracts synchronized acoustic pressure envelopes E_audio(t, ω) at collision/impulse loci
-                                                    │
-                                                    ▼
-       ┌────────────────────────────────────────────────────────────────────────────────────────┐
-       │ 2. THE IMPLICATE LEXICON & WORLD STORE (.implicate / SQLite + 64-byte Mv301 Store)     │
-       │    • Don Bluth Model Sheets: HolonModelSheet with Line of Action L_spine, {ε_v}, (ρ,K) │
-       │    • Verb Operators:        ψ_verb  <~> Pin(3,0,1) PGA Lie Geodesics -> (Q_Cl, ΔB)     │
-       │    • Milieu Grounds:        ψ_scene <~> Multi-Plane Boundary Blades B_k ∈ G_{3,0,1}    │
-       └────────────────────────────────────────────────────────────────────────────────────────┘
-
-====================================================================================================
-                      PHASE II: UNFOLDMENT (Prompt / Script -> Single-Pass Video + Audio)
-====================================================================================================
-
-[ Text Prompt / DzogLang Script / Seed Frame ]
-       │
-       ▼
-  3A. Scene & Lexicon Compiler (`implicate-unfold`)
-       ├── Seeds Ground (Gzhi): initializes multi-plane boundaries B_k and constitutive lattice (ρ, K, γ, C, L_0)
-       ├── Injects Holon Model Sheets: instantiates articulated CliffordDensityElements Φ_{L,i,p} = R U ε_v
-       └── Excites Potentials (Verbs): maps active verbs to Q_Cl guidance beacons & PGA motor impulses
-       │
-       ▼
-  3B. Single-Pass Causal Lattice Runtime (`implicate-field` + `implicate-math`, 60–1000+ Hz)
-       ├── Steps Yee-staggered wave-matter PDEs: pressure p, velocity v, Bohmian Q, luminescence L, cohesion C
-       ├── Integrates articulated Holon motors M_{i,p}(t) under -∇⟨Q_Cl⟩_0 force & bivector spin-torque ⟨Q_Cl⟩_2
-       └── Evaluates exact PGA incidence predicates (P ∧ B = 0) -> algebraic state transitions T_{u->v} = ε_v M ε_u
-       │
-       ▼
-  4.  @rolpa Shadow-Manifold Projector (`implicate-rolpa`)
-       ├── Visual Lens: Single-pass GPU compute shader evaluating 64-byte Mv301 monads (ink blades + cel paint)
-       └── Acoustic Lens: Binaural cockpit/camera pickups + Doppler shift + Material-tuned Modal/Harmonic Synth (48 kHz)
-       │
-       ▼
-[ Output: 1080p @ 60–120+ FPS Flicker-Free Video + Phase-Locked Stereo Audio ]
+    subgraph P2["Phase II: Unfoldment (Prompt → Causal Video)"]
+        direction TD
+        P_IN["Input: Prompt / Script / Seed"] --> S3A["3A. Scene & Lexicon Compiler<br/>(Ground Gzhi + Holon Ingestion)"]
+        S2 -.-> S3A
+        S3A --> S3B["3B. Causal Lattice Runtime<br/>(Yee PDEs + PGA Motors, 60–1000+ Hz)"]
+        S3B --> S4["4. @rolpa Shadow-Manifold Projector<br/>(Single-Pass Compute Shader + Audio)"]
+        S4 --> V_OUT["Output: 1080p @ 60–120+ FPS Video<br/>+ Phase-Locked Stereo Audio"]
+    end
 ```
+
+### Phase I: Enfoldment (Explicate Video → Implicate Lexicon)
+
+* **Input:** Raw video and audio streams (*The Secret of NIMH*, *SMB3*, *Pac-Man*, *Raptor*).
+  * ↓
+* **0. Streaming Shot & Camera Regime Discovery (`implicate-lifter`):**
+  * Evaluates 2D CFT cross-power spectrum and luminance-chroma histogram divergence.
+  * Classifies camera motor $M_{\text{cam}}(t) \in \text{Spin}(3,0,1)$ (`Ortho2DStatic`, `Ortho2DScroll`, `MultiPlane25D`, `Perspective3D`).
+  * ↓
+* **1A. Semantic Stream (`implicate-lexicon`):**
+  * Local `llama.cpp` `Qwen2.5-VL-7B` with strict GBNF grammar.
+  * Extracts Milieu, Holon Nouns $\psi_{\text{noun}} \in (\mathbb{G}_{2,0}^+)^{16}$, and Process Verbs $\psi_{\text{verb}}$.
+  * Online open-ended vocabulary expansion via Gram-matrix Jacobi SVD.
+* **1B. Clifford Idempotent Soliton (CIS) Lifter (`implicate-lifter`):**
+  * Reconstructs depth-stratified ghost-free background atlases $A_l(\mathbf{x})$.
+  * Computes Active Information Residual $\Delta \Psi$ with statistical noise floor $\tau = \text{median}(\mathcal{I}) + 3.0 \times 1.4826 \times \text{MAD}(\mathcal{I})$.
+  * **Dual Geometric Projection:** Exterior wedge $u \wedge \nabla^2 u$ yields invariant ink contour blades (100% prop/cape preservation); inner product $u \cdot \nabla^2 u$ yields flat cel paint fills and process density $\rho = \text{tr}(\rho_c)$.
+  * Extracts 3D PGA Line of Action bivector $L_{\text{spine}} \in \mathbb{G}_{3,0,1}$ from spatial mass inertia.
+  * Discovers Don Bluth Model Sheets: primitive turnaround idempotents $\{\epsilon_v\}$ via spectral decomposition $\Gamma = \sum \sigma_k \epsilon_k$.
+  * Extracts synchronized acoustic pressure envelopes $E_{\text{audio}}(t, \omega)$ at impulse loci.
+  * ↓
+* **2. The Implicate Lexicon & World Store (`.implicate`):**
+  * Compact binary container storing Don Bluth Model Sheets, $\text{Spin}(3,0,1)$ PGA trajectories, and 64-byte aligned [`Mv301`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-math/src/g301.rs#L17-L19) monad arrays.
+
+---
+
+### Phase II: Unfoldment (Prompt / Script → Single-Pass Video + Audio)
+
+* **Input:** Natural language prompt, DzogLang script, or seed frame.
+  * ↓
+* **3A. Scene & Lexicon Compiler (`implicate-unfold`):**
+  * Seeds ground manifold ($Gzhi$) with multi-plane boundaries $B_k$ and lattice constitutive parameters $(\rho, K, \gamma, C, L_0)$.
+  * Injects Holon Model Sheets: instantiates articulated Clifford Density Elements $\Phi_{L,i,p} = R U \epsilon_v$.
+  * Maps active verbs to scale-invariant $\mathcal{Q}_{\text{Cl}}$ guidance beacons and PGA motor impulses.
+  * ↓
+* **3B. Single-Pass Causal Lattice Runtime (`implicate-field` + `implicate-math`, 60–1000+ Hz):**
+  * Steps Yee-staggered wave-matter PDEs ($p, \mathbf{v}, \mathcal{Q}_{\text{Cl}}, \mathbf{L}, C$).
+  * Integrates articulated Holon motors $M_{i,p}(t)$ under Bohmian guidance $-\nabla \langle \mathcal{Q}_{\text{Cl}} \rangle_0$ and spin-torque $\langle \mathcal{Q}_{\text{Cl}} \rangle_2$.
+  * Evaluates exact PGA incidence predicates ($P \wedge B = 0$) and algebraic transitions $T_{u \to v} = \epsilon_v M \epsilon_u$.
+  * ↓
+* **4. `@rolpa` Shadow-Manifold Projector (`implicate-rolpa`):**
+  * **Visual Lens:** Single-pass WGSL compute shader evaluating 64-byte `Mv301` monads into 1080p frames ($O(1)$ constant time per pixel, zero temporal flicker).
+  * **Acoustic Lens:** Binaural camera pickups + sub-sample Doppler shift + material-tuned modal synthesis (48 kHz).
+  * ↓
+* **Output:** 1080p @ 60–120+ FPS flicker-free video with phase-locked stereo audio.
 
 ---
 
@@ -283,15 +287,20 @@ To support arbitrary video games (*Pac-Man*, *SMB3*, *Raptor*) and hand-drawn fe
       "track_id": 1,
       "canonical_noun": "Mrs_Brisby",
       "visual_description": "small brown mouse in red cloak, lower-left frame",
-      "category": "character_biped_mouse",
-      "material": { "cohesion": 0.95, "stiffness": 1.2, "has_compliant_cape": true }
+      "constitutive": { "cohesion": 0.95, "stiffness": 1.2, "damping": 4.5 },
+      "parts": [
+        { "name": "torso", "flow_compliance": 0.0, "spring_stiffness": 18.0 },
+        { "name": "cloak", "flow_compliance": 4.5, "spring_stiffness": 2.0 }
+      ]
     },
     {
       "track_id": 2,
       "canonical_noun": "Red_Amulet",
       "visual_description": "glowing red-gold medallion suspended at center",
-      "category": "artifact_rigid_luminous",
-      "material": { "cohesion": 1.0, "stiffness": 2.4, "luminescence_source": 3.2 }
+      "constitutive": { "cohesion": 1.0, "stiffness": 2.4, "damping": 1.0, "luminescence": 3.2 },
+      "parts": [
+        { "name": "core", "flow_compliance": 0.0, "spring_stiffness": 50.0 }
+      ]
     }
   ],
   "verbs": [
