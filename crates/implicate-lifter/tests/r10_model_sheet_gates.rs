@@ -768,7 +768,7 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
 
     // 1. Export Generative Video: Super Mario Bros. 3
     {
-        let smb_frames = video_io::read_frames(Path::new(SMB3_PATH), Some(1.0), Some(1.5))
+        let smb_frames = video_io::read_frames(Path::new(SMB3_PATH), Some(25.0), Some(1.5))
             .expect("read smb3 frames");
         let atlas = build_multiplane_atlas(&smb_frames, &MultiPlaneOptions::default());
         let mario_obs = extract_dominant_character_observations(&smb_frames, &atlas);

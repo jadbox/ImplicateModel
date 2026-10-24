@@ -184,5 +184,32 @@
       - Pac-Man 4-direction turnaround aspect classification in `r10_3_pacman_4direction_turnaround_aspect_idempotents_gate` reached **91.60% accuracy** (109/119 frames), exceeding the 90% target.
       - SMB3 Mario kinematic regime classification verified at **91.03% accuracy** (71/78 frames), fully preserving Mario/NIMH kinematics.
       - Full workspace regression suite: **62/62 tests passing** (`cargo test --workspace` 100% green).
-  - **Track R10.7 Status:** Track R10.7 is **100% complete, fully verified, and ready for user review**.
-  - **Current Blockers:** None.
+  - **Track R10.7 Status:** Track R10.7 baseline complete; active investigation into R10.8 visual artifacts.
+
+---
+
+## Track R10.8 — Empirical Background-Vacuum Quantile Invariant & Complete Generative Unfolds (ACTIVE)
+
+> **Dialogue & Synthesis: John Carmack & Prof. Basil Hiley**
+>
+> **John Carmack:**
+> *"We've got two specific visual bugs identified under close frame inspection:*
+> *1. **Mario Missing Feet:** Look at line 771 of `crates/implicate-lifter/tests/r10_model_sheet_gates.rs`. The test was reading SMB3 at `start_s = 1.0s` (the title screen red curtain drop), grabbing an occluded 12x18 partial sprite with no feet! The gate test at line 163 reads `start_s = 25.0s` (World 1-1 active gameplay) where Mario is a full 16x16 sprite with complete brown boots. Aligning the generative export test to $t=25.0\text{s}$ restores 100% of his feet and boots immediately.*
+> *2. **Raptor Ocean Halo & Wing Asymmetry:** Classic estimator mismatch. In `compute_shot_noise_floor`, a 3x3 min search over lattice offsets produced $\tau = 6.45$. But inside candidate bounding boxes, `extract_character_observation_tracks` performed raw pointwise difference $|c(x,y) - bg(x,y)|$. On scrolling, cycling wave textures, 10% of background ocean pixels have raw $d \in [10, 35]$. Because $d > 6.45$, water pixels touching the wings were treated as foreground and merged by 8-connected flood fill (`dominant_silhouette`). Furthermore, for discrete integer pixel residuals, MAD collapses to 1, causing the theoretical $3\sigma$ threshold to underestimate the heavy-tailed background noise."*
+>
+> **Prof. Basil Hiley:**
+> *"The implicate order teaches that the vacuum is not empty; it is a plenum of fluctuating virtual excitations. The entity (holon) is a localized idempotent $E^2 = E$ that possesses phase coherence across time in its co-moving reference frame.*
+> *1. **Vacuum Empirical Quantile Invariant:** Outside localized soliton bounding boxes, the background field $\Psi_{\text{bg}}$ has an empirical noise distribution. The 98th percentile $Q(0.98)$ of the background residual field represents the physical ceiling of the fluctuating vacuum. By defining the noise floor $\tau = \max(\tau_{\text{MAD}}, Q(0.98))$, the vacuum fluctuations cannot breach the soliton threshold.*
+> *2. **Co-Moving Soliton Consensus for Rigid Holons:** In the co-moving reference frame $x - x_c(t)$, a rigid vehicle ($P=1$) has 100% temporal persistence, whereas passing ocean waves or background tiles have transient persistence ($< 40\%$). Increasing consensus threshold to 60% for rigid holons ($P=1$) wipes out boundary wash while leaving articulated compliance ($P > 1$, e.g. Mrs. Brisby's cape) fully intact at 40%."*
+
+- [ ] **R10.8a — Generative Export Alignment for SMB3 Mario (`tests/r10_model_sheet_gates.rs`)**
+  - Anchor `r10_5_generative_video_export_and_user_validation_gate` SMB3 extraction to $t=25.0\text{s}$ (active World 1-1 gameplay) to ensure complete boots, overalls, cap, and limbs.
+- [ ] **R10.8b — Background Empirical Quantile Invariant (`articulated_wavepacket/mod.rs`)**
+  - Update `compute_shot_noise_floor` to compute the empirical 98th percentile $Q(0.98)$ on background residuals outside actor bounding boxes, avoiding discrete MAD collapse ($\tau = \max(\text{median} + 3.0 \times 1.4826 \times \text{MAD}, Q(0.98))$).
+  - Ensure metric consistency between background noise estimation and candidate observation extraction.
+- [ ] **R10.8c — Co-Moving Soliton Consensus for Rigid Holons (`part_fitting.rs`)**
+  - Set `min_consensus_hits` to 60% for rigid holons ($P=1$) while retaining 40% for articulated compliance ($P > 1$).
+- [ ] **R10.8d — Generative Export & Visual Cleanliness Verification (`generative_output/`)**
+  - Re-export all 4 generative comparison videos and contact sheets.
+  - Visually inspect: Mario's boots and limbs complete, Raptor hull razor-sharp with zero ocean halo, Mrs. Brisby complete unbroken mouse, Pac-Man sharp 4-direction turnaround.
+  - Verify all 62+ workspace tests pass (`cargo test --workspace`).
