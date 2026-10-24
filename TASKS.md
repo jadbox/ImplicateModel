@@ -138,3 +138,27 @@
     3. `raptor_novel_plasma_intercept` (`320x240`, `60 frames`): **`3.387 ms/frame`** (**`295.3 FPS`**, gate $\ge 60\text{ FPS}$), Permanence = **`100.0%`**, PGA Boundary Compliance = **`100.0%`**, Audio Underruns = **`0`**; Verb adherence: `Raptor_Jet --[pursue]--> Command_Carrier` = **`0.08%`**, `Plasma_Drone --[orbit]--> Command_Carrier` = **`0.48%`**.
     4. `nimh_novel_amulet_sanctuary` (`320x180`, `60 frames` + 1-pass `CliffordNet-Lite` GPU refiner): **`2.333 ms/frame`** (**`428.6 FPS`**, gate $\ge 60\text{ FPS}$), Permanence = **`100.0%`**, PGA Boundary Compliance = **`100.0%`**, Audio Underruns = **`0`**; Verb adherence: `Mrs_Brisby --[jump_over]--> Red_Amulet` = **`0.15%`**, `Jeremy_Crow --[orbit]--> Red_Amulet` = **`0.47%`**.
   - **Uncertainty Rating:** Resolved (0%).
+
+---
+
+## Track R8: Visual Fidelity & Artifact Elimination (Active)
+
+- [ ] **R8.1 — Static Camera & HUD Alpha Isolation (`implicate-lifter`, `implicate-unfold`)**
+  - **Objective:** Fix `partition_hud_and_viewport` so static arcade arenas (Pac-Man) are not misclassified as camera-locked HUD bands ($y \in 93..308$). Ensure HUD compositing respects alpha transparency and does not stomp moving actors with an opaque static frame.
+  - **Gate:** Pac-Man maze renders completely with active moving Pacman and ghost actors; HUD drift remains $0.0000\text{ px}$.
+
+- [ ] **R8.2 — Coordinate System & Gameplay Realignment for SMB3 (`implicate-unfold`)**
+  - **Objective:** Shift canonical SMB3 enfoldment timestamp to $20.0\text{s}$ (World 1-1 level gameplay). Fix raster coordinate inversion ($y=0$ at top): ground boundary blade placed at $y = 192.0$ with upward normal $(0, -1)$, Mario and Goomba spawned on the floor, and enable horizontal background cylindrical wrapping.
+  - **Gate:** Mario jumps over obstacles on World 1-1 ground with continuous horizontal parallax background scrolling.
+
+- [ ] **R8.3 — Semantic Actor-to-Wavepacket Role Dispatch (`implicate-unfold`)**
+  - **Objective:** Disambiguate actor roles in `render_rolpa_frame` using semantic tags (`"player"`, `"fighter"` vs `"enemy"`, `"projectile"`). Prevent non-character entities (`Plasma_Drone`) from adopting arbitrary enemy ship wavepackets.
+  - **Gate:** In Raptor, player jet pursues carrier while plasma drone renders as a glowing energy soliton without parasitic enemy ship sprites.
+
+- [ ] **R8.4 — `CliffordNet-Lite` WGSL Shader Stabilization & Articulated Rigidity (`implicate-rolpa`, `implicate-unfold`)**
+  - **Objective:** Fix workgroup tile halo propagation across blocks $b=1..3$ in `cliffordnet_rolpa.wgsl` and re-tune readout weights (`lap1_rgb` $\le 0.15$) to prevent 16x16 tile border divergence. Enforce hierarchical bone limits on articulated characters (*NIMH*).
+  - **Gate:** *The Secret of NIMH* renders coherent character cels without mosaic block noise, high-contrast saturation blowout, or severed limbs.
+
+- [ ] **R8.5 — Visual Exit Gate Suite (`tests/r8_gates.rs`)**
+  - **Objective:** Comprehensive visual test verifying non-zero frame-to-frame actor motion, absence of opaque HUD stomping, and lack of compute shader tile seams.
+  - **Gate:** All 4 benchmark scenes produce visually recognizable, artifact-free video outputs passing automated regression checks.

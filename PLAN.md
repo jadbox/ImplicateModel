@@ -127,3 +127,34 @@ implicatemodel/
   1. Create `crates/implicate-rolpa` with a GPU (`wgpu` compute shader / CubeCL) 4-block No-FFN `CliffordNet-Lite` kernel implementing the shifted geometric product $D^{(s)} \oplus W^{(s)}$ over the factorized discrete Laplacian context $\mathcal{C}_{\text{loc}}(H) = \nabla^2 H$ for shifts $\mathcal{S} = \{1, 2, 4, 8, 16\}$.
   2. Condition on the 12-channel composite $(I_{\text{base}}, \nabla p, \nabla \langle \mathcal{Q}_{\text{Cl}} \rangle_0, C, \mathbf{L})$.
   3. **Exit Gate (`R3.3`):** Single-pass latency $< 4.5\text{ ms}$ at $1920 \times 1080$ on RTX 4090; $\ge 2.5\text{ dB}$ PSNR gain and $\ge 20\%$ LPIPS reduction on *The Secret of NIMH* test shots; temporal warping flicker $E_{\text{warp}} < 0.002$.
+
+---
+
+## 6. Track R8 — Visual Fidelity & Artifact Elimination Attack Plan
+
+Following human visual inspection of the generated benchmark outputs in `/tmp/opencode/human_test/`, four distinct failure modes were identified across the test corpus. Track R8 resolves them systematically.
+
+| Scene | Observed Defect | Root Cause | Fix Strategy |
+| :--- | :--- | :--- | :--- |
+| **`pacman_novel_talisman_orbit`** | Maze renders, but no actor animation or movement occurs. | `partition_hud_and_viewport` uses median row deviation across time. On static cameras, sprites occupy $< 10\%$ of row width, causing median variance to be $0.0$. Rows $93..308$ were misclassified as camera-locked HUD, and `composite_enfolded_hud_layer` stamped an opaque static frame over the actors. Active viewport was truncated to $y \in (77, 93)$. | 1. If $\max \|\Delta \mathbf{x}_{\text{cam}}\| \le 4\text{ px}$ (`detect_camera_is_static`), bypass HUD partitioning and set `active_y = (0, h)`.<br>2. Ensure HUD alpha blending only copies non-zero alpha pixels rather than whole solid rectangles. |
+| **`smb3_novel_vault_and_patrol`** | Mario floats in midair and drifts into black void; title curtain rather than level renders. | 1. Video enfolded at `start-sec 2.0` (title screen curtain) instead of gameplay at $20.0\text{s}$.<br>2. Inverted Y coordinate in `canonical_r4_3_novel_scenes()`: ground boundary blade was placed at $y = 42.0$ (near top in image coords) and Mario at $y = 72.0$ with downward velocity $+28.0$. | 1. Update canon enfoldment timestamp to `start-sec 20.0` (World 1-1).<br>2. Align screen-space Cartesian coords: ground blade at $y = 192.0$ (above bottom HUD $192..240$) with upward normal $(0, -1)$, Mario spawned on ground.<br>3. Enable seamless horizontal background scrolling/wrapping. |
+| **`raptor_novel_plasma_intercept`** | An enemy ship sprite floats tightly bound to the player jet. Carrier is an untextured blob. | In `render_rolpa_frame`, articulated holons are matched strictly by `active_verbs` subject index `rank % holons.len()`. `Plasma_Drone` was bound to `clip.holons[1]` (an enemy ship) orbiting the player jet (`clip.holons[0]`). `Command_Carrier` was only a target, so received no sprite. | 1. Implement semantic role matching between `PromptHolonSpec` and `EnfoldedClipAssets::holons` (`"player"` vs `"enemy"` vs `"drone"`).<br>2. Render energy/plasma holons with procedural Yee lattice/soliton glows rather than character ship wavepackets. |
+| **`nimh_novel_amulet_sanctuary`** | Visuals unrecognizable: severe 16x16 block artifacts, blown-out color mosaic, fragmented characters. | 1. `cliffordnet_rolpa.wgsl`: `readout_weights: [1.35, -0.38, 0.12, 0.18]` amplified discrete Laplacian into high-contrast noise. Shared workgroup halo `tile_h` was not refreshed between iterations $b=1..3$, creating sharp 16x16 tile boundaries.<br>2. Box downscaling 1080p film to $320 \times 180$ destroyed fine cel linework.<br>3. Unconstrained sub-holon joint angles fragmented character parts. | 1. Re-tune refiner readout weights (`lap1_rgb` $\le 0.15$), damp divergence, and fix tile halo propagation.<br>2. Restrict sub-holon joint angles to rigid hierarchical limits.<br>3. Maintain native aspect ratios and preserve cel edge contours. |
+
+### Execution Tasks for Track R8
+
+* **Task R8.1 — Static Camera & HUD Alpha Isolation (`implicate-lifter`, `implicate-unfold`):**
+  - Update `multiplane_atlas` builder to detect static camera regimes and preserve the entire frame $y \in (0, h)$ as the active arena.
+  - Fix HUD compositing to apply pixel-accurate transparency rather than full rectangular over-stamping.
+* **Task R8.2 — Coordinate System & Gameplay Timestamp Realignment (`implicate-unfold`):**
+  - Shift SMB3 enfoldment range to $20.0\text{s}$ (World 1-1).
+  - Standardize screen-space boundary conventions across all prompt templates ($y=0$ top, $y=H$ bottom).
+  - Add horizontal cylindrical wrap to parallax background layers when scrolling beyond atlas width.
+* **Task R8.3 — Semantic Actor-to-Wavepacket Role Dispatch (`implicate-unfold`):**
+  - Replace raw `active_verbs` modulo index dispatch with semantic tag matching (`"hero"`, `"shadow"`, `"boss"`, `"projectile"`).
+  - Disentangle projectile/luminescence drones from articulated vehicle bodies.
+* **Task R8.4 — `CliffordNet-Lite` Shader Stabilization & Sub-Holon Kinematic Rigidity (`implicate-rolpa`, `implicate-unfold`):**
+  - Fix workgroup halo exchange in `cliffordnet_rolpa.wgsl` and reduce Laplacian amplification to prevent block divergence.
+  - Implement bone-chain hierarchy and angular deflection damping on articulated sub-holon parts.
+* **Task R8.5 — Visual Exit Gate Suite (`tests/r8_gates.rs`):**
+  - Add end-to-end pixel validation asserting actor visibility, motion delta $> 0$ across frames, non-occlusion by HUD, and lack of tile boundary seams.

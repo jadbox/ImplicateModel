@@ -70,16 +70,22 @@ fn cmd_inspect(args: &[String]) -> Result<(), String> {
     println!("GATr Rules:     {}", manifest.gatr_binder.rules.len());
     println!("Binary Payload: {} bytes ({} enfolded clip(s))", payload.len(), clips.len());
     for clip in &clips {
+        let hud_info = clip.atlas.camera_locked_hud.as_ref().map(|h| format!("{:?}", h.y_band)).unwrap_or_else(|| "none".to_string());
         println!(
-            "  - Clip '{}' ({}x{}, {} frames): {} layer(s), HUD={}, {} articulated holon(s)",
+            "  - Clip '{}' ({}x{}, {} frames): {} layer(s) (active_y={:?}), HUD={}, hud_band={}, {} articulated holon(s)",
             clip.clip_id,
             clip.atlas.width,
             clip.atlas.height,
             clip.num_frames,
             clip.atlas.layers.len(),
+            clip.atlas.active_y_range,
             clip.atlas.camera_locked_hud.is_some(),
+            hud_info,
             clip.holons.len()
         );
+        for (hi, h) in clip.holons.iter().enumerate() {
+            println!("    Holon {}: P={}, views={}, obs_len={}", hi, h.num_parts, h.num_view_cells, h.poses_per_obs.len());
+        }
     }
     Ok(())
 }

@@ -27,3 +27,19 @@ All 18 research and production milestones (`R1.1`–`R7.1`) and `36/36` workspac
 - [x] **R7.1 — Multi-Actor Track Extraction, Pairwise PGA Trajectory Assimilation, & $\text{Spin}(2) \times S^1$ View-Idempotent Selection (`COMPLETED`):**
   - Added `extract_character_observation_tracks` (`crates/implicate-lifter/src/articulated_wavepacket/mod.rs`) and `detect_cft_kinematic_impulses` (`crates/implicate-lexicon/src/cft_snap.rs`) so `enfold_video_clip` extracts multiple distinct `ArticulatedHolon` actors per clip, grounds verb windows in empirical Bohmian momentum discontinuities $\|\Delta \mathbf{P}_B(t)\|$, and fits true two-body pairwise relative PGA verb potentials ($M_{\text{rel}}(t) = \widetilde{M}_B(t) M_A(t)$, `enfolded_pair_<clip_id>`).
   - Upgraded `CausalUnfoldEngine::splat_articulated_holon_wavepacket` with `select_view_idempotent_observation_index` (`crates/implicate-unfold/src/engine.rs`) to select each sub-holon's discrete view-aspect idempotent cell $\epsilon_{s,\text{view}}$ via geodesic rotor and CFT gait-phase coherence on $\text{Spin}(2) \times S^1$, verified in `r7_multi_actor_cft_impulse_and_view_idempotent_gate` (`216.5 FPS`, `1.39% / 0.48%` Fréchet error).
+
+---
+
+## Active Milestone: Track R8 — Visual Fidelity & Artifact Elimination
+
+Human visual inspection in `/tmp/opencode/human_test/` uncovered 4 distinct visual defects:
+1. **Pac-Man:** Static camera misclassified as HUD (`active_y` truncated to `77..93`, rows `93..308` stamped with opaque static background, hiding actors).
+2. **Super Mario Bros. 3:** Clip enfolded at `start-sec 2.0` (title curtain) instead of `20.0s` (World 1-1), plus inverted Y raster coords for ground blades ($y=42$ vs $y=192$).
+3. **Raptor:** `Plasma_Drone` bound to enemy ship wavepacket via modulo indexing; enemy ship orbits player jet; carrier untextured.
+4. **The Secret of NIMH:** `CliffordNet-Lite` WGSL shader amplified discrete Laplacian into 16x16 block mosaic; unconstrained sub-holon joints fragmented characters.
+
+- [ ] **R8.1:** Static camera arena preservation & HUD alpha transparency.
+- [ ] **R8.2:** SMB3 World 1-1 timestamp ($20.0\text{s}$) & coordinate space realignment.
+- [ ] **R8.3:** Semantic actor role matching for wavepacket dispatch.
+- [ ] **R8.4:** `CliffordNet-Lite` WGSL halo exchange fix & sub-holon bone angle limits.
+- [ ] **R8.5:** End-to-end visual exit gate suite (`tests/r8_gates.rs`).
