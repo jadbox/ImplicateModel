@@ -137,9 +137,9 @@ fn main(
         let c_loc = (avg_card + avg_diag) - h;
 
         if (b == 0u) {
-            lap1_rgb = -c_loc.xyz;
+            lap1_rgb = clamp(-c_loc.xyz, vec3<f32>(-0.05), vec3<f32>(0.05));
         } else if (b == 1u) {
-            lap2_rgb = -c_loc.xyz;
+            lap2_rgb = clamp(-c_loc.xyz, vec3<f32>(-0.05), vec3<f32>(0.05));
         }
 
         // Shifted Clifford Geometric Product D^{(s)} \oplus W^{(s)} across cyclic shifts S = {1, 2, 4, 8, 16}
@@ -158,8 +158,8 @@ fn main(
         let d_sum = 0.40 * d_s1 + 0.30 * d_s2 + 0.30 * d_s16;
         let w_sum = 0.60 * w_s1 + 0.40 * w_s2;
 
-        cliff_d_acc = cliff_d_acc + d_sum.xyz;
-        cliff_w_acc = cliff_w_acc + w_sum.xyz;
+        cliff_d_acc = cliff_d_acc + clamp(d_sum.xyz, vec3<f32>(-0.08), vec3<f32>(0.08));
+        cliff_w_acc = cliff_w_acc + clamp(w_sum.xyz, vec3<f32>(-0.08), vec3<f32>(0.08));
 
         // Gated Geometric Residual (GGR): H <- H + \gamma_b * ((1 - \sigma(\alpha)) * G_b - c_loc)
         let gamma_b = params.block_gammas[b];

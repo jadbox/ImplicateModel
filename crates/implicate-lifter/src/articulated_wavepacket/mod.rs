@@ -520,6 +520,21 @@ pub fn extract_character_observation_tracks(
     let mut scored: Vec<(usize, Vec<CharacterObservation>)> = tracks
         .into_iter()
         .filter(|tr| tr.len() >= 4 || max_tracks == 1)
+        .filter(|tr| {
+            if tr.len() <= 1 {
+                return true;
+            }
+            let c0 = tr[0].obs.bbox.center();
+            let mut max_disp = 0.0f64;
+            for cand in tr {
+                let c = cand.obs.bbox.center();
+                let d = (c[0] - c0[0]).hypot(c[1] - c0[1]);
+                if d > max_disp {
+                    max_disp = d;
+                }
+            }
+            max_disp > 2.0 || max_tracks == 1
+        })
         .map(|tr| {
             let total_fg: usize = tr
                 .iter()

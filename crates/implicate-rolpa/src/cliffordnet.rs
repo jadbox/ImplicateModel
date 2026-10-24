@@ -33,7 +33,7 @@ impl Default for RolpaUniforms {
             height: 1080,
             bypass_mode: 0,
             _pad0: 0,
-            readout_weights: [0.10, -0.04, 0.05, 0.05],
+            readout_weights: [0.06, -0.02, 0.03, 0.03],
             block_gammas: [0.20, 0.15, 0.12, 0.10],
         }
     }

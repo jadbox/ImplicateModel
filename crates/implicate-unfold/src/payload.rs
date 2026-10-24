@@ -133,7 +133,7 @@ pub fn enfold_video_clip(
     };
 
     let atlas = build_multiplane_atlas(&shot_frames, &MultiPlaneOptions::default());
-    let obs_tracks = extract_character_observation_tracks(&shot_frames, &atlas, 3);
+    let obs_tracks = extract_character_observation_tracks(&shot_frames, &atlas, 8);
     let mut holons = Vec::with_capacity(obs_tracks.len());
     for obs in &obs_tracks {
         if !obs.is_empty() {

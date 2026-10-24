@@ -16,7 +16,7 @@ fn print_usage() {
         "Usage: implicate <command> [options]\n\n\
          Commands:\n  \
            lexicon  [--output <path.implicate>]                 Compile canonical Implicate Lexicon container\n  \
-           inspect  --input <path.implicate>                    Inspect an .implicate v1 binary container\n  \
+           inspect  --input <path.implicate> [--tracks] [--dump-tracks] [--dump-png] Inspect an .implicate v1 binary container\n  \
            enfold   --video <video.mp4> [--output <path.implicate>] [--max-frames <N>] [--start-sec <S>]\n  \
            unfold   [--scene <id|all>] [--prompt \"...\"] [--dzog <file.dzog>] [--lexicon <path.implicate>] [--out-dir <dir>]"
     );
@@ -70,6 +70,8 @@ fn cmd_inspect(args: &[String]) -> Result<(), String> {
     println!("GATr Rules:     {}", manifest.gatr_binder.rules.len());
     println!("Binary Payload: {} bytes ({} enfolded clip(s))", payload.len(), clips.len());
     let do_dump = args.iter().any(|a| a == "--dump-png");
+    let show_tracks = args.iter().any(|a| a == "--tracks" || a == "--dump-tracks");
+    let dump_tracks = args.iter().any(|a| a == "--dump-tracks");
     for clip in &clips {
         let hud_info = clip.atlas.camera_locked_hud.as_ref().map(|h| format!("{:?}", h.y_band)).unwrap_or_else(|| "none".to_string());
         println!(
@@ -85,7 +87,55 @@ fn cmd_inspect(args: &[String]) -> Result<(), String> {
             clip.holons.len()
         );
         for (hi, h) in clip.holons.iter().enumerate() {
-            println!("    Holon {}: P={}, views={}, obs_len={}", hi, h.num_parts, h.num_view_cells, h.poses_per_obs.len());
+            let root_color = h.part_colors.first().copied().unwrap_or([0, 0, 0]);
+            let (min_x, max_x, min_y, max_y, max_disp) = if let Some(first_poses) = h.poses_per_obs.first().and_then(|p| p.first()) {
+                let mut min_x = first_poses.center[0];
+                let mut max_x = first_poses.center[0];
+                let mut min_y = first_poses.center[1];
+                let mut max_y = first_poses.center[1];
+                let x0 = first_poses.center[0];
+                let y0 = first_poses.center[1];
+                let mut max_disp = 0.0f64;
+                for f in &h.poses_per_obs {
+                    if let Some(r) = f.first() {
+                        min_x = min_x.min(r.center[0]);
+                        max_x = max_x.max(r.center[0]);
+                        min_y = min_y.min(r.center[1]);
+                        max_y = max_y.max(r.center[1]);
+                        let d = (r.center[0] - x0).hypot(r.center[1] - y0);
+                        if d > max_disp {
+                            max_disp = d;
+                        }
+                    }
+                }
+                (min_x, max_x, min_y, max_y, max_disp)
+            } else {
+                (0.0, 0.0, 0.0, 0.0, 0.0)
+            };
+            if show_tracks {
+                println!(
+                    "    Track {}: P={}, views={}, obs_len={}, root_rgb={:?}, x=[{:.1}, {:.1}], y=[{:.1}, {:.1}], disp={:.1}px",
+                    hi, h.num_parts, h.num_view_cells, h.poses_per_obs.len(), root_color, min_x, max_x, min_y, max_y, max_disp
+                );
+            } else {
+                println!("    Holon {}: P={}, views={}, obs_len={}", hi, h.num_parts, h.num_view_cells, h.poses_per_obs.len());
+            }
+            if dump_tracks {
+                if let Some(view0) = h.kernels.first().and_then(|k| k.first()) {
+                    let dump_ppm = format!("/tmp/opencode/dump_track_{}_{}.ppm", clip.clip_id, hi);
+                    let mut header = format!("P6\n{} {}\n255\n", view0.res_w, view0.res_h).into_bytes();
+                    let mut rgb_bytes = Vec::with_capacity(view0.res_w * view0.res_h * 3);
+                    for chunk in view0.dc_rgba.chunks_exact(4) {
+                        let a = chunk[3] as f32 / 255.0;
+                        rgb_bytes.push((chunk[0] as f32 * a) as u8);
+                        rgb_bytes.push((chunk[1] as f32 * a) as u8);
+                        rgb_bytes.push((chunk[2] as f32 * a) as u8);
+                    }
+                    header.extend_from_slice(&rgb_bytes);
+                    let _ = fs::write(&dump_ppm, header);
+                    println!("      Saved track {hi} root kernel -> {dump_ppm}");
+                }
+            }
         }
         if do_dump && !clip.atlas.layers.is_empty() {
             let img = &clip.atlas.layers[0].atlas.image;

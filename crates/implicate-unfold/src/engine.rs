@@ -587,6 +587,79 @@ impl CausalUnfoldEngine {
                 }
             }
 
+            // 4b. Enforce hard-core contact separation ||x_i - x_j|| >= r_i + r_j between physical holons
+            let mut holon_collided = vec![false; k_holons];
+            for i in 0..k_holons {
+                if self.is_hud_holon[i] {
+                    continue;
+                }
+                let is_energy_i = (self.holons[i].luminescence_emission[0]
+                    + self.holons[i].luminescence_emission[1]
+                    + self.holons[i].luminescence_emission[2] > 0.5)
+                    && !self.scene.holons[i].name.to_ascii_lowercase().contains("hero");
+                if is_energy_i {
+                    continue;
+                }
+                for j in (i + 1)..k_holons {
+                    if self.is_hud_holon[j] {
+                        continue;
+                    }
+                    let is_energy_j = (self.holons[j].luminescence_emission[0]
+                        + self.holons[j].luminescence_emission[1]
+                        + self.holons[j].luminescence_emission[2] > 0.5)
+                        && !self.scene.holons[j].name.to_ascii_lowercase().contains("hero");
+                    if is_energy_j {
+                        continue;
+                    }
+                    let dx = self.holons[i].position[0] - self.holons[j].position[0];
+                    let dy = self.holons[i].position[1] - self.holons[j].position[1];
+                    let dist = (dx * dx + dy * dy).sqrt();
+                    let min_dist = self.holons[i].radius + self.holons[j].radius;
+                    if dist < min_dist && dist > 1e-4 {
+                        let overlap = min_dist - dist;
+                        let nx = dx / dist;
+                        let ny = dy / dist;
+                        let m_i = self.holons[i].rho.max(0.1);
+                        let m_j = self.holons[j].rho.max(0.1);
+                        let m_tot = m_i + m_j;
+                        let w_i = m_j / m_tot;
+                        let w_j = m_i / m_tot;
+
+                        self.holons[i].position[0] += nx * overlap * w_i;
+                        self.holons[i].position[1] += ny * overlap * w_i;
+                        self.holons[j].position[0] -= nx * overlap * w_j;
+                        self.holons[j].position[1] -= ny * overlap * w_j;
+                        holon_collided[i] = true;
+                        holon_collided[j] = true;
+
+                        let v_rel = (self.holons[i].velocity[0] - self.holons[j].velocity[0]) * nx
+                            + (self.holons[i].velocity[1] - self.holons[j].velocity[1]) * ny;
+                        if v_rel < 0.0 {
+                            let e = 0.5f32;
+                            let j_impulse = -(1.0 + e) * v_rel / (1.0 / m_i + 1.0 / m_j);
+                            self.holons[i].velocity[0] += (j_impulse / m_i) * nx;
+                            self.holons[i].velocity[1] += (j_impulse / m_i) * ny;
+                            self.holons[j].velocity[0] -= (j_impulse / m_j) * nx;
+                            self.holons[j].velocity[1] -= (j_impulse / m_j) * ny;
+                        }
+                    }
+                }
+            }
+
+            // Only synchronize verb relative pose when a collision physically deflected the subject
+            for vb in &mut self.active_verbs {
+                if holon_collided[vb.subject_idx] || holon_collided[vb.target_idx] {
+                    let target_pos = self.holons[vb.target_idx].position;
+                    let target_heading = self.holons[vb.target_idx].cde.heading_angle();
+                    let b_pose = HolonPose2D::new(target_pos[0] as f64, target_pos[1] as f64, target_heading);
+                    let subject_pos = self.holons[vb.subject_idx].position;
+                    let subject_heading = self.holons[vb.subject_idx].cde.heading_angle();
+                    let s_pose = HolonPose2D::new(subject_pos[0] as f64, subject_pos[1] as f64, subject_heading);
+                    let rel = vb.canonical_frame.to_canonical(s_pose, b_pose);
+                    vb.rel_pos = [rel.x, rel.y];
+                }
+            }
+
             // Emit a gentle modal acoustic pulse on peak action frame (mid-vault / closest intercept)
             if f_idx == n_frames / 2 && frame_events.is_empty() && !self.holons.is_empty() {
                 let h0 = &self.holons[0];
@@ -736,9 +809,16 @@ impl CausalUnfoldEngine {
             self.composite_enfolded_atlas_background(clip, frame_idx, w, h, &mut rgb);
         }
 
+        let cam_dx = self.camera_pos[0] - (w as f32) * 0.5;
+        let cam_dy = self.camera_pos[1] - (h as f32) * 0.5;
+
         // 2. Splat holons, compliant sub-holon parts / ArticulatedHolon wavepackets, and HUD bar holons
         for (i, holon) in self.holons.iter().enumerate() {
             let col = self.base_colors[i];
+            let screen_pos = [
+                holon.position[0] - cam_dx,
+                holon.position[1] - cam_dy,
+            ];
             if self.is_hud_holon[i] {
                 if let Some(clip) = &self.enfolded_clip
                     && let Some(hud) = &clip.atlas.camera_locked_hud
@@ -762,8 +842,8 @@ impl CausalUnfoldEngine {
                     continue;
                 }
                 // Camera-locked HUD score counter badge fallback
-                let cy = (holon.position[1].round() as i32).clamp(4, h as i32 - 5) as usize;
-                let cx = (holon.position[0].round() as i32).clamp(16, w as i32 - 16) as usize;
+                let cy = (screen_pos[1].round() as i32).clamp(4, h as i32 - 5) as usize;
+                let cx = (screen_pos[0].round() as i32).clamp(16, w as i32 - 16) as usize;
                 let y0 = cy.saturating_sub(3);
                 let y1 = (cy + 4).min(h - 1);
                 let x0 = cx.saturating_sub(15);
@@ -789,6 +869,7 @@ impl CausalUnfoldEngine {
                     &self.scene.holons[i].name,
                     &self.scene.holons[i].semantic_clause,
                     self.scene.holons[i].luminescence_emission,
+                    col,
                     i,
                     &clip.holons,
                 );
@@ -796,6 +877,7 @@ impl CausalUnfoldEngine {
                     if Self::splat_articulated_holon_wavepacket(
                         art_holon,
                         holon,
+                        screen_pos,
                         clip.atlas.width,
                         clip.atlas.height,
                         frame_idx,
@@ -808,8 +890,8 @@ impl CausalUnfoldEngine {
                 }
             }
 
-            let cx = holon.position[0];
-            let cy = holon.position[1];
+            let cx = screen_pos[0];
+            let cy = screen_pos[1];
             let rad = holon.radius.max(3.0);
             let r_int = (rad.ceil() as i32) + 3;
             let ix0 = ((cx as i32) - r_int).clamp(0, w as i32 - 1) as usize;
@@ -853,8 +935,8 @@ impl CausalUnfoldEngine {
                 if em[0] + em[1] + em[2] <= 1e-4 {
                     continue;
                 }
-                let cx = holon.position[0];
-                let cy = holon.position[1];
+                let cx = holon.position[0] - cam_dx;
+                let cy = holon.position[1] - cam_dy;
                 let rad = (holon.radius * 2.5).max(8.0);
                 let r_int = rad.ceil() as i32;
                 let ix0 = ((cx as i32) - r_int).clamp(0, w as i32 - 1) as usize;
@@ -1016,13 +1098,14 @@ impl CausalUnfoldEngine {
         best_idx
     }
 
-    /// Semantically match a prompt holon to an enfolded character track based on roles
-    /// (`"hero"`, `"shadow"`, `"pursuer"`, `"trickster"`, `"sentinel"`), preserving pure wave excitons.
+    /// Semantically match a prompt holon to an enfolded character track based on minimal
+    /// RGB color distance to the prompt specification, preserving pure wave excitons.
     fn match_holon_to_wavepacket<'a>(
         name: &str,
         clause: &str,
         luminescence: [f32; 3],
-        holon_index: usize,
+        base_color: [u8; 3],
+        _holon_index: usize,
         holons: &'a [ArticulatedHolon],
     ) -> Option<&'a ArticulatedHolon> {
         if holons.is_empty() {
@@ -1046,49 +1129,28 @@ impl CausalUnfoldEngine {
             return None;
         }
 
-        // Primary / hero character -> Track 0
-        if lower_name.contains("mario")
-            || lower_name.contains("pacman")
-            || lower_name.contains("raptor")
-            || lower_name.contains("brisby")
-            || lower_clause.contains("hero")
-        {
-            return Some(&holons[0]);
+        // Color-based dispatch: select the track whose root appearance best matches base_color
+        let mut best_idx = 0;
+        let mut best_dist = f64::MAX;
+        for (idx, h) in holons.iter().enumerate() {
+            let col = h.part_colors.first().copied().unwrap_or([128, 128, 128]);
+            let dr = col[0] as f64 - base_color[0] as f64;
+            let dg = col[1] as f64 - base_color[1] as f64;
+            let db = col[2] as f64 - base_color[2] as f64;
+            let dist = (dr * dr + dg * dg + db * db).sqrt();
+            if dist < best_dist {
+                best_dist = dist;
+                best_idx = idx;
+            }
         }
-
-        // Secondary / adversary / pursuer -> Track 1
-        if lower_name.contains("goomba")
-            || lower_name.contains("blinky")
-            || lower_name.contains("crow")
-            || lower_name.contains("jeremy")
-            || lower_clause.contains("shadow")
-            || lower_clause.contains("pursuer")
-        {
-            let idx = if holons.len() > 1 { 1 } else { 0 };
-            return Some(&holons[idx]);
-        }
-
-        // Tertiary / trickster / secondary chaser -> Track 2
-        if lower_name.contains("inky")
-            || lower_name.contains("pinky")
-            || lower_name.contains("clyde")
-            || lower_clause.contains("trickster")
-        {
-            let idx = if holons.len() > 2 { 2 } else if holons.len() > 1 { 1 } else { 0 };
-            return Some(&holons[idx]);
-        }
-
-        if holon_index < holons.len() {
-            Some(&holons[holon_index])
-        } else {
-            None
-        }
+        Some(&holons[best_idx])
     }
 
     #[allow(clippy::too_many_arguments)]
     fn splat_articulated_holon_wavepacket(
         art_holon: &ArticulatedHolon,
         holon: &ArticulatedFieldHolon,
+        screen_pos: [f32; 2],
         atlas_w: usize,
         atlas_h: usize,
         frame_idx: usize,
@@ -1117,8 +1179,8 @@ impl CausalUnfoldEngine {
         let sx = (w as f64) / (atlas_w.max(1) as f64);
         let sy = (h as f64) / (atlas_h.max(1) as f64);
         let root_ref = &ref_poses[0];
-        let cx = holon.position[0] as f64;
-        let cy = holon.position[1] as f64;
+        let cx = screen_pos[0] as f64;
+        let cy = screen_pos[1] as f64;
         let heading_delta = (holon.cde.heading_angle() * 0.12).clamp(-0.30, 0.30);
 
         let mut unfolded_poses = Vec::with_capacity(n_parts);

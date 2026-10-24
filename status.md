@@ -40,6 +40,23 @@ All 19 research and production milestones (`R1.1`–`R8.5`) and `42/42` workspac
 
 ---
 
+## Completed Bug Fix: Animation Fidelity, Inter-Holon Contacts, & Atlas Inpainting (Track R8.6 — `5/5` Verified)
+
+Visual animation evaluation of frame strips (`/tmp/opencode/human_test/anim_strips/`) identified and resolved 5 animation defects:
+1. **Camera Scroll vs Holon Motion Disconnect:** Holons transformed to screen coordinates via $\mathbf{x}_{\text{screen}} = \mathbf{x}_{\text{world}} - (\mathbf{x}_{\text{cam}} - \mathbf{x}_{\text{cam},0})$, locking stationary obstacles (`Koopa_Block`) to scrolling terrain and giving moving actors proper traction.
+2. **Actor Track Dropping & Inverted Binding:** Expanded `max_tracks = 8`, filtered static HUD tracks ($\max \|\Delta \mathbf{x}\| \le 2.0\text{ px}$), and bound prompt entities to candidate wavepackets by minimal Euclidean RGB distance $\|\mathbf{c}_{\text{spec}} - \mathbf{c}_{\text{track}}\|$. Pac-Man correctly binds to yellow track; Blinky and Inky bind to red and cyan tracks.
+3. **Ghosting & Overlap:** Added hard-core contact separation $\|\mathbf{x}_i - \mathbf{x}_j\| \ge r_i + r_j$ with elastic impulse restitution between solid physical holons, preventing entity merging.
+4. **Baked-in Stationary Actors in Atlas:** Replaced unmasked actor copying with multi-directional inverse-distance ray search and 16-iteration harmonic Laplacian diffusion across unobserved occlusions in `layer_accum.rs`.
+5. **Tile Seam Banding in Refiner:** Clamped discrete Laplacian context $\nabla^2 H \in [-0.05, 0.05]$ and geometric product accumulations in `cliffordnet_rolpa.wgsl`, eliminating tile border seams.
+
+- [x] **R8.6a (CLI Inspection Tool):** Added `--dump-tracks` / `--tracks` to `implicate inspect` in `crates/implicate-cli/src/main.rs`.
+- [x] **R8.6b (Track Extraction & Color-Based Dispatch):** Expanded `max_tracks = 8`, discarded stationary tracks, minimal RGB distance dispatch in `crates/implicate-unfold/src/engine.rs`.
+- [x] **R8.6c (Projective Camera Kinematics):** World-to-screen coordinate transformation applied to wavepacket splatting, field discs, and luminescence injection.
+- [x] **R8.6d (Hard-Core Inter-Holon Elastic Separation):** Pairwise normal separation and elastic impulse resolution in `CausalUnfoldEngine`.
+- [x] **R8.6e (Bi-Harmonic Background Inpainting & Refiner Stabilization):** Harmonic Laplacian background diffusion in `crates/implicate-lifter/src/multiplane_atlas/layer_accum.rs` and bounded context in `crates/implicate-rolpa/src/cliffordnet_rolpa.wgsl`.
+
+---
+
 ## Active Milestone: Track R9 — General-Purpose Semantic Generalization & Rigorous Clifford Abstraction
 
 - [ ] **R9.1:** Semantic spinor inner-product dispatch $\langle \psi_{\text{prompt}}, \psi_{\text{asset}} \rangle$ replacing character name heuristics.
