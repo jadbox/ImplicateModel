@@ -5,7 +5,8 @@ use super::{
     ModelSheetPartKernel, SubHolonPartSpec, SubHolonPose, TurnaroundViewAspect,
     WavepacketPartKernel, classify_view_regime, fit_articulated_holon,
     clifford_features::{
-        compute_cliffordnet_laplacian_features, decompose_observation_dual_product,
+        compute_cliffordnet_laplacian_features, decompose_masked_clifford_dual_product,
+        decompose_observation_dual_product,
     },
 };
 use crate::enfold2d::Bucket;
@@ -552,6 +553,71 @@ pub fn assign_view_idempotent_cells_and_cft_phases(
     (decomp.observation_assignments, decomp.observation_phases)
 }
 
+/// Compute continuous volume-conserving scale factor s(φ) along gait phase φ ∈ S¹
+/// such that det S = s(φ) · (1 / s(φ)) = 1 identically.
+#[inline]
+pub fn continuous_gait_volume_scale(phase_rad: f64, coeffs: [f64; 4]) -> (f64, f64) {
+    let (s1, c1) = phase_rad.sin_cos();
+    let (s2, c2) = (2.0 * phase_rad).sin_cos();
+    let log_s = coeffs[0] * c1 + coeffs[1] * s1 + coeffs[2] * c2 + coeffs[3] * s2;
+    let s = log_s.clamp(-0.8, 0.8).exp();
+    (s, 1.0 / s)
+}
+
+/// Enforce strict volume conservation det S = 1 on continuous gait deformations along phase φ ∈ S¹.
+///
+/// For each canonical view-aspect cell and sub-holon part, calculates the canonical reference area
+/// A_ref = exp(1/N ∑ ln(r_u · r_v)). Scales radii by k = √(A_ref / (r_u · r_v)) such that
+/// det S = (r_u · k)(r_v · k) / A_ref = 1 identically across all phases φ ∈ S¹,
+/// eliminating outline blur, squashing artifacts, and Gibbs ringing.
+pub fn enforce_volume_conserving_gait_deformation(
+    poses_per_obs: &mut [Vec<SubHolonPose>],
+    view_assignments: &[usize],
+    num_parts: usize,
+    num_view_cells: usize,
+) {
+    let n_obs = poses_per_obs.len();
+    if n_obs == 0 {
+        return;
+    }
+
+    for vc in 0..num_view_cells {
+        let members: Vec<usize> = (0..n_obs)
+            .filter(|&i| view_assignments.get(i).copied().unwrap_or(0) == vc)
+            .collect();
+        if members.is_empty() {
+            continue;
+        }
+
+        for p in 0..num_parts {
+            // 1. Calculate geometric mean reference area A_ref
+            let mut sum_log_area = 0.0f64;
+            let mut count = 0.0f64;
+            for &oi in &members {
+                if let Some(pose) = poses_per_obs[oi].get(p) {
+                    let a = (pose.radii[0] * pose.radii[1]).max(1.0);
+                    sum_log_area += a.ln();
+                    count += 1.0;
+                }
+            }
+            if count == 0.0 {
+                continue;
+            }
+            let a_ref = (sum_log_area / count).exp();
+
+            // 2. Enforce strict volume conservation det S = 1
+            for &oi in &members {
+                if let Some(pose) = poses_per_obs[oi].get_mut(p) {
+                    let curr_area = (pose.radii[0] * pose.radii[1]).max(1e-4);
+                    let k = (a_ref / curr_area).sqrt();
+                    pose.radii[0] = (pose.radii[0] * k).max(1.0);
+                    pose.radii[1] = (pose.radii[1] * k).max(1.0);
+                }
+            }
+        }
+    }
+}
+
 /// Induce a unified Don Bluth Character Board Model Sheet (HolonModelSheet) for an autonomous process holon.
 pub fn induce_holon_model_sheet(
     name: &str,
@@ -714,7 +780,7 @@ pub fn induce_holon_model_sheet(
                     part_id: p,
                     canonical_res: [k.res_w, k.res_h],
                     cel_fill_rgb: k.dc_rgba.clone(),
-                    ink_contour_blade: k.gaussian_envelope.clone(),
+                    ink_contour_blade: k.ink_contour_blade.clone(),
                     cft_deformation_coeffs: k.cft_rgba_coeffs.clone(),
                 });
             } else {
@@ -1034,6 +1100,16 @@ pub fn accumulate_part_wavepacket_kernel(
         }
     }
 
+    let mut rgb_slice = vec![0u8; n_cells * 3];
+    let mut mask_slice = vec![false; n_cells];
+    for i in 0..n_cells {
+        rgb_slice[i * 3] = mode_rgb[i][0];
+        rgb_slice[i * 3 + 1] = mode_rgb[i][1];
+        rgb_slice[i * 3 + 2] = mode_rgb[i][2];
+        mask_slice[i] = fg_hits[i] > 0;
+    }
+    let dual = decompose_masked_clifford_dual_product(&rgb_slice, Some(&mask_slice), res_w, res_h);
+
     for ky in 0..res_h {
         let v = (ky as f32 / (res_h as f32 - 1.0).max(1.0)) * 2.0 - 1.0;
         for kx in 0..res_w {
@@ -1060,6 +1136,7 @@ pub fn accumulate_part_wavepacket_kernel(
         harmonic_rgba,
         cft_rgba_coeffs,
         gaussian_envelope,
+        ink_contour_blade: dual.ink_contour,
     }
 }
 

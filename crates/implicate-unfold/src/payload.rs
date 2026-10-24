@@ -24,8 +24,8 @@ use crate::container::{
 };
 
 pub const ENFOLDED_PAYLOAD_MAGIC: &[u8; 4] = b"ENFD";
-pub const ENFOLDED_PAYLOAD_VERSION: u32 = 3;
-/// Oldest payload version still decodable (v1 lacks per-observation frame indices, v2 lacks model sheets).
+pub const ENFOLDED_PAYLOAD_VERSION: u32 = 4;
+/// Oldest payload version still decodable (v1 lacks per-observation frame indices, v2 lacks model sheets, v3 lacks contour blades).
 pub const ENFOLDED_PAYLOAD_MIN_VERSION: u32 = 1;
 
 /// Lightweight manifest summary for an enfolded video clip stored in the `.implicate` binary payload.
@@ -692,6 +692,10 @@ impl PayloadWriter {
                 for &g in &k.gaussian_envelope {
                     self.write_f32(g);
                 }
+                self.write_u32(k.ink_contour_blade.len() as u32);
+                for &blade in &k.ink_contour_blade {
+                    self.write_f32(blade);
+                }
             }
         }
 
@@ -839,6 +843,16 @@ impl<'a> PayloadReader<'a> {
                 for _ in 0..n_env {
                     gaussian_envelope.push(self.read_f32()?);
                 }
+                let ink_contour_blade = if version >= 4 {
+                    let n_blade = self.read_u32()? as usize;
+                    let mut blade = Vec::with_capacity(n_blade);
+                    for _ in 0..n_blade {
+                        blade.push(self.read_f32()?);
+                    }
+                    blade
+                } else {
+                    gaussian_envelope.clone()
+                };
                 vc_kernels.push(WavepacketPartKernel {
                     res_w,
                     res_h,
@@ -846,6 +860,7 @@ impl<'a> PayloadReader<'a> {
                     harmonic_rgba,
                     cft_rgba_coeffs,
                     gaussian_envelope,
+                    ink_contour_blade,
                 });
             }
             kernels.push(vc_kernels);

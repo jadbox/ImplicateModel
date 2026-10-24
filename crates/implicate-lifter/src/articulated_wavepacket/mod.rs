@@ -24,8 +24,8 @@ pub use clifford_features::{
     evaluate_vs_single_box_baseline_with_parts, mask_iou,
 };
 pub use part_fitting::{
-    SpectralIdempotentDecomposition, factor_temporal_covariance_idempotents,
-    induce_holon_model_sheet,
+    SpectralIdempotentDecomposition, enforce_volume_conserving_gait_deformation,
+    factor_temporal_covariance_idempotents, induce_holon_model_sheet,
 };
 use part_fitting::{
     accumulate_part_wavepacket_kernel, assign_view_idempotent_cells_and_cft_phases,
@@ -282,6 +282,8 @@ pub struct WavepacketPartKernel {
     /// Continuous 5-mode Clifford Fourier expansion coefficients per cell and RGBA channel (`res_w * res_h * 4`).
     pub cft_rgba_coeffs: Vec<[f32; CFT_WAVEPACKET_MODES]>,
     pub gaussian_envelope: Vec<f32>,
+    /// Invariant ink line contour blade mask / continuous wedge vorticity |u ∧ ∇²u|.
+    pub ink_contour_blade: Vec<f32>,
 }
 
 impl WavepacketPartKernel {
@@ -856,6 +858,14 @@ pub fn fit_articulated_holon(
             })
             .collect()
     };
+
+    // Strict volume conservation det S = 1 on continuous gait deformations along phase φ ∈ S¹
+    enforce_volume_conserving_gait_deformation(
+        &mut poses_per_obs,
+        &view_assignments,
+        num_parts,
+        num_view_cells,
+    );
 
     let mut kernels: Vec<Vec<WavepacketPartKernel>> = Vec::with_capacity(num_view_cells);
     for vc in 0..num_view_cells {
