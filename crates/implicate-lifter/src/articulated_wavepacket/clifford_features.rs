@@ -88,7 +88,15 @@ fn box_blur_3x3(src: &[[f32; 4]], w: usize, h: usize) -> Vec<[f32; 4]> {
 pub fn evaluate_vs_single_box_baseline(
     observations: &[CharacterObservation],
 ) -> ArticulatedComparisonReport {
-    let articulated = fit_articulated_holon(observations, None);
+    evaluate_vs_single_box_baseline_with_parts(observations, None)
+}
+
+/// As `evaluate_vs_single_box_baseline`, with an optional forced part count.
+pub fn evaluate_vs_single_box_baseline_with_parts(
+    observations: &[CharacterObservation],
+    forced_parts: Option<usize>,
+) -> ArticulatedComparisonReport {
+    let articulated = fit_articulated_holon(observations, forced_parts);
     let baseline = fit_rigid_single_box_baseline(observations);
 
     let (mut base_iou_sum, mut base_lpips_sum) = (0.0f64, 0.0f64);

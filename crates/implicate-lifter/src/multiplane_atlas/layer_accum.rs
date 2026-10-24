@@ -305,56 +305,104 @@ pub fn accumulate_band_atlas_masked(
         return atlas;
     }
 
-    // Fill occluded regions:
-    // 1. Moving actors (occluded in <65% of frames): sample genuine background from temporal median fallback.
-    // 2. Stationary actors (occluded in >=65% of frames): fill from nearest horizontal neighbors to avoid baking in silhouettes.
+    // Unobserved texels (outside the camera's sweep) take the temporal-median fallback. Texels that
+    // were observed but occluded in every observation are unknown background: fill them with the
+    // harmonic (Laplace, $\nabla^2 I = 0$) continuation of the surrounding observed background.
+    let mut hole = vec![false; cw * ch];
     for iy in 0..ch {
         for ix in 0..cw {
             let idx = iy * cw + ix;
             if valid[idx] {
                 continue;
             }
-            let wx = atlas.origin[0] + ix as i32;
-            let wy = atlas.origin[1] + iy as i32;
-            let ratio = occl_count[idx] as f32 / obs_count[idx].max(1) as f32;
-            if ratio < 0.65 {
+            if obs_count[idx] == 0 {
+                let wx = atlas.origin[0] + ix as i32;
+                let wy = atlas.origin[1] + iy as i32;
                 if let Some(c) = fallback.pixel(wx, wy) {
                     atlas.image.set_pixel(ix, iy, c);
                     continue;
                 }
             }
+            hole[idx] = true;
+        }
+    }
+    harmonic_inpaint(&mut atlas.image, &hole);
+    atlas
+}
 
-            let mut filled = false;
-            for delta in 1..=cw {
-                if ix >= delta && valid[iy * cw + (ix - delta)] {
-                    let c = atlas.image.pixel(ix - delta, iy);
-                    atlas.image.set_pixel(ix, iy, c);
-                    filled = true;
-                    break;
+/// Fill `hole` texels with the solution of Laplace's equation whose Dirichlet boundary is every
+/// non-hole texel (minimal-gradient-energy continuation). Successive over-relaxation with the
+/// optimal factor for the hole's extent; iterates until no texel changes by half a quantization step.
+pub fn harmonic_inpaint(img: &mut crate::enfold2d::RgbImage8, hole: &[bool]) {
+    let (w, h) = (img.width, img.height);
+    let idx: Vec<usize> = (0..w * h).filter(|&i| hole[i]).collect();
+    if idx.is_empty() || idx.len() == w * h {
+        return;
+    }
+    let mut f: Vec<[f32; 3]> = (0..w * h)
+        .map(|i| {
+            let c = img.pixel(i % w, i / w);
+            [c[0] as f32, c[1] as f32, c[2] as f32]
+        })
+        .collect();
+    // Initial guess: mean of the known boundary ring, so iteration starts near the solution.
+    let mut ring = [0.0f32; 3];
+    let mut n_ring = 0.0f32;
+    for &i in &idx {
+        let (x, y) = (i % w, i / w);
+        for (nx, ny) in [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)] {
+            if nx < w && ny < h && !hole[ny * w + nx] {
+                for k in 0..3 {
+                    ring[k] += f[ny * w + nx][k];
                 }
-                if ix + delta < cw && valid[iy * cw + (ix + delta)] {
-                    let c = atlas.image.pixel(ix + delta, iy);
-                    atlas.image.set_pixel(ix, iy, c);
-                    filled = true;
-                    break;
-                }
-            }
-            if !filled {
-                for delta in 1..=ch {
-                    if iy >= delta && valid[(iy - delta) * cw + ix] {
-                        let c = atlas.image.pixel(ix, iy - delta);
-                        atlas.image.set_pixel(ix, iy, c);
-                        break;
-                    }
-                    if iy + delta < ch && valid[(iy + delta) * cw + ix] {
-                        let c = atlas.image.pixel(ix, iy + delta);
-                        atlas.image.set_pixel(ix, iy, c);
-                        break;
-                    }
-                }
+                n_ring += 1.0;
             }
         }
     }
-
-    atlas
+    if n_ring > 0.0 {
+        for &i in &idx {
+            f[i] = ring.map(|v| v / n_ring);
+        }
+    }
+    let (mut x0, mut x1, mut y0, mut y1) = (w, 0, h, 0);
+    for &i in &idx {
+        x0 = x0.min(i % w);
+        x1 = x1.max(i % w);
+        y0 = y0.min(i / w);
+        y1 = y1.max(i / w);
+    }
+    let extent = (x1 - x0).max(y1 - y0) as f32 + 2.0;
+    let omega = 2.0 / (1.0 + (std::f32::consts::PI / extent).sin());
+    let max_sweeps = (extent * extent) as usize;
+    for _ in 0..max_sweeps {
+        let mut max_delta = 0.0f32;
+        for &i in &idx {
+            let (x, y) = (i % w, i / w);
+            let mut acc = [0.0f32; 3];
+            let mut n = 0.0f32;
+            for (nx, ny) in [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)] {
+                if nx < w && ny < h {
+                    let v = f[ny * w + nx];
+                    for k in 0..3 {
+                        acc[k] += v[k];
+                    }
+                    n += 1.0;
+                }
+            }
+            for k in 0..3 {
+                let target = acc[k] / n;
+                let d = omega * (target - f[i][k]);
+                f[i][k] += d;
+                max_delta = max_delta.max(d.abs());
+            }
+        }
+        if max_delta < 0.5 {
+            break;
+        }
+    }
+    for &i in &idx {
+        let c = f[i].map(|v| v.round().clamp(0.0, 255.0) as u8);
+        img.set_pixel(i % w, i / w, c);
+    }
 }
+

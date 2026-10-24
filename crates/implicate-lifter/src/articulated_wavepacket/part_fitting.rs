@@ -195,19 +195,33 @@ pub fn assign_view_idempotent_cells_and_cft_phases(
     let mut protos: Vec<[f32; 64]> = (0..k).map(|i| descs[(i * n) / k]).collect();
     let mut assign = vec![0usize; n];
 
+    // Each cell holds at most as many observations as the Clifford Fourier basis can interpolate
+    // exactly; more members would force its kernel to blend distinct postures.
+    let capacity = n.div_ceil(k).max(CFT_WAVEPACKET_MODES.min(n));
     if k > 1 {
         for _ in 0..8 {
-            for (oi, d) in descs.iter().enumerate() {
-                let mut best_c = 0usize;
-                let mut best_err = f32::MAX;
-                for (ci, p) in protos.iter().enumerate() {
-                    let err: f32 = d.iter().zip(p.iter()).map(|(a, b)| (a - b).powi(2)).sum();
-                    if err < best_err {
-                        best_err = err;
-                        best_c = ci;
-                    }
-                }
-                assign[oi] = best_c;
+            // Capacity-constrained assignment: the most confident observations claim their nearest
+            // prototype first; a full cell passes an observation to its next-nearest prototype.
+            let dist = |d: &[f32; 64], p: &[f32; 64]| -> f32 { d.iter().zip(p.iter()).map(|(a, b)| (a - b).powi(2)).sum() };
+            let mut ranked: Vec<(usize, Vec<(f32, usize)>)> = descs
+                .iter()
+                .enumerate()
+                .map(|(oi, d)| {
+                    let mut ds: Vec<(f32, usize)> = protos.iter().enumerate().map(|(ci, p)| (dist(d, p), ci)).collect();
+                    ds.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                    (oi, ds)
+                })
+                .collect();
+            // Confidence = margin between nearest and second-nearest prototype.
+            ranked.sort_by(|a, b| {
+                let m = |ds: &Vec<(f32, usize)>| ds.get(1).map_or(f32::MAX, |s| s.0 - ds[0].0);
+                m(&b.1).partial_cmp(&m(&a.1)).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            let mut load = vec![0usize; k];
+            for (oi, ds) in &ranked {
+                let ci = ds.iter().map(|&(_, c)| c).find(|&c| load[c] < capacity).unwrap_or(ds[0].1);
+                load[ci] += 1;
+                assign[*oi] = ci;
             }
             for ci in 0..k {
                 let mut sum = [0.0f32; 64];
@@ -276,6 +290,7 @@ pub fn fit_part_gaussian_pose(
             joint_offset_local: [0.0, 0.0],
             view_idempotent_idx: view_cell,
             phase_rad,
+            heading_rad: 0.0,
         };
     }
 
@@ -305,6 +320,7 @@ pub fn fit_part_gaussian_pose(
             joint_offset_local: [0.0, 0.0],
             view_idempotent_idx: view_cell,
             phase_rad,
+            heading_rad: 0.0,
         };
     }
 
@@ -352,6 +368,7 @@ pub fn fit_part_gaussian_pose(
         joint_offset_local: [0.0, 0.0],
         view_idempotent_idx: view_cell,
         phase_rad,
+        heading_rad: 0.0,
     }
 }
 
@@ -398,6 +415,7 @@ pub fn accumulate_part_wavepacket_kernel(
     observations: &[CharacterObservation],
     poses_per_obs: &[Vec<SubHolonPose>],
     part_assignments: &[Vec<usize>],
+    contributes: &[bool],
     part_id: usize,
     view_cell: usize,
     res_w: usize,
@@ -415,7 +433,7 @@ pub fn accumulate_part_wavepacket_kernel(
 
     for (oi, obs) in observations.iter().enumerate() {
         let pose = &poses_per_obs[oi][part_id];
-        if pose.view_idempotent_idx != view_cell {
+        if pose.view_idempotent_idx != view_cell || !contributes.get(oi).copied().unwrap_or(true) {
             continue;
         }
         let bf = WavepacketPartKernel::basis(pose.phase_rad);

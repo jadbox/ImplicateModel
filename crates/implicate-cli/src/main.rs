@@ -4,6 +4,8 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+mod debug;
+
 use implicate_lifter::probe;
 use implicate_unfold::{
     CausalUnfoldEngine, ImplicateContainerManifest, UnfoldSceneSpec, enfold_video_clip,
@@ -16,9 +18,9 @@ fn print_usage() {
         "Usage: implicate <command> [options]\n\n\
          Commands:\n  \
            lexicon  [--output <path.implicate>]                 Compile canonical Implicate Lexicon container\n  \
-           inspect  --input <path.implicate> [--tracks] [--dump-tracks] [--dump-png] Inspect an .implicate v1 binary container\n  \
+           inspect  --input <path.implicate> [--tracks] [--dump-tracks] [--dump-png] [--sheet <dir>] [--palette] [--recon-track <N>] Inspect an .implicate v1 binary container\n  \
            enfold   --video <video.mp4> [--output <path.implicate>] [--max-frames <N>] [--start-sec <S>]\n  \
-           unfold   [--scene <id|all>] [--prompt \"...\"] [--dzog <file.dzog>] [--lexicon <path.implicate>] [--out-dir <dir>]"
+           unfold   [--scene <id|all>] [--prompt \"...\"] [--dzog <file.dzog>] [--lexicon <path.implicate>] [--out-dir <dir>] [--debug]"
     );
 }
 
@@ -135,6 +137,22 @@ fn cmd_inspect(args: &[String]) -> Result<(), String> {
                     let _ = fs::write(&dump_ppm, header);
                     println!("      Saved track {hi} root kernel -> {dump_ppm}");
                 }
+            }
+        }
+        if let Some(ti) = get_arg(args, "--recon-track").and_then(|v| v.parse::<usize>().ok()) {
+            let dir = get_arg(args, "--sheet").unwrap_or_else(|| "/tmp/opencode".to_string());
+            let _ = fs::create_dir_all(&dir);
+            let path = Path::new(&dir).join(format!("{}_track{ti}_recon.png", clip.clip_id));
+            if debug::write_recon_strip(clip, ti, &path).is_ok() {
+                println!("    Saved recon strip -> {}", path.display());
+            }
+        }
+        if args.iter().any(|a| a == "--palette") {
+            debug::print_track_palettes(clip);
+        }
+        if let Some(dir) = get_arg(args, "--sheet") {
+            for p in debug::write_clip_sheets(clip, Path::new(&dir))? {
+                println!("    Saved sheet -> {}", p.display());
             }
         }
         if do_dump && !clip.atlas.layers.is_empty() {
@@ -254,10 +272,19 @@ fn cmd_unfold(args: &[String]) -> Result<(), String> {
         return Err(format!("No scene matched --scene '{scene_filter}'"));
     }
 
+    let debug_mode = args.iter().any(|a| a == "--debug");
     for scene in selected {
         let mut engine = CausalUnfoldEngine::new(manifest.clone(), scene.clone())
             .with_enfolded_clips(&enfolded_clips);
+        if debug_mode {
+            debug::print_dispatch_report(&engine);
+        }
         let report = engine.unfold_all_frames();
+        if debug_mode {
+            let sheet = out_dir.join(format!("{}_debug.png", report.scene_id));
+            debug::write_unfold_sheet(&report, &engine, &sheet)?;
+            println!("[debug] overlay contact sheet -> {}", sheet.display());
+        }
 
         let (wav_path, mp4_path) = report
             .export_wav_and_mp4(&out_dir)

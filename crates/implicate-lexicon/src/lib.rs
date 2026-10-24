@@ -25,7 +25,7 @@ pub use schema::{
     embed_clauses_to_spinors,
 };
 pub use verb_potential::{
-    CORE_VERBS, VerbPotentialEntry, VerbPotentialLexicon, evaluate_verb_unfold_frechet,
+    CORE_VERBS, VerbGrounding, VerbPotentialEntry, VerbPotentialLexicon, evaluate_verb_unfold_frechet,
     synthesize_corpus_verb_clip,
 };
 

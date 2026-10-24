@@ -425,6 +425,7 @@ dependencies = [
 name = "implicate-cli"
 version = "0.1.0"
 dependencies = [
+ "image",
  "implicate-field",
  "implicate-lexicon",
  "implicate-lifter",

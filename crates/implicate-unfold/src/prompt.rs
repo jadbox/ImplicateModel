@@ -26,6 +26,14 @@ pub struct PromptHolonSpec {
     /// Griffith surface cohesion $C \in [0, 1]$ ($C \ge 0.5$ solid matter, $C < 0.5$ field soliton).
     #[serde(default = "default_cohesion")]
     pub cohesion_c: f32,
+    /// Static level fixture ($\mathbf{v} = \mathbf{0}$, $Z \to \infty$): already present in the enfolded
+    /// background atlas, so it acts as a boundary/anchor rather than a splatted sprite.
+    #[serde(default)]
+    pub is_static_fixture: bool,
+    /// True when `base_color` was stated by the author; false when it is a placeholder. Only explicit
+    /// appearance participates in dispatch to enfolded tracks.
+    #[serde(default)]
+    pub appearance_explicit: bool,
 }
 
 fn default_cohesion() -> f32 {
@@ -62,6 +70,10 @@ pub struct UnfoldSceneSpec {
     pub holons: Vec<PromptHolonSpec>,
     pub verb_bindings: Vec<PromptVerbBinding>,
     pub boundaries: Vec<PromptBoundaryBlade>,
+    /// True when `width x height` was stated by the author. Otherwise the scene adopts the native
+    /// resolution of the enfolded clip it unfolds from (see `adapt_to_resolution`).
+    #[serde(default)]
+    pub resolution_explicit: bool,
 }
 
 impl UnfoldSceneSpec {
@@ -94,6 +106,8 @@ impl UnfoldSceneSpec {
                         num_parts: 1,
                         is_camera_locked_hud: false,
                         cohesion_c: 0.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                     PromptHolonSpec {
                         name: "Pacman".to_string(),
@@ -108,6 +122,8 @@ impl UnfoldSceneSpec {
                         num_parts: 1,
                         is_camera_locked_hud: false,
                         cohesion_c: 1.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                     PromptHolonSpec {
                         name: "Blinky_Ghost".to_string(),
@@ -122,6 +138,8 @@ impl UnfoldSceneSpec {
                         num_parts: 1,
                         is_camera_locked_hud: false,
                         cohesion_c: 1.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                     PromptHolonSpec {
                         name: "Inky_Ghost".to_string(),
@@ -136,6 +154,8 @@ impl UnfoldSceneSpec {
                         num_parts: 1,
                         is_camera_locked_hud: false,
                         cohesion_c: 1.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                     PromptHolonSpec {
                         name: "HUD_Score_Bar".to_string(),
@@ -150,6 +170,8 @@ impl UnfoldSceneSpec {
                         num_parts: 1,
                         is_camera_locked_hud: true,
                         cohesion_c: 0.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                 ],
                 verb_bindings: vec![
@@ -187,6 +209,7 @@ impl UnfoldSceneSpec {
                         normal: [-1.0, 0.0],
                     },
                 ],
+                resolution_explicit: true,
             },
             // Scene 2: Super Mario Bros. 3 novel vault & sentinel patrol with scrolling camera & HUD holon
             Self {
@@ -213,6 +236,8 @@ impl UnfoldSceneSpec {
                         num_parts: 1,
                         is_camera_locked_hud: false,
                         cohesion_c: 1.0,
+                        is_static_fixture: true,
+                        appearance_explicit: true,
                     },
                     PromptHolonSpec {
                         name: "Mario".to_string(),
@@ -227,6 +252,8 @@ impl UnfoldSceneSpec {
                         num_parts: 4,
                         is_camera_locked_hud: false,
                         cohesion_c: 1.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                     PromptHolonSpec {
                         name: "Goomba_Sentinel".to_string(),
@@ -241,6 +268,8 @@ impl UnfoldSceneSpec {
                         num_parts: 1,
                         is_camera_locked_hud: false,
                         cohesion_c: 1.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                     PromptHolonSpec {
                         name: "SMB3_HUD_Panel".to_string(),
@@ -255,6 +284,8 @@ impl UnfoldSceneSpec {
                         num_parts: 1,
                         is_camera_locked_hud: true,
                         cohesion_c: 0.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                 ],
                 verb_bindings: vec![
@@ -287,6 +318,7 @@ impl UnfoldSceneSpec {
                         normal: [0.0, 1.0],
                     },
                 ],
+                resolution_explicit: true,
             },
             // Scene 3: Raptor Call of the Shadows novel aerial intercept & glowing plasma orbit
             Self {
@@ -313,6 +345,8 @@ impl UnfoldSceneSpec {
                         num_parts: 1,
                         is_camera_locked_hud: false,
                         cohesion_c: 1.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                     PromptHolonSpec {
                         name: "Raptor_Jet".to_string(),
@@ -327,6 +361,8 @@ impl UnfoldSceneSpec {
                         num_parts: 1,
                         is_camera_locked_hud: false,
                         cohesion_c: 1.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                     PromptHolonSpec {
                         name: "Plasma_Drone".to_string(),
@@ -341,6 +377,8 @@ impl UnfoldSceneSpec {
                         num_parts: 1,
                         is_camera_locked_hud: false,
                         cohesion_c: 0.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                 ],
                 verb_bindings: vec![
@@ -373,6 +411,7 @@ impl UnfoldSceneSpec {
                         normal: [0.0, -1.0],
                     },
                 ],
+                resolution_explicit: true,
             },
             // Scene 4: The Secret of NIMH novel articulated multi-plane scene (Mrs. Brisby P=4 + Jeremy P=6 + Red Amulet + CliffordNet @rolpa)
             Self {
@@ -399,6 +438,8 @@ impl UnfoldSceneSpec {
                         num_parts: 1,
                         is_camera_locked_hud: false,
                         cohesion_c: 0.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                     PromptHolonSpec {
                         name: "Mrs_Brisby".to_string(),
@@ -413,6 +454,8 @@ impl UnfoldSceneSpec {
                         num_parts: 4,
                         is_camera_locked_hud: false,
                         cohesion_c: 1.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                     PromptHolonSpec {
                         name: "Jeremy_Crow".to_string(),
@@ -427,6 +470,8 @@ impl UnfoldSceneSpec {
                         num_parts: 6,
                         is_camera_locked_hud: false,
                         cohesion_c: 1.0,
+                        is_static_fixture: false,
+                        appearance_explicit: true,
                     },
                 ],
                 verb_bindings: vec![
@@ -455,8 +500,190 @@ impl UnfoldSceneSpec {
                         normal: [-1.0, 0.0],
                     },
                 ],
+                resolution_explicit: true,
             },
         ]
+    }
+
+    /// Re-project an implicit-resolution scene onto `(width, height)`: pixel-space positions,
+    /// velocities, radii, and boundary blades scale with the viewport so layout is preserved.
+    pub fn adapt_to_resolution(&mut self, width: u32, height: u32) {
+        if self.resolution_explicit || width == 0 || height == 0 {
+            return;
+        }
+        let sx = width as f32 / self.width.max(1) as f32;
+        let sy = height as f32 / self.height.max(1) as f32;
+        let s_iso = sx.min(sy);
+        for h in &mut self.holons {
+            h.initial_pos = [h.initial_pos[0] * sx, h.initial_pos[1] * sy];
+            h.initial_vel = [h.initial_vel[0] * sx, h.initial_vel[1] * sy];
+            h.radius *= s_iso;
+        }
+        self.camera_scroll_vel = [self.camera_scroll_vel[0] * sx, self.camera_scroll_vel[1] * sy];
+        for b in &mut self.boundaries {
+            b.point = [b.point[0] * sx as f64, b.point[1] * sy as f64];
+        }
+        self.width = width;
+        self.height = height;
+        self.resolution_explicit = true;
+    }
+
+    /// Parse a structured `DzogLang` script:
+    ///
+    /// ```text
+    /// @scene <id> [WxH] [frames=N] [cam_vel=(vx, vy)] [refiner=true|false]
+    /// @holon <Name> [pos=(x, y)] [vel=(vx, vy)] [parts=P] [color=(r, g, b)] [radius=r]
+    ///               [cohesion=C] [rho=..] [K=..] [fixture] [<free attribute words>...]
+    /// @verb <Subject> <verb> <Target>
+    /// @hud <Name>
+    /// ```
+    ///
+    /// Positions/velocities/radii may be pixels or normalized $[0, 1]^2$ coordinates.
+    pub fn parse_dzog_script(script: &str) -> Result<Self, String> {
+        let mut scene_id = "dzog_scene".to_string();
+        let (mut width, mut height, mut resolution_explicit) = (320u32, 240u32, false);
+        let mut num_frames = 60usize;
+        let mut camera_scroll_vel = [0.0f32, 0.0];
+        let mut enable_cliffordnet_refiner = false;
+        let mut holons: Vec<PromptHolonSpec> = Vec::new();
+        let mut verb_bindings: Vec<PromptVerbBinding> = Vec::new();
+        let mut hud_names: Vec<String> = Vec::new();
+
+        for (ln, raw) in script.lines().enumerate() {
+            let line = raw.split('#').next().unwrap_or("").trim();
+            if line.is_empty() {
+                continue;
+            }
+            let (head, rest) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
+            let (kv, words) = parse_dzog_attrs(rest);
+            let get = |k: &str| kv.iter().find(|(key, _)| key.eq_ignore_ascii_case(k)).map(|(_, v)| v.as_str());
+            match head {
+                "@scene" => {
+                    if let Some(id) = words.first() {
+                        scene_id = sanitize_ident(id);
+                    }
+                    for w in &words {
+                        if let (w_, h_, true) = parse_prompt_resolution(&w.to_ascii_lowercase()) {
+                            (width, height, resolution_explicit) = (w_, h_, true);
+                        }
+                    }
+                    if let Some(n) = get("frames").and_then(|v| v.parse().ok()) {
+                        num_frames = n;
+                    }
+                    if let Some(v) = get("cam_vel").and_then(parse_dzog_vec::<2>) {
+                        camera_scroll_vel = [v[0] as f32, v[1] as f32];
+                    }
+                    if let Some(v) = get("refiner") {
+                        enable_cliffordnet_refiner = v.eq_ignore_ascii_case("true");
+                    }
+                }
+                "@holon" => {
+                    let Some(name) = words.first().map(|w| sanitize_ident(w)) else {
+                        return Err(format!("line {}: @holon requires a name", ln + 1));
+                    };
+                    let attrs = words[1..].join(" ");
+                    let attr_lower = attrs.to_ascii_lowercase();
+                    let name_lower = name.to_ascii_lowercase();
+                    let explicit_color = get("color").and_then(parse_dzog_vec::<3>).map(|c| c.map(|v| v.clamp(0.0, 255.0) as u8));
+                    let (base_color, appearance_explicit) = match explicit_color.or_else(|| infer_actor_color(&name_lower, &attr_lower)) {
+                        Some(c) => (c, true),
+                        None => (placeholder_color(holons.len()), false),
+                    };
+                    let num_parts = get("parts")
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or_else(|| parse_part_count(&attr_lower, &name_lower))
+                        .clamp(1, 8);
+                    let cohesion_c = get("cohesion").and_then(|v| v.parse().ok()).unwrap_or(1.0);
+                    let lum = get("glow").and_then(parse_dzog_vec::<3>).map(|v| v.map(|x| x as f32));
+                    holons.push(PromptHolonSpec {
+                        name: name.clone(),
+                        semantic_clause: format!("{name} {attrs}").trim().to_string(),
+                        initial_pos: get("pos").and_then(parse_dzog_vec::<2>).map(|v| [v[0] as f32, v[1] as f32]).unwrap_or([0.5, 0.5]),
+                        initial_vel: get("vel").and_then(parse_dzog_vec::<2>).map(|v| [v[0] as f32, v[1] as f32]).unwrap_or([0.0, 0.0]),
+                        radius: get("radius").and_then(|v| v.parse().ok()).unwrap_or(6.0),
+                        rho: get("rho").and_then(|v| v.parse().ok()).unwrap_or(1.0),
+                        bulk_modulus_k: get("k").and_then(|v| v.parse().ok()).unwrap_or(1.5),
+                        base_color,
+                        luminescence_emission: lum.unwrap_or([0.0; 3]),
+                        num_parts,
+                        is_camera_locked_hud: false,
+                        cohesion_c,
+                        is_static_fixture: words.iter().any(|w| w.eq_ignore_ascii_case("fixture")),
+                        appearance_explicit,
+                    });
+                }
+                "@verb" => {
+                    if words.len() < 3 {
+                        return Err(format!("line {}: @verb expects '<Subject> <verb> <Target>'", ln + 1));
+                    }
+                    verb_bindings.push(PromptVerbBinding {
+                        subject: sanitize_ident(&words[0]),
+                        verb: words[1].clone(),
+                        target: sanitize_ident(&words[2]),
+                    });
+                }
+                "@hud" => {
+                    hud_names.push(words.first().map(|w| sanitize_ident(w)).unwrap_or_else(|| "HUD".to_string()));
+                }
+                other => return Err(format!("line {}: unknown directive '{other}'", ln + 1)),
+            }
+        }
+
+        for vb in &verb_bindings {
+            for n in [&vb.subject, &vb.target] {
+                if !holons.iter().any(|h| &h.name == n) {
+                    return Err(format!("@verb references undeclared holon '{n}'"));
+                }
+            }
+        }
+        if verb_bindings.is_empty() {
+            return Err("DzogLang script declares no @verb bindings".to_string());
+        }
+        for name in hud_names {
+            holons.push(PromptHolonSpec {
+                name,
+                semantic_clause: "entity_hud_interface camera_locked_hud score status bar".to_string(),
+                // Pixel units: camera-locked holons are re-anchored to the camera motor every frame.
+                initial_pos: [width as f32 * 0.5, height as f32 * 0.05],
+                initial_vel: camera_scroll_vel,
+                radius: 0.02 * width.min(height) as f32,
+                rho: 1.0,
+                bulk_modulus_k: 1.0,
+                base_color: [245, 235, 200],
+                luminescence_emission: [0.0; 3],
+                num_parts: 1,
+                is_camera_locked_hud: true,
+                cohesion_c: 0.0,
+                is_static_fixture: false,
+                appearance_explicit: false,
+            });
+        }
+
+        // Viewport boundary blades inset by a fraction of the shorter side.
+        let inset = 0.04 * width.min(height) as f64;
+        let (wf, hf) = (width as f64, height as f64);
+        let boundaries = vec![
+            PromptBoundaryBlade { point: [inset, inset], normal: [0.0, 1.0] },
+            PromptBoundaryBlade { point: [inset, hf - inset], normal: [0.0, -1.0] },
+            PromptBoundaryBlade { point: [inset, inset], normal: [1.0, 0.0] },
+            PromptBoundaryBlade { point: [wf - inset, inset], normal: [-1.0, 0.0] },
+        ];
+
+        Ok(Self {
+            scene_id,
+            prompt_text: script.to_string(),
+            width,
+            height,
+            num_frames,
+            camera_scroll_vel,
+            background_top_rgb: [16, 22, 46],
+            background_bottom_rgb: [38, 28, 52],
+            enable_cliffordnet_refiner,
+            holons,
+            verb_bindings,
+            boundaries,
+            resolution_explicit,
+        })
     }
 
     /// Parse a free-form text or `DzogLang` scene specification into an `UnfoldSceneSpec`.
@@ -468,6 +695,12 @@ impl UnfoldSceneSpec {
         let trimmed = input.trim();
         if trimmed.is_empty() {
             return Err("Empty prompt string".to_string());
+        }
+        if trimmed.lines().any(|l| {
+            let l = l.trim_start();
+            l.starts_with("@holon") || l.starts_with("@verb")
+        }) {
+            return Self::parse_dzog_script(trimmed);
         }
 
         // Extract optional `@scene <id>:` header
@@ -489,7 +722,7 @@ impl UnfoldSceneSpec {
         }
 
         let lower_all = trimmed.to_ascii_lowercase();
-        let (width, height) = parse_prompt_resolution(&lower_all);
+        let (width, height, resolution_explicit) = parse_prompt_resolution(&lower_all);
         let num_frames = 60usize;
         let enable_cliffordnet_refiner = lower_all.contains("cliffordnet")
             || lower_all.contains("@rolpa")
@@ -584,7 +817,11 @@ impl UnfoldSceneSpec {
                 }
             };
 
-            let base_color = infer_actor_color(&name_lower, &attr_lower, is_target, bind_idx);
+            let (base_color, appearance_explicit) =
+                match infer_actor_color(&name_lower, &attr_lower) {
+                    Some(c) => (c, true),
+                    None => (placeholder_color(bind_idx + holons.len()), false),
+                };
             let luminescence_emission = if is_glow {
                 [3.2, 1.4, 0.8]
             } else {
@@ -614,6 +851,8 @@ impl UnfoldSceneSpec {
                 num_parts,
                 is_camera_locked_hud: false,
                 cohesion_c,
+                is_static_fixture: is_terrain && is_target,
+                appearance_explicit,
             });
             name
         };
@@ -713,6 +952,8 @@ impl UnfoldSceneSpec {
                 num_parts: 1,
                 is_camera_locked_hud: true,
                 cohesion_c: 0.0,
+                is_static_fixture: false,
+                appearance_explicit: false,
             });
         }
 
@@ -748,8 +989,52 @@ impl UnfoldSceneSpec {
             holons,
             verb_bindings,
             boundaries,
+            resolution_explicit,
         })
     }
+}
+
+/// Split a DzogLang directive tail into `key=value` pairs (values may be parenthesized tuples
+/// containing spaces) and bare words.
+fn parse_dzog_attrs(rest: &str) -> (Vec<(String, String)>, Vec<String>) {
+    let (mut kv, mut words) = (Vec::new(), Vec::new());
+    let mut chars = rest.chars().peekable();
+    let mut tok = String::new();
+    let mut depth = 0i32;
+    let flush = |tok: &mut String, kv: &mut Vec<(String, String)>, words: &mut Vec<String>| {
+        let t = tok.trim().trim_matches(',').to_string();
+        if !t.is_empty() {
+            match t.split_once('=') {
+                Some((k, v)) => kv.push((k.trim().to_string(), v.trim().to_string())),
+                None => words.push(t.trim_matches(|c| c == '(' || c == ')').to_string()),
+            }
+        }
+        tok.clear();
+    };
+    while let Some(c) = chars.next() {
+        match c {
+            '(' => {
+                depth += 1;
+                tok.push(c);
+            }
+            ')' => {
+                depth -= 1;
+                tok.push(c);
+            }
+            c if c.is_whitespace() && depth <= 0 => flush(&mut tok, &mut kv, &mut words),
+            _ => tok.push(c),
+        }
+    }
+    flush(&mut tok, &mut kv, &mut words);
+    words.retain(|w| !w.is_empty());
+    (kv, words)
+}
+
+/// Parse an `N`-tuple such as `(1.0, 2.0)`.
+fn parse_dzog_vec<const N: usize>(v: &str) -> Option<[f64; N]> {
+    let inner = v.trim().trim_start_matches('(').trim_end_matches(')');
+    let parts: Vec<f64> = inner.split(',').map(|p| p.trim().parse::<f64>()).collect::<Result<_, _>>().ok()?;
+    parts.try_into().ok()
 }
 
 fn parse_actor_and_attrs(raw: &str) -> (String, String) {
@@ -797,27 +1082,19 @@ fn sanitize_ident(raw: &str) -> String {
     }
 }
 
-fn parse_prompt_resolution(text: &str) -> (u32, u32) {
+/// Parse an explicit `WxH` resolution token. Without one, a neutral default is returned and
+/// flagged as implicit so the scene can adopt its enfolded clip's native resolution.
+fn parse_prompt_resolution(text: &str) -> (u32, u32, bool) {
     for part in text.split(|c: char| c == '_' || c.is_whitespace() || c == ':') {
         if let Some((w_str, h_str)) = part.split_once('x') {
             if let (Ok(w), Ok(h)) = (w_str.parse::<u32>(), h_str.parse::<u32>()) {
                 if w >= 32 && w <= 4096 && h >= 32 && h <= 4096 {
-                    return (w, h);
+                    return (w, h, true);
                 }
             }
         }
     }
-    if text.contains("vault") {
-        (256, 240)
-    } else if text.contains("sanctuary") {
-        (320, 180)
-    } else if text.contains("intercept") {
-        (320, 240)
-    } else if text.contains("talisman") || text.contains("orbit") {
-        (240, 308)
-    } else {
-        (320, 240)
-    }
+    (320, 240, false)
 }
 
 fn parse_part_count(attr_lower: &str, name_lower: &str) -> usize {
@@ -831,73 +1108,56 @@ fn parse_part_count(attr_lower: &str, name_lower: &str) -> usize {
             return p.clamp(1, 8);
         }
     }
+    // Morphology words only; archetypes ("hero") and roles carry no body-plan information.
     let combined = format!("{attr_lower} {name_lower}");
-    if combined.contains("winged")
-        || combined.contains("avian")
-        || combined.contains("bird")
-        || combined.contains("carrier")
-    {
+    if ["winged", "avian", "bird"].iter().any(|w| combined.contains(w)) {
         6
-    } else if combined.contains("articulated")
-        || combined.contains("quadruped")
-        || combined.contains("biped")
-        || combined.contains("hero")
-        || combined.contains("humanoid")
-        || combined.contains("jumper")
-    {
+    } else if ["articulated", "quadruped", "biped", "humanoid"].iter().any(|w| combined.contains(w)) {
         4
     } else {
         1
     }
 }
 
-fn infer_actor_color(name_lower: &str, attr_lower: &str, is_target: bool, idx: usize) -> [u8; 3] {
-    let combined = format!("{attr_lower} {name_lower}");
-    if combined.contains("yellow") || combined.contains("lemon") || combined.contains("blonde") {
-        [255, 235, 0]
-    } else if combined.contains("red")
-        || combined.contains("crimson")
-        || combined.contains("scarlet")
-        || combined.contains("ruby")
-    {
-        [235, 55, 55]
-    } else if combined.contains("cyan")
-        || combined.contains("azure")
-        || combined.contains("teal")
-        || (combined.contains("blue") && !combined.contains("dark"))
-    {
-        [70, 215, 255]
-    } else if combined.contains("gold")
-        || combined.contains("golden")
-        || combined.contains("amber")
-        || is_target
-    {
-        [245, 190, 50]
-    } else if combined.contains("brown")
-        || combined.contains("tan")
-        || combined.contains("orange")
-        || combined.contains("copper")
-        || combined.contains("earth")
-    {
-        [165, 85, 35]
-    } else if combined.contains("green")
-        || combined.contains("emerald")
-        || combined.contains("lime")
-    {
-        [60, 210, 75]
-    } else if combined.contains("dark") || combined.contains("black") || combined.contains("shadow") {
-        [45, 45, 60]
-    } else if combined.contains("white") || combined.contains("bright") || combined.contains("silver") {
-        [240, 240, 250]
-    } else {
-        const PALETTE: &[[u8; 3]] = &[
-            [235, 55, 55],
-            [70, 215, 255],
-            [255, 235, 0],
-            [165, 85, 35],
-            [210, 220, 240],
-            [95, 175, 235],
-        ];
-        PALETTE[idx % PALETTE.len()]
-    }
+/// Basic colour vocabulary of the prompt language: the words authors can use, and the category
+/// sites against which enfolded holon palettes are measured during dispatch.
+pub const NAMED_COLORS: &[(&[&str], [u8; 3])] = &[
+    (&["yellow", "lemon", "blonde"], [255, 235, 0]),
+    (&["red", "crimson", "scarlet", "ruby"], [235, 55, 55]),
+    (&["cyan", "azure", "teal", "blue"], [70, 215, 255]),
+    (&["pink", "magenta", "rose"], [255, 170, 220]),
+    (&["gold", "golden", "amber"], [245, 190, 50]),
+    (&["orange"], [255, 150, 40]),
+    (&["brown", "tan", "copper", "earth"], [150, 85, 40]),
+    (&["green", "emerald", "lime"], [60, 210, 75]),
+    (&["navy", "indigo", "violet", "purple"], [70, 60, 170]),
+    (&["black", "dark"], [20, 20, 28]),
+    (&["gray", "grey", "slate"], [128, 128, 136]),
+    (&["white", "silver"], [240, 240, 250]),
+];
+
+/// Colour stated in the holon's name or attributes, if any (first vocabulary match).
+fn infer_actor_color(name_lower: &str, attr_lower: &str) -> Option<[u8; 3]> {
+    let words: Vec<&str> = attr_lower
+        .split(|c: char| !c.is_alphanumeric())
+        .chain(name_lower.split(|c: char| !c.is_alphanumeric()))
+        .filter(|w| !w.is_empty())
+        .collect();
+    NAMED_COLORS
+        .iter()
+        .find(|(terms, _)| words.iter().any(|w| terms.contains(w)))
+        .map(|(_, rgb)| *rgb)
+}
+
+/// Distinguishable placeholder used only for procedural rendering when no colour was stated.
+fn placeholder_color(idx: usize) -> [u8; 3] {
+    const PALETTE: &[[u8; 3]] = &[
+        [235, 55, 55],
+        [70, 215, 255],
+        [255, 235, 0],
+        [165, 85, 35],
+        [210, 220, 240],
+        [95, 175, 235],
+    ];
+    PALETTE[idx % PALETTE.len()]
 }

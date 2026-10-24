@@ -442,11 +442,13 @@ fn r7_multi_actor_cft_impulse_and_view_idempotent_gate() {
         &clip_pac.holons[0],
         &engine.holons[0],
         0,
+        clip_pac.fps() / implicate_rolpa::DEFAULT_VIDEO_FPS as f64,
     );
     let idx_f15 = CausalUnfoldEngine::select_view_idempotent_observation_index(
         &clip_pac.holons[0],
         &engine.holons[0],
         15,
+        clip_pac.fps() / implicate_rolpa::DEFAULT_VIDEO_FPS as f64,
     );
     assert!(idx_f0 < clip_pac.holons[0].poses_per_obs.len());
     assert!(idx_f15 < clip_pac.holons[0].poses_per_obs.len());

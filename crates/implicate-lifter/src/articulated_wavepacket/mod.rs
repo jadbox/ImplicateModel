@@ -15,7 +15,8 @@ use crate::enfold2d::{Rect, RgbImage8};
 
 pub use clifford_features::{
     ArticulatedComparisonReport, compute_cliffordnet_laplacian_features,
-    compute_perceptual_patch_lpips, evaluate_vs_single_box_baseline, mask_iou,
+    compute_perceptual_patch_lpips, evaluate_vs_single_box_baseline,
+    evaluate_vs_single_box_baseline_with_parts, mask_iou,
 };
 use part_fitting::{
     accumulate_part_wavepacket_kernel, assign_view_idempotent_cells_and_cft_phases,
@@ -24,10 +25,6 @@ use part_fitting::{
 
 /// Maximum number of sub-holon parts per articulated character ($P \in \{1..8\}$).
 pub const MAX_SUB_HOLONS: usize = 8;
-/// Canonical local grid resolution ($K \times K$) for each sub-holon's oriented wavepacket kernel.
-pub const PART_KERNEL_RES: usize = 24;
-/// Maximum number of discrete view-aspect / posture idempotent cells ($\epsilon_{s,\text{view}}$).
-pub const MAX_VIEW_IDEMPOTENTS: usize = 8;
 
 /// Single frame observation of a foreground character extracted against the background atlas.
 #[derive(Clone, Debug)]
@@ -36,6 +33,11 @@ pub struct CharacterObservation {
     pub bbox: Rect,
     pub mask: Vec<bool>,
     pub rgb: Vec<u8>,
+    /// Camera translation at `frame_idx` (world = screen + offset).
+    pub camera_offset: [f64; 2],
+    /// True when the silhouette touches the frame edge: the holon is only partially in view, so the
+    /// observation informs kinematics but not appearance.
+    pub truncated: bool,
 }
 
 impl CharacterObservation {
@@ -45,6 +47,12 @@ impl CharacterObservation {
 
     pub fn height(&self) -> usize {
         self.bbox.height().max(0) as usize
+    }
+
+    /// Silhouette centre in world (atlas) coordinates.
+    pub fn world_center(&self) -> [f64; 2] {
+        let c = self.bbox.center();
+        [c[0] + self.camera_offset[0], c[1] + self.camera_offset[1]]
     }
 }
 
@@ -60,6 +68,10 @@ pub struct SubHolonPose {
     pub joint_offset_local: [f64; 2],
     pub view_idempotent_idx: usize,
     pub phase_rad: f64,
+    /// World-space direction of travel at this observation ($\text{Spin}(2)$ heading rotor angle).
+    /// Distinct from `angle_rad`, the part's geometric frame orientation.
+    #[serde(default)]
+    pub heading_rad: f64,
 }
 
 impl SubHolonPose {
@@ -78,7 +90,7 @@ impl SubHolonPose {
             vitality_amplitude,
             self.angle_rad,
             self.view_idempotent_idx as u32,
-            MAX_VIEW_IDEMPOTENTS,
+            self.view_idempotent_idx + 1,
             color,
         )
     }
@@ -164,50 +176,120 @@ pub struct ArticulatedHolon {
     pub part_colors: Vec<[u8; 3]>,
     pub kernels: Vec<Vec<WavepacketPartKernel>>,
     pub poses_per_obs: Vec<Vec<SubHolonPose>>,
+    /// Source frame index of each entry in `poses_per_obs`.
+    pub obs_frames: Vec<usize>,
 }
 
-/// Automatically determine the optimal sub-holon part count $P \in \{1..8\}$ and view-aspect
-/// idempotent count $S_{\text{view}} \in \{1..8\}$ from the sequence's deformation complexity.
+/// Silhouette IoU a holon model must reach to be accepted (the R2.3 reconstruction gate).
+pub const HOLON_MODEL_QUALITY_IOU: f64 = 0.88;
+/// Articulated part counts tried in increasing capacity once a rigid model is insufficient.
+const ARTICULATED_PART_CANDIDATES: [usize; 3] = [3, 4, 6];
+
+/// View-idempotent count for `n` observations: the fewest posture cells such that each cell's
+/// members can be interpolated exactly by the `CFT_WAVEPACKET_MODES`-mode Clifford Fourier basis
+/// (more members per cell would force the fit to blend distinct drawings).
+fn view_count_for(n: usize, num_parts: usize) -> usize {
+    let lo = if num_parts == 1 { 1 } else { 2 };
+    n.div_ceil(CFT_WAVEPACKET_MODES).max(lo).min(n.max(1))
+}
+
+/// Choose the sub-holon part count $P$ and view-idempotent count $S_{\text{view}}$ by posture
+/// recurrence rather than size or aspect heuristics.
+///
+/// A holon is rigid ($P = 1$) when its states recur: posture idempotents $\epsilon_{s,\text{view}}$
+/// learned from the first half of its track explain the second half at `HOLON_MODEL_QUALITY_IOU`
+/// (turning, cycled gaits, re-drawn frames). Continuous novel deformation (capes, wings) cannot be
+/// spanned by recurring states and needs articulated motors: the smallest $P$ whose fit reaches
+/// the target is chosen (else the best).
 pub fn choose_part_and_view_counts(observations: &[CharacterObservation]) -> (usize, usize) {
-    if observations.is_empty() {
-        return (1, 1);
+    let n = observations.len();
+    if n < 4 {
+        return (1, view_count_for(n, 1));
     }
-    let mut ws: Vec<i32> = observations.iter().map(|o| o.bbox.width()).collect();
-    let mut hs: Vec<i32> = observations.iter().map(|o| o.bbox.height()).collect();
-    ws.sort_unstable();
-    hs.sort_unstable();
-    let med_w = ws[ws.len() / 2].max(1) as f64;
-    let med_h = hs[hs.len() / 2].max(1) as f64;
-    let max_dim = med_w.max(med_h);
-
-    let mean_aspect = observations
-        .iter()
-        .map(|o| o.bbox.width().max(1) as f64 / o.bbox.height().max(1) as f64)
-        .sum::<f64>()
-        / observations.len() as f64;
-    let aspect_var = observations
-        .iter()
-        .map(|o| {
-            let a = o.bbox.width().max(1) as f64 / o.bbox.height().max(1) as f64;
-            (a - mean_aspect) * (a - mean_aspect)
-        })
-        .sum::<f64>()
-        / observations.len() as f64;
-    let aspect_cv = aspect_var.sqrt() / mean_aspect.max(1e-3);
-
-    if max_dim <= 56.0 && aspect_cv < 0.28 {
-        return (1, 1);
+    let rec = rigid_recurrence_iou(observations);
+    if rec >= HOLON_MODEL_QUALITY_IOU {
+        return (1, view_count_for(n, 1));
     }
+    let mut best = (0.0f64, ARTICULATED_PART_CANDIDATES[ARTICULATED_PART_CANDIDATES.len() - 1]);
+    for &p in &ARTICULATED_PART_CANDIDATES {
+        let model = fit_articulated_holon(observations, Some(p));
+        let iou = observations
+            .iter()
+            .enumerate()
+            .map(|(oi, o)| mask_iou(&o.mask, &render_articulated_holon_observation(&model, o, oi).0))
+            .sum::<f64>()
+            / n as f64;
+        if iou >= HOLON_MODEL_QUALITY_IOU {
+            return (p.min(MAX_SUB_HOLONS), view_count_for(n, p));
+        }
+        if iou > best.0 {
+            best = (iou, p);
+        }
+    }
+    (best.1.min(MAX_SUB_HOLONS), view_count_for(n, best.1))
+}
 
-    let num_parts = if max_dim >= 96.0 || aspect_cv >= 0.30 {
-        6
-    } else if max_dim >= 64.0 || aspect_cv >= 0.22 {
-        4
-    } else {
-        3
+/// Scale-fair silhouette IoU: a mismatched pixel only counts when it lies more than one texel
+/// from the other silhouette, so sampling-lattice quantization of the boundary is not mistaken
+/// for structural shape change (which would otherwise penalize small holons disproportionately).
+pub fn lattice_tolerant_iou(a: &[bool], b: &[bool], w: usize, h: usize) -> f64 {
+    let near = |m: &[bool], x: usize, y: usize| -> bool {
+        let (x0, x1) = (x.saturating_sub(1), (x + 1).min(w - 1));
+        let (y0, y1) = (y.saturating_sub(1), (y + 1).min(h - 1));
+        (y0..=y1).any(|yy| (x0..=x1).any(|xx| m[yy * w + xx]))
     };
-    let num_views = (observations.len().div_ceil(3)).clamp(2, MAX_VIEW_IDEMPOTENTS);
-    (num_parts.min(MAX_SUB_HOLONS), num_views)
+    let (mut inter, mut structural) = (0usize, 0usize);
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            match (a[i], b[i]) {
+                (true, true) => inter += 1,
+                (true, false) if !near(b, x, y) => structural += 1,
+                (false, true) if !near(a, x, y) => structural += 1,
+                _ => {}
+            }
+        }
+    }
+    if inter + structural == 0 { 1.0 } else { inter as f64 / (inter + structural) as f64 }
+}
+
+/// Silhouette IoU with which a rigid posture model fit on the first half of the track explains
+/// each observation of the second half by its best learned configuration (centre-aligned, with a
+/// one-texel lattice tolerance).
+fn rigid_recurrence_iou(observations: &[CharacterObservation]) -> f64 {
+    let half = observations.len() / 2;
+    let (train, test) = observations.split_at(half);
+    if train.is_empty() || test.is_empty() {
+        return 0.0;
+    }
+    let model = fit_articulated_holon(train, Some(1));
+    let mut total = 0.0f64;
+    for t in test {
+        let tc = t.bbox.center();
+        let mut best = 0.0f64;
+        for (j, tr) in train.iter().enumerate() {
+            let Some(poses) = model.poses_per_obs.get(j) else { continue };
+            let jc = tr.bbox.center();
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let shifted: Vec<SubHolonPose> = poses
+                        .iter()
+                        .map(|p| SubHolonPose {
+                            center: [
+                                p.center[0] + tc[0] - jc[0] + dx as f64,
+                                p.center[1] + tc[1] - jc[1] + dy as f64,
+                            ],
+                            ..*p
+                        })
+                        .collect();
+                    let (mask, _) = render_with_poses(&model, &shifted, t);
+                    best = best.max(lattice_tolerant_iou(&t.mask, &mask, t.width(), t.height()));
+                }
+            }
+        }
+        total += best;
+    }
+    total / test.len() as f64
 }
 
 /// Fit an `ArticulatedHolon` to a tracked character sequence.
@@ -215,13 +297,32 @@ pub fn fit_articulated_holon(
     observations: &[CharacterObservation],
     forced_parts: Option<usize>,
 ) -> ArticulatedHolon {
-    let (auto_p, auto_views) = choose_part_and_view_counts(observations);
-    let num_parts = forced_parts.unwrap_or(auto_p).clamp(1, MAX_SUB_HOLONS);
-    let num_view_cells = if num_parts == 1 {
-        (observations.len().div_ceil(3)).clamp(1, MAX_VIEW_IDEMPOTENTS)
-    } else {
-        auto_views
+    // Truncated observations and silhouette-area outliers relative to the holon's own variability
+    // (merges with other holons, residual debris) keep their kinematics but shape neither
+    // morphology nor appearance.
+    let (med_w, med_h) = median_obs_dims(observations);
+    let outlier = area_outliers(observations);
+    let mut clean: Vec<bool> = observations.iter().zip(&outlier).map(|(o, &out)| !o.truncated && !out).collect();
+    if std::env::var_os("IMPLICATE_DEBUG_TRACKS").is_some() {
+        eprintln!(
+            "[fit] n={} truncated={} area_outliers={} clean={}",
+            observations.len(),
+            observations.iter().filter(|o| o.truncated).count(),
+            outlier.iter().filter(|&&o| o).count(),
+            clean.iter().filter(|&&c| c).count()
+        );
+    }
+    if !clean.contains(&true) {
+        // No complete observation: all of them are the best available evidence.
+        clean.iter_mut().for_each(|c| *c = true);
+    }
+    let defining: Vec<usize> = (0..observations.len()).filter(|&i| clean[i]).collect();
+    let defining_obs: Vec<CharacterObservation> = defining.iter().map(|&i| observations[i].clone()).collect();
+    let auto_p = match forced_parts {
+        Some(p) => p,
+        None => choose_part_and_view_counts(&defining_obs).0,
     };
+    let num_parts = forced_parts.unwrap_or(auto_p).clamp(1, MAX_SUB_HOLONS);
 
     if observations.is_empty() {
         return ArticulatedHolon {
@@ -231,6 +332,7 @@ pub fn fit_articulated_holon(
             part_colors: vec![[128, 128, 128]; num_parts],
             kernels: Vec::new(),
             poses_per_obs: Vec::new(),
+            obs_frames: Vec::new(),
         };
     }
 
@@ -246,8 +348,25 @@ pub fn fit_articulated_holon(
         })
         .collect();
     let parent_indices = vec![0usize; num_parts];
-    let (view_assignments, cft_phases) =
-        assign_view_idempotent_cells_and_cft_phases(observations, num_view_cells);
+    // Posture idempotents are learned from the observations that shape appearance (clean ones);
+    // each unclean observation inherits the cell and phase of its temporally nearest clean one.
+    let num_view_cells = view_count_for(defining_obs.len(), num_parts);
+    let (cells, phases) = assign_view_idempotent_cells_and_cft_phases(&defining_obs, num_view_cells);
+    let mut view_assignments = vec![0usize; observations.len()];
+    let mut cft_phases = vec![0.0f64; observations.len()];
+    for (k, &i) in defining.iter().enumerate() {
+        view_assignments[i] = cells[k];
+        cft_phases[i] = phases[k];
+    }
+    for oi in 0..observations.len() {
+        if clean[oi] {
+            continue;
+        }
+        if let Some(&ni) = defining.iter().min_by_key(|&&j| observations[j].frame_idx.abs_diff(observations[oi].frame_idx)) {
+            view_assignments[oi] = view_assignments[ni];
+            cft_phases[oi] = cft_phases[ni];
+        }
+    }
 
     let n_obs = observations.len();
     let mut poses_per_obs: Vec<Vec<SubHolonPose>> = Vec::with_capacity(n_obs);
@@ -298,16 +417,16 @@ pub fn fit_articulated_holon(
 
         let motion_heading = if observations.len() > 1 {
             let (c_curr, c_next) = if oi + 1 < observations.len() {
-                (observations[oi].bbox.center(), observations[oi + 1].bbox.center())
+                (observations[oi].world_center(), observations[oi + 1].world_center())
             } else {
-                (observations[oi - 1].bbox.center(), observations[oi].bbox.center())
+                (observations[oi - 1].world_center(), observations[oi].world_center())
             };
             let dx = c_next[0] - c_curr[0];
             let dy = c_next[1] - c_curr[1];
             if dx.abs() + dy.abs() > 0.25 {
                 dy.atan2(dx)
             } else if oi > 0 && !poses_per_obs.is_empty() {
-                poses_per_obs[oi - 1][0].angle_rad
+                poses_per_obs[oi - 1][0].heading_rad
             } else {
                 0.0
             }
@@ -324,9 +443,7 @@ pub fn fit_articulated_holon(
                 view_cell,
                 phase_rad,
             );
-            if num_parts == 1 {
-                pose.angle_rad = motion_heading;
-            }
+            pose.heading_rad = motion_heading;
             frame_poses.push(pose);
         }
 
@@ -341,26 +458,52 @@ pub fn fit_articulated_holon(
         part_assignments_per_obs.push(pixel_part);
     }
 
-    let res = if num_parts == 1 {
-        let (mw, mh) = median_obs_dims(observations);
-        mw.max(mh).clamp(16, 48)
+    // Rigid holons use a pixel-native kernel frame (1 texel = 1 source pixel) with half-extents
+    // shared by all observations, registered per view cell; articulated parts use a canonical grid.
+    // Every kernel is pixel-native (1 texel per source pixel at the part's largest observed extent),
+    // so neither rigid holons nor articulated parts are resampled through a fixed canonical grid.
+    let part_res: Vec<(usize, usize)> = if num_parts == 1 {
+        let clean_obs = || observations.iter().zip(&clean).filter(|(_, c)| **c).map(|(o, _)| o);
+        let rw = clean_obs().map(|o| o.width()).max().unwrap_or(med_w).max(1);
+        let rh = clean_obs().map(|o| o.height()).max().unwrap_or(med_h).max(1);
+        register_rigid_observations(observations, &mut poses_per_obs, &view_assignments, &clean, rw, rh);
+        vec![(rw, rh)]
     } else {
-        PART_KERNEL_RES
+        (0..num_parts)
+            .map(|p| {
+                let max_r = |axis: usize| {
+                    poses_per_obs
+                        .iter()
+                        .zip(&clean)
+                        .filter(|(_, c)| **c)
+                        .map(|(poses, _)| poses[p].radii[axis])
+                        .fold(1.0f64, f64::max)
+                };
+                ((2.0 * max_r(0)).round() as usize + 1, (2.0 * max_r(1)).round() as usize + 1)
+            })
+            .collect()
     };
 
     let mut kernels: Vec<Vec<WavepacketPartKernel>> = Vec::with_capacity(num_view_cells);
     for vc in 0..num_view_cells {
         let mut vc_kernels = Vec::with_capacity(num_parts);
         for p in 0..num_parts {
-            vc_kernels.push(accumulate_part_wavepacket_kernel(
+            let (res_w, res_h) = part_res[p];
+            let mut k = accumulate_part_wavepacket_kernel(
                 observations,
                 &poses_per_obs,
                 &part_assignments_per_obs,
+                &clean,
                 p,
                 vc,
-                res,
-                res,
-            ));
+                res_w,
+                res_h,
+            );
+            if num_parts == 1 {
+                // A lone rigid part needs no partition-of-unity window: its silhouette alpha is the support.
+                k.gaussian_envelope.iter_mut().for_each(|g| *g = 1.0);
+            }
+            vc_kernels.push(k);
         }
         kernels.push(vc_kernels);
     }
@@ -372,6 +515,112 @@ pub fn fit_articulated_holon(
         part_colors,
         kernels,
         poses_per_obs,
+        obs_frames: observations.iter().map(|o| o.frame_idx).collect(),
+    }
+}
+
+/// Robust outlier bound in median absolute deviations (the conventional 3-sigma-equivalent).
+const OUTLIER_MADS: f64 = 3.0;
+/// Scale factor making the MAD a consistent estimator of the standard deviation.
+const MAD_TO_SIGMA: f64 = 1.4826;
+
+/// Observations whose log silhouette area deviates from the track median by more than
+/// `OUTLIER_MADS` robust standard deviations: stable bodies flag merges, deforming bodies tolerate
+/// their own range of motion.
+fn area_outliers(observations: &[CharacterObservation]) -> Vec<bool> {
+    let la: Vec<f64> = observations
+        .iter()
+        .map(|o| (o.mask.iter().filter(|&&m| m).count().max(1) as f64).ln())
+        .collect();
+    let median = |v: &mut Vec<f64>| {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        v.get(v.len() / 2).copied().unwrap_or(0.0)
+    };
+    let m = median(&mut la.clone());
+    let sigma = MAD_TO_SIGMA * median(&mut la.iter().map(|a| (a - m).abs()).collect());
+    la.iter().map(|a| sigma > 0.0 && (a - m).abs() > OUTLIER_MADS * sigma).collect()
+}
+
+/// Register rigid ($P = 1$) observations into one pixel-native frame: every pose gets the shared
+/// half-extents of a `res_w x res_h` kernel, and its centre is shifted by the integer offset that
+/// maximizes silhouette agreement with its view cell's reference (largest-area) observation.
+fn register_rigid_observations(
+    observations: &[CharacterObservation],
+    poses_per_obs: &mut [Vec<SubHolonPose>],
+    view_assignments: &[usize],
+    clean: &[bool],
+    res_w: usize,
+    res_h: usize,
+) {
+    let radii = [(res_w as f64 - 1.0) * 0.5, (res_h as f64 - 1.0) * 0.5];
+    let area = |o: &CharacterObservation| o.mask.iter().filter(|&&m| m).count();
+    let n_cells = view_assignments.iter().copied().max().map_or(0, |m| m + 1);
+    for vc in 0..n_cells {
+        let members: Vec<usize> = (0..observations.len()).filter(|&i| view_assignments[i] == vc).collect();
+        let Some(&ref_i) = members
+            .iter()
+            .filter(|&&i| clean[i])
+            .max_by_key(|&&i| area(&observations[i]))
+            .or_else(|| members.iter().max_by_key(|&&i| area(&observations[i])))
+        else {
+            continue;
+        };
+        let r = &observations[ref_i];
+        let ref_at = |x: i32, y: i32| -> Option<[u8; 3]> {
+            if x < r.bbox.x0 || y < r.bbox.y0 || x > r.bbox.x1 || y > r.bbox.y1 {
+                return None;
+            }
+            let i = ((y - r.bbox.y0) as usize) * r.width() + (x - r.bbox.x0) as usize;
+            r.mask[i].then(|| [r.rgb[i * 3], r.rgb[i * 3 + 1], r.rgb[i * 3 + 2]])
+        };
+        for &oi in &members {
+            let o = &observations[oi];
+            // Search radius: the extent difference to the reference plus one pixel of slack.
+            let sx = ((r.width() as i32 - o.width() as i32).abs() / 2 + 1) as i32;
+            let sy = ((r.height() as i32 - o.height() as i32).abs() / 2 + 1) as i32;
+            // Candidate placements align the observation's bbox centre to the reference's, then shift.
+            let base = [
+                (r.bbox.x0 + r.bbox.x1 - o.bbox.x0 - o.bbox.x1) / 2,
+                (r.bbox.y0 + r.bbox.y1 - o.bbox.y0 - o.bbox.y1) / 2,
+            ];
+            let mut best = (i64::MIN, [0i32, 0i32]);
+            for dy in -sy..=sy {
+                for dx in -sx..=sx {
+                    let mut score = 0i64;
+                    for ly in 0..o.height() {
+                        for lx in 0..o.width() {
+                            let i = ly * o.width() + lx;
+                            if !o.mask[i] {
+                                continue;
+                            }
+                            let x = o.bbox.x0 + lx as i32 + base[0] + dx;
+                            let y = o.bbox.y0 + ly as i32 + base[1] + dy;
+                            match ref_at(x, y) {
+                                Some(c) => {
+                                    let d: i64 = (0..3).map(|k| (c[k] as i64 - o.rgb[i * 3 + k] as i64).abs()).sum();
+                                    score += 3 * 255 - d;
+                                }
+                                None => score -= 3 * 255,
+                            }
+                        }
+                    }
+                    if score > best.0 {
+                        best = (score, [dx, dy]);
+                    }
+                }
+            }
+            // Kernel origin (top-left texel) sits on the integer pixel lattice in the reference frame,
+            // so texel centres coincide with pixel centres under both accumulation and sampling.
+            let origin = [
+                r.bbox.x0 - (res_w as i32 - r.width() as i32) / 2,
+                r.bbox.y0 - (res_h as i32 - r.height() as i32) / 2,
+            ];
+            let rc = [origin[0] as f64 + radii[0], origin[1] as f64 + radii[1]];
+            let shift = [(base[0] + best.1[0]) as f64, (base[1] + best.1[1]) as f64];
+            let pose = &mut poses_per_obs[oi][0];
+            pose.center = [rc[0] - shift[0], rc[1] - shift[1]];
+            pose.radii = radii;
+        }
     }
 }
 
@@ -381,13 +630,22 @@ pub fn render_articulated_holon_observation(
     obs: &CharacterObservation,
     obs_idx: usize,
 ) -> (Vec<bool>, Vec<u8>) {
+    match holon.poses_per_obs.get(obs_idx) {
+        Some(poses) => render_with_poses(holon, poses, obs),
+        None => (vec![false; obs.width() * obs.height()], vec![0u8; obs.width() * obs.height() * 3]),
+    }
+}
+
+/// Render the holon's kernels at explicit part `poses` into `obs`'s bounding box.
+pub fn render_with_poses(
+    holon: &ArticulatedHolon,
+    poses: &[SubHolonPose],
+    obs: &CharacterObservation,
+) -> (Vec<bool>, Vec<u8>) {
     let w = obs.width();
     let h = obs.height();
     let mut out_mask = vec![false; w * h];
     let mut out_rgb = vec![0u8; w * h * 3];
-    let Some(poses) = holon.poses_per_obs.get(obs_idx) else {
-        return (out_mask, out_rgb);
-    };
     let vc = poses
         .first()
         .map(|p| p.view_idempotent_idx)
@@ -429,151 +687,389 @@ pub fn render_articulated_holon_observation(
     (out_mask, out_rgb)
 }
 
+/// Per-channel residual (8-bit) above which a pixel differs from the reconstructed background.
+const FOREGROUND_RESIDUAL: i32 = 26;
+/// Minimum foreground pixel count for an observation to carry a recognizable silhouette.
+const MIN_OBSERVATION_PIXELS: usize = 12;
+/// Maximum frame gap bridged by frame-to-frame linking (short flicker / missed detections).
+const MAX_LINK_GAP: usize = 4;
+/// Maximum chroma-weighted colour distance (8-bit max-channel) for two observations of one holon.
+const MAX_APPEARANCE_DIST: f32 = 55.0;
+/// Maximum ratio between successive silhouette extents of one holon.
+const MAX_EXTENT_RATIO: f64 = 1.6;
+/// Minimum number of observations for a track to define a holon.
+const MIN_TRACK_LEN: usize = 4;
+
+/// Chroma-weighted mean colour: saturated pixels dominate, so dark outlines and specular
+/// highlights do not wash out a holon's identifying hue.
+pub fn chroma_weighted_color(rgb: &[u8], mask: &[bool]) -> [f32; 3] {
+    let (mut acc, mut wsum) = ([0.0f32; 3], 0.0f32);
+    let (mut flat, mut n) = ([0.0f32; 3], 0.0f32);
+    for (i, &m) in mask.iter().enumerate() {
+        if !m {
+            continue;
+        }
+        let c = [rgb[i * 3] as f32, rgb[i * 3 + 1] as f32, rgb[i * 3 + 2] as f32];
+        let chroma = c[0].max(c[1]).max(c[2]) - c[0].min(c[1]).min(c[2]);
+        for k in 0..3 {
+            acc[k] += c[k] * chroma;
+            flat[k] += c[k];
+        }
+        wsum += chroma;
+        n += 1.0;
+    }
+    if wsum > 0.0 {
+        [acc[0] / wsum, acc[1] / wsum, acc[2] / wsum]
+    } else if n > 0.0 {
+        [flat[0] / n, flat[1] / n, flat[2] / n]
+    } else {
+        [0.0; 3]
+    }
+}
+
+/// Screen pixels whose value never departs from the first frame by more than the foreground
+/// residual. Such pixels are camera-locked (HUDs, letter/pillar-box bars, masked borders, logos)
+/// and cannot contain a moving holon. `None` when the shot is too short to tell.
+fn screen_static_mask(frames: &[crate::video_io::RawFrame]) -> Option<Vec<bool>> {
+    let first = frames.first()?;
+    if frames.len() < MIN_TRACK_LEN {
+        return None;
+    }
+    let (w, h) = (first.width as usize, first.height as usize);
+    let mut stat = vec![true; w * h];
+    for f in &frames[1..] {
+        if f.width as usize != w || f.height as usize != h {
+            return None;
+        }
+        for y in 0..h {
+            for x in 0..w {
+                let i = y * w + x;
+                if !stat[i] {
+                    continue;
+                }
+                let a = first.pixel(x as u32, y as u32);
+                let b = f.pixel(x as u32, y as u32);
+                if (0..3).any(|k| (a[k] as i32 - b[k] as i32).abs() > FOREGROUND_RESIDUAL) {
+                    stat[i] = false;
+                }
+            }
+        }
+    }
+    Some(stat)
+}
+
+/// Components smaller than this fraction of the largest are residual debris, not body parts.
+const MIN_COMPONENT_FRACTION: usize = 4;
+
+/// Keep the largest 8-connected component of `mask` plus any component at least
+/// `1 / MIN_COMPONENT_FRACTION` of its area (detached limbs, props held by the body).
+pub fn dominant_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
+    let mut label = vec![0u32; w * h];
+    let mut sizes: Vec<usize> = vec![0];
+    let mut stack = Vec::new();
+    for start in 0..w * h {
+        if !mask[start] || label[start] != 0 {
+            continue;
+        }
+        let id = sizes.len() as u32;
+        sizes.push(0);
+        label[start] = id;
+        stack.push(start);
+        while let Some(i) = stack.pop() {
+            sizes[id as usize] += 1;
+            let (x, y) = ((i % w) as i32, (i / w) as i32);
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                        continue;
+                    }
+                    let j = ny as usize * w + nx as usize;
+                    if mask[j] && label[j] == 0 {
+                        label[j] = id;
+                        stack.push(j);
+                    }
+                }
+            }
+        }
+    }
+    let largest = sizes.iter().copied().max().unwrap_or(0);
+    label
+        .iter()
+        .map(|&l| l != 0 && sizes[l as usize] * MIN_COMPONENT_FRACTION >= largest)
+        .collect()
+}
+
+fn color_dist(a: [f32; 3], b: [f32; 3]) -> f32 {
+    (a[0] - b[0]).abs().max((a[1] - b[1]).abs()).max((a[2] - b[2]).abs())
+}
+
+struct TrackCand {
+    obs: CharacterObservation,
+    color: [f32; 3],
+    /// Silhouette centre in world (atlas) coordinates: screen + camera trajectory.
+    world: [f64; 2],
+}
+
+impl TrackCand {
+    fn extent(&self) -> f64 {
+        self.obs.width().max(self.obs.height()) as f64
+    }
+}
+
+/// World-space velocity (px/frame) at the tail (or head) of a tracklet.
+fn tracklet_velocity(tr: &[TrackCand], at_end: bool) -> [f64; 2] {
+    if tr.len() < 2 {
+        return [0.0, 0.0];
+    }
+    let (a, b) = if at_end { (&tr[tr.len() - 2], &tr[tr.len() - 1]) } else { (&tr[0], &tr[1]) };
+    let dt = (b.obs.frame_idx as f64 - a.obs.frame_idx as f64).max(1.0);
+    [(b.world[0] - a.world[0]) / dt, (b.world[1] - a.world[1]) / dt]
+}
+
+/// Number of observations at a tracklet end used for robust (median) extent estimates.
+const EXTENT_WINDOW: usize = 5;
+
+/// Median silhouette extent `(w, h)` over the last (or first) `EXTENT_WINDOW` observations, so a
+/// single observation contaminated by a merge does not redefine the holon's size.
+fn robust_extent(tr: &[TrackCand], at_end: bool) -> (usize, usize) {
+    let n = tr.len().min(EXTENT_WINDOW);
+    let slice = if at_end { &tr[tr.len() - n..] } else { &tr[..n] };
+    let mut ws: Vec<usize> = slice.iter().map(|c| c.obs.width()).collect();
+    let mut hs: Vec<usize> = slice.iter().map(|c| c.obs.height()).collect();
+    ws.sort_unstable();
+    hs.sort_unstable();
+    (ws[ws.len() / 2], hs[hs.len() / 2])
+}
+
+fn extents_compatible(a: (usize, usize), b: (usize, usize)) -> bool {
+    let r = |x: usize, y: usize| x.max(y) as f64 / x.min(y).max(1) as f64;
+    r(a.0, b.0) <= MAX_EXTENT_RATIO && r(a.1, b.1) <= MAX_EXTENT_RATIO
+}
+
 /// Extract spatially and chromatically coherent `CharacterObservation` tracks for up to
 /// `max_tracks` distinct moving characters/holons from a `MultiPlaneAtlas` and its source frames.
+///
+/// Kinematics are evaluated in world coordinates (screen + camera trajectory) so scenery that merely
+/// scrolls with the camera is recognised as stationary. Linking gates are relative to each holon's
+/// own extent and velocity; fragments split by occlusion are re-joined by reachability.
 pub fn extract_character_observation_tracks(
     frames: &[crate::video_io::RawFrame],
     atlas: &crate::multiplane_atlas::MultiPlaneAtlas,
     max_tracks: usize,
 ) -> Vec<Vec<CharacterObservation>> {
-    struct Cand {
-        obs: CharacterObservation,
-        color: [f32; 3],
-    }
-    let mut tracks: Vec<Vec<Cand>> = Vec::new();
+    let camera = |fi: usize| -> [f64; 2] {
+        atlas
+            .layers
+            .first()
+            .and_then(|l| l.trajectory.get(fi))
+            .map(|t| [t[0] as f64, t[1] as f64])
+            .unwrap_or([0.0, 0.0])
+    };
+    let mut tracks: Vec<Vec<TrackCand>> = Vec::new();
+    let screen_static = screen_static_mask(frames);
 
     for (fi, frame) in frames.iter().enumerate() {
         let Some(boxes) = atlas.actor_boxes_per_frame.get(fi) else {
             continue;
         };
         let recon_bg = atlas.reconstruct_background_frame(fi);
-        let mut frame_cands: Vec<Cand> = Vec::new();
+        let mut frame_cands: Vec<TrackCand> = Vec::new();
 
         for &bbox in boxes {
             let x0 = bbox.x0.clamp(0, frame.width as i32 - 1);
             let y0 = bbox.y0.clamp(0, frame.height as i32 - 1);
             let x1 = bbox.x1.clamp(x0, frame.width as i32 - 1);
             let y1 = bbox.y1.clamp(y0, frame.height as i32 - 1);
-            let clipped = Rect::new(x0, y0, x1, y1);
-            let bw = clipped.width() as usize;
-            let bh = clipped.height() as usize;
-            if bw < 6 || bh < 6 {
+
+            // Residual mask inside the (dilated) actor box, reduced to the dominant silhouette.
+            let (bw0, bh0) = ((x1 - x0 + 1) as usize, (y1 - y0 + 1) as usize);
+            let mut residual = vec![false; bw0 * bh0];
+            for fy in y0..=y1 {
+                for fx in x0..=x1 {
+                    let c = frame.pixel(fx as u32, fy as u32);
+                    let bg = recon_bg.pixel(fx as usize, fy as usize);
+                    let d = (0..3).map(|k| (c[k] as i32 - bg[k] as i32).abs()).max().unwrap_or(0);
+                    let locked = screen_static
+                        .as_ref()
+                        .is_some_and(|m| m[fy as usize * frame.width as usize + fx as usize]);
+                    residual[(fy - y0) as usize * bw0 + (fx - x0) as usize] = d > FOREGROUND_RESIDUAL && !locked;
+                }
+            }
+            let silhouette = dominant_silhouette(&residual, bw0, bh0);
+            let (mut tx0, mut ty0, mut tx1, mut ty1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+            let mut fg_cnt = 0usize;
+            for (i, _) in silhouette.iter().enumerate().filter(|(_, m)| **m) {
+                let (fx, fy) = (x0 + (i % bw0) as i32, y0 + (i / bw0) as i32);
+                fg_cnt += 1;
+                tx0 = tx0.min(fx);
+                ty0 = ty0.min(fy);
+                tx1 = tx1.max(fx);
+                ty1 = ty1.max(fy);
+            }
+            if fg_cnt < MIN_OBSERVATION_PIXELS {
                 continue;
             }
-
+            let tight = Rect::new(tx0, ty0, tx1, ty1);
+            let bw = tight.width() as usize;
+            let bh = tight.height() as usize;
             let mut mask = vec![false; bw * bh];
             let mut rgb = vec![0u8; bw * bh * 3];
-            let mut fg_cnt = 0usize;
-            let mut col_sum = [0.0f32; 3];
-
             for ly in 0..bh {
-                let fy = y0 as usize + ly;
                 for lx in 0..bw {
-                    let fx = x0 as usize + lx;
+                    let (fx, fy) = (tx0 as usize + lx, ty0 as usize + ly);
                     let c = frame.pixel(fx as u32, fy as u32);
-                    let bg = recon_bg.pixel(fx, fy);
                     let idx = ly * bw + lx;
                     rgb[idx * 3..idx * 3 + 3].copy_from_slice(&c);
-                    let d = (c[0] as i32 - bg[0] as i32)
-                        .abs()
-                        .max((c[1] as i32 - bg[1] as i32).abs())
-                        .max((c[2] as i32 - bg[2] as i32).abs());
-                    if d > 26 {
-                        mask[idx] = true;
-                        fg_cnt += 1;
-                        col_sum[0] += c[0] as f32;
-                        col_sum[1] += c[1] as f32;
-                        col_sum[2] += c[2] as f32;
-                    }
+                    mask[idx] = silhouette[(fy - y0 as usize) * bw0 + (fx - x0 as usize)];
                 }
             }
-            if fg_cnt >= 12 {
-                let inv = 1.0 / fg_cnt as f32;
-                frame_cands.push(Cand {
-                    obs: CharacterObservation {
-                        frame_idx: fi,
-                        bbox: clipped,
-                        mask,
-                        rgb,
-                    },
-                    color: [col_sum[0] * inv, col_sum[1] * inv, col_sum[2] * inv],
-                });
-            }
+            let color = chroma_weighted_color(&rgb, &mask);
+            let cam = camera(fi);
+            let c = tight.center();
+            frame_cands.push(TrackCand {
+                obs: CharacterObservation {
+                    frame_idx: fi,
+                    bbox: tight,
+                    mask,
+                    rgb,
+                    camera_offset: cam,
+                    truncated: tx0 == 0
+                        || ty0 == 0
+                        || tx1 == frame.width as i32 - 1
+                        || ty1 == frame.height as i32 - 1,
+                },
+                color,
+                world: [c[0] + cam[0], c[1] + cam[1]],
+            });
         }
 
-        let mut used_track = vec![false; tracks.len()];
-        for cand in frame_cands {
-            let cc = cand.obs.bbox.center();
-            let mut best_ti = None;
-            let mut best_cost = f64::MAX;
+        // Global greedy assignment of candidates to live tracks by normalized prediction cost.
+        let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
+        for (ci, cand) in frame_cands.iter().enumerate() {
             for (ti, tr) in tracks.iter().enumerate() {
-                if used_track[ti] {
-                    continue;
-                }
                 let last = tr.last().unwrap();
-                if fi.saturating_sub(last.obs.frame_idx) > 4 {
+                let gap = fi.saturating_sub(last.obs.frame_idx);
+                if gap == 0 || gap > MAX_LINK_GAP {
                     continue;
                 }
-                let lc = last.obs.bbox.center();
-                let dist = (cc[0] - lc[0]).hypot(cc[1] - lc[1]);
-                let cdist = (cand.color[0] - last.color[0])
-                    .abs()
-                    .max((cand.color[1] - last.color[1]).abs())
-                    .max((cand.color[2] - last.color[2]).abs()) as f64;
-                let dw = (cand.obs.bbox.width() - last.obs.bbox.width()).abs();
-                let dh = (cand.obs.bbox.height() - last.obs.bbox.height()).abs();
-                if dist <= 32.0 && cdist <= 55.0 && dw <= 10 && dh <= 10 {
-                    let cost = dist + 0.4 * cdist;
-                    if cost < best_cost {
-                        best_cost = cost;
-                        best_ti = Some(ti);
-                    }
+                if !extents_compatible((cand.obs.width(), cand.obs.height()), robust_extent(tr, true)) {
+                    continue;
                 }
+                let cdist = color_dist(cand.color, last.color);
+                if cdist > MAX_APPEARANCE_DIST {
+                    continue;
+                }
+                let v = tracklet_velocity(tr, true);
+                let pred = [last.world[0] + v[0] * gap as f64, last.world[1] + v[1] * gap as f64];
+                let err = (cand.world[0] - pred[0]).hypot(cand.world[1] - pred[1]);
+                // One body extent of unexplained displacement per elapsed frame.
+                let scale = last.extent().max(cand.extent()) * gap as f64;
+                if err > scale {
+                    continue;
+                }
+                pairs.push((err / scale + (cdist / MAX_APPEARANCE_DIST) as f64, ci, ti));
             }
-            if let Some(ti) = best_ti {
-                used_track[ti] = true;
-                tracks[ti].push(cand);
-            } else {
-                tracks.push(vec![cand]);
-                used_track.push(true);
+        }
+        pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut cand_slot: Vec<Option<TrackCand>> = frame_cands.into_iter().map(Some).collect();
+        let mut track_used = vec![false; tracks.len()];
+        for (_, ci, ti) in pairs {
+            if track_used[ti] || cand_slot[ci].is_none() {
+                continue;
             }
+            track_used[ti] = true;
+            tracks[ti].push(cand_slot[ci].take().unwrap());
+        }
+        for cand in cand_slot.into_iter().flatten() {
+            tracks.push(vec![cand]);
+        }
+    }
+
+    stitch_tracklets(&mut tracks);
+
+    if std::env::var_os("IMPLICATE_DEBUG_TRACKS").is_some() {
+        for (ti, tr) in tracks.iter().enumerate() {
+            let (a, b) = (&tr[0], tr.last().unwrap());
+            eprintln!(
+                "[tracklet {ti}] frames {}..{} n={} color=({:.0},{:.0},{:.0}) bbox0={:?} extent0={}x{} world0=({:.1},{:.1}) world1=({:.1},{:.1})",
+                a.obs.frame_idx, b.obs.frame_idx, tr.len(), a.color[0], a.color[1], a.color[2], a.obs.bbox,
+                a.obs.width(), a.obs.height(), a.world[0], a.world[1], b.world[0], b.world[1]
+            );
         }
     }
 
     let mut scored: Vec<(usize, Vec<CharacterObservation>)> = tracks
         .into_iter()
-        .filter(|tr| tr.len() >= 4 || max_tracks == 1)
+        .filter(|tr| tr.len() >= MIN_TRACK_LEN || max_tracks == 1)
         .filter(|tr| {
-            if tr.len() <= 1 {
+            if max_tracks == 1 || tr.len() <= 1 {
                 return true;
             }
-            let c0 = tr[0].obs.bbox.center();
-            let mut max_disp = 0.0f64;
-            for cand in tr {
-                let c = cand.obs.bbox.center();
-                let d = (c[0] - c0[0]).hypot(c[1] - c0[1]);
-                if d > max_disp {
-                    max_disp = d;
-                }
-            }
-            max_disp > 2.0 || max_tracks == 1
+            // A holon must move relative to the world by more than half its own extent. The robust
+            // (inter-decile) spread of world positions ignores centroid jitter from partial silhouettes.
+            let spread = |axis: usize| {
+                let mut v: Vec<f64> = tr.iter().map(|c| c.world[axis]).collect();
+                v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let q = |f: f64| v[((v.len() - 1) as f64 * f).round() as usize];
+                q(0.9) - q(0.1)
+            };
+            let mean_extent = tr.iter().map(TrackCand::extent).sum::<f64>() / tr.len() as f64;
+            spread(0).hypot(spread(1)) > 0.5 * mean_extent
         })
         .map(|tr| {
-            let total_fg: usize = tr
-                .iter()
-                .map(|c| c.obs.mask.iter().filter(|&&m| m).count())
-                .sum();
+            let total_fg: usize = tr.iter().map(|c| c.obs.mask.iter().filter(|&&m| m).count()).sum();
             let score = tr.len() * 1000 + total_fg;
-            let obs_vec = tr.into_iter().map(|c| c.obs).collect();
-            (score, obs_vec)
+            (score, tr.into_iter().map(|c| c.obs).collect())
         })
         .collect();
     scored.sort_by(|a, b| b.0.cmp(&a.0));
-    scored
-        .into_iter()
-        .take(max_tracks.max(1))
-        .map(|(_, obs)| obs)
-        .collect()
+    scored.into_iter().take(max_tracks.max(1)).map(|(_, obs)| obs).collect()
+}
+
+/// Re-join tracklets fragmented by occlusion or silhouette merging: tracklet `B` continues `A`
+/// when it starts after `A` ends, shares its appearance and extent, and lies within the region
+/// reachable at the pair's observed speed plus one body extent.
+fn stitch_tracklets(tracks: &mut Vec<Vec<TrackCand>>) {
+    loop {
+        let mut best: Option<(f64, usize, usize)> = None;
+        for (ai, a) in tracks.iter().enumerate() {
+            let a_last = a.last().unwrap();
+            let va = tracklet_velocity(a, true);
+            for (bi, b) in tracks.iter().enumerate() {
+                if ai == bi {
+                    continue;
+                }
+                let b_first = &b[0];
+                if b_first.obs.frame_idx <= a_last.obs.frame_idx {
+                    continue;
+                }
+                if !extents_compatible(robust_extent(a, true), robust_extent(b, false)) {
+                    continue;
+                }
+                let cdist = color_dist(a_last.color, b_first.color);
+                if cdist > MAX_APPEARANCE_DIST {
+                    continue;
+                }
+                let gap = (b_first.obs.frame_idx - a_last.obs.frame_idx) as f64;
+                let vb = tracklet_velocity(b, false);
+                let speed = va[0].hypot(va[1]).max(vb[0].hypot(vb[1]));
+                let reach = a_last.extent().max(b_first.extent()) + speed * gap;
+                let d = (b_first.world[0] - a_last.world[0]).hypot(b_first.world[1] - a_last.world[1]);
+                if d > reach {
+                    continue;
+                }
+                let cost = d / reach + (cdist / MAX_APPEARANCE_DIST) as f64;
+                if best.is_none_or(|(c, _, _)| cost < c) {
+                    best = Some((cost, ai, bi));
+                }
+            }
+        }
+        let Some((_, ai, bi)) = best else { break };
+        let b = tracks.remove(bi);
+        let ai = if bi < ai { ai - 1 } else { ai };
+        tracks[ai].extend(b);
+    }
 }
 
 /// Extract spatially and chromatically coherent `CharacterObservation`s for the dominant

@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::container::ImplicateContainerManifest;
 use crate::payload::EnfoldedClipAssets;
-use crate::prompt::{PromptHolonSpec, UnfoldSceneSpec};
+use crate::prompt::UnfoldSceneSpec;
 
 /// Compiled relational verb binding active during scene unfoldment.
 #[derive(Clone, Debug)]
@@ -87,6 +87,8 @@ pub struct UnfoldRunReport {
     pub total_collisions: usize,
     /// Per-frame dynamic score/status counter of the camera-locked HUD holon.
     pub hud_score_history: Vec<u32>,
+    /// Per-frame world-to-screen camera offset (screen = world - offset).
+    pub camera_offsets: Vec<[f32; 2]>,
 }
 
 impl UnfoldRunReport {
@@ -126,6 +128,8 @@ pub struct CausalUnfoldEngine {
     pub refiner: Option<GpuCliffordNetRefiner>,
     pub camera_pos: [f32; 2],
     pub enfolded_clip: Option<EnfoldedClipAssets>,
+    /// For each prompt holon, the semantically matched `ArticulatedHolon` index in `enfolded_clip`.
+    pub wavepacket_matches: Vec<Option<usize>>,
     pub hud_score: u32,
 }
 
@@ -344,59 +348,99 @@ impl CausalUnfoldEngine {
             refiner,
             camera_pos: cam0,
             enfolded_clip: None,
+            wavepacket_matches: Vec::new(),
             hud_score: 0,
         }
     }
 
     /// Attach enfolded `MultiPlaneAtlas` background/HUD layers and `ArticulatedHolon` CFT wavepackets
     /// for real-asset `@rolpa` compositing during unfoldment.
+    ///
+    /// A scene without an explicit resolution is re-projected onto the clip's native raster first,
+    /// so enfolded atlas texels and sprite kernels unfold 1:1 without resampling.
     pub fn with_enfolded_clip(mut self, clip: EnfoldedClipAssets) -> Self {
+        if !self.scene.resolution_explicit {
+            let mut scene = self.scene.clone();
+            scene.adapt_to_resolution(clip.atlas.width as u32, clip.atlas.height as u32);
+            self = Self::new(self.manifest, scene);
+        }
+        self.wavepacket_matches = Self::resolve_wavepacket_matches(&self.scene, &self.manifest, &clip);
         self.enfolded_clip = Some(clip);
         self
     }
 
+    /// Clip in which one of the scene's verbs was empirically grounded, if any.
+    fn grounded_clip_id(&self) -> Option<String> {
+        self.scene.verb_bindings.iter().find_map(|vb| {
+            self.manifest
+                .verb_potentials
+                .get(&vb.verb)
+                .and_then(|e| e.grounding.as_ref())
+                .map(|g| g.clip_id.clone())
+        })
+    }
+
     /// Select and attach the best-matching `EnfoldedClipAssets` from a multi-clip container slice
     /// based on scene domain, actor keywords, and viewport dimensions.
-    pub fn with_enfolded_clips(mut self, clips: &[EnfoldedClipAssets]) -> Self {
+    pub fn with_enfolded_clips(self, clips: &[EnfoldedClipAssets]) -> Self {
         if clips.is_empty() {
             return self;
         }
-        // Task R9.4: Milieu retrieval via Spin(16) semantic geodesic distance
+        // A verb learned from a specific clip is the strongest evidence of the intended milieu.
+        if let Some(id) = self.grounded_clip_id()
+            && let Some(chosen) = clips.iter().find(|c| c.clip_id == id)
+        {
+            return self.with_enfolded_clip(chosen.clone());
+        }
+        // Task R9.4: milieu retrieval. Evidence is the clip's identity (id + source name) appearing in
+        // the scene; Spin(16) coherence (one shared Gram-SVD batch) breaks ties. Without evidence the
+        // scene unfolds procedurally rather than borrowing an unrelated world.
+        match Self::retrieve_milieu(&self.scene, clips) {
+            Some((idx, _)) => self.with_enfolded_clip(clips[idx].clone()),
+            None => self,
+        }
+    }
+
+    /// Identity tokens: lowercase alphanumeric words with a letter and at least
+    /// `MIN_IDENTITY_TOKEN_LEN` characters (drops articles, frame counts, resolutions).
+    fn identity_tokens(text: &str) -> std::collections::BTreeSet<String> {
+        const MIN_IDENTITY_TOKEN_LEN: usize = 4;
+        text.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|t| t.len() >= MIN_IDENTITY_TOKEN_LEN && t.chars().any(|c| c.is_alphabetic()))
+            .filter(|t| !t.chars().all(|c| c.is_ascii_digit() || c == 'x' || c == 'p'))
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Index of the best-evidenced clip and its `(shared identity tokens, coherence)` score.
+    pub fn retrieve_milieu(scene: &UnfoldSceneSpec, clips: &[EnfoldedClipAssets]) -> Option<(usize, (usize, f64))> {
         let scene_desc = format!(
             "{} {} {}",
-            self.scene.scene_id,
-            self.scene.prompt_text,
-            self.scene
-                .holons
-                .iter()
-                .map(|h| format!("{} {}", h.name, h.semantic_clause))
-                .collect::<Vec<_>>()
-                .join(" ")
+            scene.scene_id,
+            scene.prompt_text,
+            scene.holons.iter().map(|h| format!("{} {}", h.name, h.semantic_clause)).collect::<Vec<_>>().join(" ")
         );
-        let scene_spinors = ConceptLexicon::default().embed_clauses(&[&scene_desc]);
-        let scene_spinor = scene_spinors.first().copied().unwrap_or_default();
-
-        let best = clips.iter().max_by(|a, b| {
-            let desc_a = format!("{}_milieu {} layers={}", a.clip_id, a.source_video, a.atlas.layers.len());
-            let desc_b = format!("{}_milieu {} layers={}", b.clip_id, b.source_video, b.atlas.layers.len());
-            let sp_a = ConceptLexicon::default().embed_clauses(&[&desc_a]);
-            let sp_b = ConceptLexicon::default().embed_clauses(&[&desc_b]);
-
-            let sim_a = scene_spinor.coherence(sp_a.first().unwrap_or(&scene_spinor));
-            let sim_b = scene_spinor.coherence(sp_b.first().unwrap_or(&scene_spinor));
-
-            let ar_scene = (self.scene.width as f64) / (self.scene.height.max(1) as f64);
-            let ar_a = (a.atlas.width as f64) / (a.atlas.height.max(1) as f64);
-            let ar_b = (b.atlas.width as f64) / (b.atlas.height.max(1) as f64);
-            let score_a = sim_a - 0.25 * (ar_a - ar_scene).abs();
-            let score_b = sim_b - 0.25 * (ar_b - ar_scene).abs();
-
-            score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
-        });
-        if let Some(chosen) = best {
-            self.enfolded_clip = Some(chosen.clone());
+        let scene_tokens = Self::identity_tokens(&scene_desc);
+        let clip_descs: Vec<String> = clips.iter().map(|c| format!("{} {}", c.clip_id, c.source_video)).collect();
+        let mut batch: Vec<&str> = vec![scene_desc.as_str()];
+        batch.extend(clip_descs.iter().map(String::as_str));
+        let sp = ConceptLexicon::default().embed_clauses(&batch);
+        let coherence = |i: usize| if sp.len() == batch.len() { sp[0].coherence(&sp[1 + i]) } else { 0.0 };
+        let scored: Vec<(usize, (usize, f64))> = clip_descs
+            .iter()
+            .enumerate()
+            .map(|(i, d)| (i, (Self::identity_tokens(d).intersection(&scene_tokens).count(), coherence(i))))
+            .collect();
+        if std::env::var_os("IMPLICATE_DEBUG_MILIEU").is_some() {
+            for (i, (shared, coh)) in &scored {
+                eprintln!("[milieu] {} shared_identity_tokens={shared} coherence={coh:.4}", clips[*i].clip_id);
+            }
         }
-        self
+        scored
+            .into_iter()
+            .filter(|(_, (shared, _))| *shared > 0)
+            .max_by(|a, b| a.1.0.cmp(&b.1.0).then(a.1.1.partial_cmp(&b.1.1).unwrap_or(std::cmp::Ordering::Equal)))
     }
 
     /// Execute the full single-pass causal unfoldment across `self.scene.num_frames`,
@@ -412,6 +456,7 @@ impl CausalUnfoldEngine {
         let mut rgb_frames: Vec<Vec<u8>> = Vec::with_capacity(n_frames);
         let mut stereo_audio: Vec<[f32; 2]> = Vec::with_capacity(n_frames * 800);
         let mut hud_score_history: Vec<u32> = Vec::with_capacity(n_frames);
+        let mut camera_offsets: Vec<[f32; 2]> = Vec::with_capacity(n_frames);
         let mut total_collisions = 0usize;
         let mut max_hud_lock_drift_px = 0.0f32;
 
@@ -627,9 +672,16 @@ impl CausalUnfoldEngine {
                 }
             }
 
-            // 4b. Enforce hard-core contact separation ||x_i - x_j|| >= (r_i + r_j) * 0.65 between physical solid holons
+            // 4b. Enforce hard-core contact separation ||x_i - x_j|| >= (r_i + r_j) * 0.65 between physical solid holons.
+            // Holons whose pose is kinematically prescribed by an active verb potential are excluded:
+            // displacing them would corrupt the learned relative trajectory and verb adherence.
+            let is_verb_bound = |idx: usize| {
+                self.active_verbs
+                    .iter()
+                    .any(|vb| vb.subject_idx == idx || vb.target_idx == idx)
+            };
             for i in 0..k_holons {
-                if self.is_hud_holon[i] {
+                if self.is_hud_holon[i] || is_verb_bound(i) {
                     continue;
                 }
                 let is_energy_i = self.scene.holons[i].cohesion_c < 0.5;
@@ -637,7 +689,7 @@ impl CausalUnfoldEngine {
                     continue;
                 }
                 for j in (i + 1)..k_holons {
-                    if self.is_hud_holon[j] {
+                    if self.is_hud_holon[j] || is_verb_bound(j) {
                         continue;
                     }
                     let is_energy_j = self.scene.holons[j].cohesion_c < 0.5;
@@ -715,6 +767,10 @@ impl CausalUnfoldEngine {
                 .saturating_add((frame_events.len() as u32) * 100 + (self.active_verbs.len() as u32) * 10);
             hud_score_history.push(self.hud_score);
 
+            camera_offsets.push([
+                self.camera_pos[0] - (self.scene.width as f32) * 0.5,
+                self.camera_pos[1] - (self.scene.height as f32) * 0.5,
+            ]);
             let rgb = self.render_rolpa_frame(rolpa_ctx, f_idx);
             rgb_frames.push(rgb);
 
@@ -780,6 +836,7 @@ impl CausalUnfoldEngine {
             audio_underruns: self.acoustic.underrun_count,
             total_collisions,
             hud_score_history,
+            camera_offsets,
         }
     }
 
@@ -847,6 +904,11 @@ impl CausalUnfoldEngine {
                     );
                     continue;
                 }
+                // With an enfolded clip but no camera-locked layer, any HUD is baked into the
+                // static background; a synthetic badge would overwrite it.
+                if self.enfolded_clip.is_some() {
+                    continue;
+                }
                 // Camera-locked HUD score counter badge fallback
                 let cy = (screen_pos[1].round() as i32).clamp(4, h as i32 - 5) as usize;
                 let cx = (screen_pos[0].round() as i32).clamp(16, w as i32 - 16) as usize;
@@ -866,40 +928,35 @@ impl CausalUnfoldEngine {
                 continue;
             }
 
-            // Constitutive routing: static terrain fixtures (high bulk modulus, high density, stationary)
-            // are already baked into the multiplane background atlas; skip splatting them as dynamic actors.
+            // Static level fixtures are already part of the enfolded background atlas.
             let h_spec = &self.scene.holons[i];
-            if h_spec.bulk_modulus_k >= 3.5
-                && h_spec.rho >= 1.8
-                && (h_spec.initial_vel[0].hypot(h_spec.initial_vel[1]) < 1e-3)
-            {
+            if h_spec.is_static_fixture && self.enfolded_clip.is_some() {
                 continue;
             }
 
-            // If enfolded ArticulatedHolon wavepackets are available, match this holon semantically
-            // via Spin(16) spinor inner-product dispatch.
+            // If enfolded ArticulatedHolon wavepackets are available, splat the semantically matched
+            // character track via Spin(16) spinor inner-product dispatch.
             if let Some(clip) = &self.enfolded_clip
-                && !clip.holons.is_empty()
+                && let Some(art_holon) = self
+                    .wavepacket_matches
+                    .get(i)
+                    .copied()
+                    .flatten()
+                    .and_then(|idx| clip.holons.get(idx))
             {
-                let matched_art = Self::match_holon_to_wavepacket(
-                    h_spec,
-                    i,
-                    &clip.holons,
-                );
-                if let Some(art_holon) = matched_art {
-                    if Self::splat_articulated_holon_wavepacket(
-                        art_holon,
-                        holon,
-                        screen_pos,
-                        clip.atlas.width,
-                        clip.atlas.height,
-                        frame_idx,
-                        w,
-                        h,
-                        &mut rgb,
-                    ) {
-                        continue;
-                    }
+                if Self::splat_articulated_holon_wavepacket(
+                    art_holon,
+                    holon,
+                    screen_pos,
+                    clip.atlas.width,
+                    clip.atlas.height,
+                    frame_idx,
+                    clip.fps() / DEFAULT_VIDEO_FPS as f64,
+                    w,
+                    h,
+                    &mut rgb,
+                ) {
+                    continue;
                 }
             }
 
@@ -1004,11 +1061,10 @@ impl CausalUnfoldEngine {
                 continue;
             }
             let parallax = (layer.inverse_depth / max_inv_d).clamp(0.25, 1.0);
-            let traj_off = if !layer.trajectory.is_empty() {
-                layer.trajectory[frame_idx % layer.trajectory.len()]
-            } else {
-                [0, 0]
-            };
+            // The unfolded camera motor alone drives the view; the source trajectory only anchors
+            // where the novel camera starts in the atlas (the clip's first frame).
+            let traj_off = layer.trajectory.first().copied().unwrap_or([0, 0]);
+            let _ = frame_idx;
             let scroll_dx = (cam_dx * parallax).round() as i32 + traj_off[0];
             let scroll_dy = (cam_dy * parallax).round() as i32 + traj_off[1];
 
@@ -1079,121 +1135,215 @@ impl CausalUnfoldEngine {
         }
     }
 
-    /// Select the observation index and discrete view-aspect idempotent cell $\epsilon_{s,\text{view}}$
-    /// in `art_holon` that minimizes geodesic rotor + CFT gait phase distance on $\text{Spin}(2) \times S^1$
-    /// to `holon`'s instantaneous `CliffordDensityElement` heading and kinematic gait phase.
+    /// Select which enfolded observation (posture idempotent $\epsilon_{s,\text{view}}$ + CFT phase)
+    /// to project for `holon` at unfold frame `frame_idx`. One law for every holon:
+    ///
+    /// 1. **Spin(2) alignment:** keep observations whose travel heading rotor is within a quarter
+    ///    turn of the holon's current heading ($\langle R, R_{\text{obs}} \rangle_0 > 0$ on the half
+    ///    angle), or the best-aligned one when none is.
+    /// 2. **Source cadence:** play the kept observations in source order at the source's own rate
+    ///    (`source_frames_per_frame` = source fps / unfold fps), so animation timing is inherited
+    ///    from the enfolded footage rather than imposed.
     pub fn select_view_idempotent_observation_index(
         art_holon: &ArticulatedHolon,
         holon: &ArticulatedFieldHolon,
         frame_idx: usize,
+        source_frames_per_frame: f64,
     ) -> usize {
         let n_obs = art_holon.poses_per_obs.len();
         if n_obs == 0 {
             return 0;
         }
-        let target_heading = holon.cde.heading_angle();
+        // Direction of travel (matches how `heading_rad` was measured at enfoldment); at rest, the
+        // holon's own Spin(2) heading rotor.
+        let v = holon.velocity;
+        let target = if v[0].hypot(v[1]) > f32::EPSILON {
+            (v[1] as f64).atan2(v[0] as f64)
+        } else {
+            holon.cde.heading_angle()
+        };
+        let alignment = |oi: usize| {
+            art_holon.poses_per_obs[oi].first().map_or(-1.0, |r| (target - r.heading_rad).cos())
+        };
+        let mut kept: Vec<usize> = (0..n_obs).filter(|&oi| alignment(oi) > 0.0).collect();
+        if kept.is_empty() {
+            let best = (0..n_obs)
+                .max_by(|&a, &b| alignment(a).partial_cmp(&alignment(b)).unwrap_or(std::cmp::Ordering::Equal))
+                .unwrap_or(0);
+            kept.push(best);
+        }
+        let frame_of = |oi: usize| art_holon.obs_frames.get(oi).copied().unwrap_or(oi) as f64;
+        let first = frame_of(kept[0]);
+        let span = frame_of(kept[kept.len() - 1]) - first + 1.0;
+        let t = (frame_idx as f64 * source_frames_per_frame).rem_euclid(span.max(1.0));
+        kept.iter().copied().rev().find(|&oi| frame_of(oi) - first <= t).unwrap_or(kept[0])
+    }
 
-        // 1. For retro 1-part sprites (e.g. Pacman, Mario):
-        // Filter observations matching the current physical heading, then cycle sequentially.
-        if art_holon.num_parts == 1 {
-            let mut matching_obs = Vec::new();
-            for (oi, poses) in art_holon.poses_per_obs.iter().enumerate() {
-                if let Some(root) = poses.first() {
-                    let d_theta = 1.0 - (target_heading - root.angle_rad).cos();
-                    if d_theta < 1.0 {
-                        matching_obs.push(oi);
-                    }
-                }
-            }
-            if matching_obs.is_empty() {
-                let mut best_oi = 0;
-                let mut best_diff = f64::MAX;
-                for (oi, poses) in art_holon.poses_per_obs.iter().enumerate() {
-                    if let Some(root) = poses.first() {
-                        let d = 1.0 - (target_heading - root.angle_rad).cos();
-                        if d < best_diff {
-                            best_diff = d;
-                            best_oi = oi;
-                        }
-                    }
-                }
-                matching_obs.push(best_oi);
-            }
+    /// Dispatch prompt holons to enfolded `ArticulatedHolon` tracks.
+    ///
+    /// Evidence is consumed from strongest to weakest:
+    /// 1. **Explicit appearance:** author-stated colours are jointly assigned to tracks maximizing
+    ///    chromatic affinity x observation prior.
+    /// 2. **Verb grounding:** a verb learned from this clip binds its subject/object to the exact
+    ///    tracks whose relative motor $M_{\text{rel}} = \widetilde{M}_B M_A$ defined it.
+    /// 3. **Saliency:** remaining solid holons (including stated colours with no chromatic evidence)
+    ///    take the remaining tracks in enfoldment order (longest, most-observed first).
+    ///
+    /// HUD overlays, static fixtures, and field solitons ($C < 0.5$) never bind sprites.
+    fn resolve_wavepacket_matches(
+        scene: &UnfoldSceneSpec,
+        manifest: &ImplicateContainerManifest,
+        clip: &EnfoldedClipAssets,
+    ) -> Vec<Option<usize>> {
+        let specs = &scene.holons;
+        let tracks = &clip.holons;
+        let mut matches: Vec<Option<usize>> = vec![None; specs.len()];
+        let mut used = vec![false; tracks.len()];
+        let renderable: Vec<bool> = specs
+            .iter()
+            .map(|s| !s.is_camera_locked_hud && !s.is_static_fixture && s.cohesion_c >= 0.5)
+            .collect();
+        let usable = |j: usize| tracks.get(j).is_some_and(|t| !t.poses_per_obs.is_empty() && !t.kernels.is_empty());
+        let idx_of = |name: &str| specs.iter().position(|s| s.name == name);
 
-            let anim_step = frame_idx / 3;
-            let cycle_idx = anim_step % matching_obs.len();
-            return matching_obs[cycle_idx];
+        let bind = |i: usize, j: usize, matches: &mut Vec<Option<usize>>, used: &mut Vec<bool>| {
+            if renderable[i] && matches[i].is_none() && usable(j) && !used[j] {
+                matches[i] = Some(j);
+                used[j] = true;
+            }
+        };
+
+        // 1. Explicit appearance: the joint assignment of stated colours to tracks maximizing total
+        //    evidence = chromatic affinity (likelihood) x observation share (prior that the track is a
+        //    genuine holon). Joint, not greedy: names are fuzzy, relative fit decides.
+        let explicit: Vec<usize> = (0..specs.len())
+            .filter(|&i| renderable[i] && matches[i].is_none() && specs[i].appearance_explicit)
+            .collect();
+        let candidates: Vec<usize> = (0..tracks.len()).filter(|&j| !used[j] && usable(j)).collect();
+        let max_obs = candidates.iter().map(|&j| tracks[j].poses_per_obs.len()).max().unwrap_or(1).max(1) as f32;
+        let evidence: Vec<Vec<f32>> = explicit
+            .iter()
+            .map(|&i| {
+                let p = specs[i].base_color.map(|v| v as f32);
+                candidates
+                    .iter()
+                    .map(|&j| Self::chromatic_affinity(p, &tracks[j]).max(0.0) * tracks[j].poses_per_obs.len() as f32 / max_obs)
+                    .collect()
+            })
+            .collect();
+        if std::env::var_os("IMPLICATE_DEBUG_DISPATCH").is_some() {
+            for (r, &i) in explicit.iter().enumerate() {
+                let row: Vec<String> = candidates.iter().zip(&evidence[r]).map(|(j, e)| format!("t{j}={e:.2}")).collect();
+                eprintln!("[dispatch] '{}' evidence: {}", specs[i].name, row.join(" "));
+            }
+        }
+        for (r, c) in Self::max_weight_assignment(&evidence).into_iter().enumerate() {
+            if let Some(c) = c {
+                bind(explicit[r], candidates[c], &mut matches, &mut used);
+            }
         }
 
-        // 2. For articulated characters (num_parts > 1, e.g. Mrs. Brisby, Jeremy Crow, Raptor Carrier):
-        // Joint optimization of heading alignment + continuous CFT limb gait phase
-        let target_phase =
-            (frame_idx as f64) * 0.35 + (holon.position[0] as f64) * 0.04 + (holon.position[1] as f64) * 0.02;
-
-        let mut best_idx = 0usize;
-        let mut best_cost = f64::MAX;
-        for (oi, poses) in art_holon.poses_per_obs.iter().enumerate() {
-            let Some(root) = poses.first() else {
+        // 2. Verb grounding.
+        for vb in &scene.verb_bindings {
+            let Some(g) = manifest.verb_potentials.get(&vb.verb).and_then(|e| e.grounding.as_ref()) else {
                 continue;
             };
-            let d_theta = 1.0 - (target_heading - root.angle_rad).cos();
-            let d_phase = 1.0 - (target_phase - root.phase_rad).cos();
-            let cost = 0.65 * d_theta + 0.35 * d_phase;
-            if cost < best_cost {
-                best_cost = cost;
-                best_idx = oi;
+            if g.clip_id != clip.clip_id {
+                continue;
+            }
+            if let Some(i) = idx_of(&vb.subject) {
+                bind(i, g.subject_track, &mut matches, &mut used);
+            }
+            if let (Some(i), Some(j)) = (idx_of(&vb.target), g.target_track) {
+                bind(i, j, &mut matches, &mut used);
             }
         }
-        best_idx
-    }
 
-    /// Semantically match a prompt holon to an enfolded character track based on minimal
-    /// RGB color distance to the prompt specification, preserving pure wave excitons.
-    fn match_holon_to_wavepacket<'a>(
-        name: &str,
-        clause: &str,
-        luminescence: [f32; 3],
-        base_color: [u8; 3],
-        _holon_index: usize,
-        holons: &'a [ArticulatedHolon],
-    ) -> Option<&'a ArticulatedHolon> {
-        if holons.is_empty() {
-            return None;
-        }
-        let lower_name = name.to_ascii_lowercase();
-        let lower_clause = clause.to_ascii_lowercase();
-
-        // Pure energy, soliton, projectile, talisman, or HUD entities render via field luminescence
-        if lower_name.contains("drone")
-            || lower_name.contains("plasma")
-            || lower_name.contains("pellet")
-            || lower_name.contains("talisman")
-            || lower_name.contains("amulet")
-            || lower_name.contains("laser")
-            || lower_clause.contains("glowing energy")
-            || lower_clause.contains("talisman")
-            || lower_clause.contains("entity_hud_interface")
-            || (luminescence[0] + luminescence[1] + luminescence[2] > 3.0 && !lower_clause.contains("hero"))
-        {
-            return None;
-        }
-
-        // Color-based dispatch: select the track whose root appearance best matches base_color
-        let mut best_idx = 0;
-        let mut best_dist = f64::MAX;
-        for (idx, h) in holons.iter().enumerate() {
-            let col = h.part_colors.first().copied().unwrap_or([128, 128, 128]);
-            let dr = col[0] as f64 - base_color[0] as f64;
-            let dg = col[1] as f64 - base_color[1] as f64;
-            let db = col[2] as f64 - base_color[2] as f64;
-            let dist = (dr * dr + dg * dg + db * db).sqrt();
-            if dist < best_dist {
-                best_dist = dist;
-                best_idx = idx;
+        // 3. Saliency order.
+        for i in 0..specs.len() {
+            // Includes explicit colours that found no chromatic evidence: they carry no information.
+            if renderable[i] && matches[i].is_none() {
+                if let Some(j) = (0..tracks.len()).find(|&j| !used[j] && usable(j)) {
+                    bind(i, j, &mut matches, &mut used);
+                }
             }
         }
-        Some(&holons[best_idx])
+        matches
     }
+
+    /// Chromatic affinity of a stated colour with a track: alpha-weighted mean cosine between colour
+    /// directions in L*a*b* seen from the neutral point (L* = 50, a* = b* = 0). Hue enters through the
+    /// a*b* chroma spinor $z = a^* + b^*\mathbf{e}_{12}$, lightness through L*.
+    fn chromatic_affinity(p: [f32; 3], art: &ArticulatedHolon) -> f32 {
+        let dir = |c: [f32; 3]| {
+            let l = Self::srgb_to_lab(c);
+            [l[0] - 50.0, l[1], l[2]]
+        };
+        let pd = dir(p);
+        let pn = (pd[0] * pd[0] + pd[1] * pd[1] + pd[2] * pd[2]).sqrt().max(1e-6);
+        let (mut acc, mut wsum) = (0.0f32, 0.0f32);
+        for k in art.kernels.iter().flatten() {
+            for (t, px) in k.dc_rgba.chunks_exact(4).enumerate() {
+                let a = px[3] as f32 / 255.0 * k.gaussian_envelope.get(t).copied().unwrap_or(1.0);
+                if a <= 0.0 {
+                    continue;
+                }
+                let cd = dir([px[0] as f32, px[1] as f32, px[2] as f32]);
+                let cn = (cd[0] * cd[0] + cd[1] * cd[1] + cd[2] * cd[2]).sqrt().max(1e-6);
+                acc += a * (pd[0] * cd[0] + pd[1] * cd[1] + pd[2] * cd[2]) / (pn * cn);
+                wsum += a;
+            }
+        }
+        if wsum > 0.0 { acc / wsum } else { 0.0 }
+    }
+
+    /// Exact maximum-weight assignment of rows to distinct columns (a row stays unassigned when
+    /// all its weights are zero). Exhaustive branch-and-bound; scenes bind few holons.
+    fn max_weight_assignment(w: &[Vec<f32>]) -> Vec<Option<usize>> {
+        fn go(r: usize, w: &[Vec<f32>], used: &mut Vec<bool>, cur: &mut Vec<Option<usize>>, score: f32, best: &mut (f32, Vec<Option<usize>>)) {
+            if r == w.len() {
+                if score > best.0 {
+                    *best = (score, cur.clone());
+                }
+                return;
+            }
+            let bound: f32 = w[r..].iter().map(|row| row.iter().copied().fold(0.0, f32::max)).sum();
+            if score + bound <= best.0 {
+                return;
+            }
+            for c in 0..w[r].len() {
+                if !used[c] && w[r][c] > 0.0 {
+                    used[c] = true;
+                    cur[r] = Some(c);
+                    go(r + 1, w, used, cur, score + w[r][c], best);
+                    used[c] = false;
+                    cur[r] = None;
+                }
+            }
+            go(r + 1, w, used, cur, score, best);
+        }
+        let cols = w.first().map_or(0, Vec::len);
+        let mut best = (f32::NEG_INFINITY, vec![None; w.len()]);
+        go(0, w, &mut vec![false; cols], &mut vec![None; w.len()], 0.0, &mut best);
+        best.1
+    }
+
+    /// CIE L*a*b* (D65) of an sRGB colour. The a*b* plane is the opponent-chroma plane: a colour's
+    /// chroma is the $\mathbb{G}_{2,0}^+$ spinor $z = a^* + b^*\,\mathbf{e}_{12}$ (hue = rotor angle).
+    fn srgb_to_lab(c: [f32; 3]) -> [f32; 3] {
+        let lin = |v: f32| {
+            let v = v / 255.0;
+            if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        };
+        let (r, g, b) = (lin(c[0]), lin(c[1]), lin(c[2]));
+        let x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+        let y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        let z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+        let f = |t: f32| if t > 216.0 / 24389.0 { t.cbrt() } else { (24389.0 / 27.0 * t + 16.0) / 116.0 };
+        let (fx, fy, fz) = (f(x), f(y), f(z));
+        [116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)]
+    }
+
 
     #[allow(clippy::too_many_arguments)]
     fn splat_articulated_holon_wavepacket(
@@ -1203,6 +1353,7 @@ impl CausalUnfoldEngine {
         atlas_w: usize,
         atlas_h: usize,
         frame_idx: usize,
+        source_frames_per_frame: f64,
         w: usize,
         h: usize,
         rgb: &mut [u8],
@@ -1210,8 +1361,12 @@ impl CausalUnfoldEngine {
         if art_holon.poses_per_obs.is_empty() || art_holon.kernels.is_empty() {
             return false;
         }
-        let obs_idx =
-            Self::select_view_idempotent_observation_index(art_holon, holon, frame_idx);
+        let obs_idx = Self::select_view_idempotent_observation_index(
+            art_holon,
+            holon,
+            frame_idx,
+            source_frames_per_frame,
+        );
         let ref_poses = &art_holon.poses_per_obs[obs_idx];
         if ref_poses.is_empty() {
             return false;
@@ -1230,11 +1385,6 @@ impl CausalUnfoldEngine {
         let root_ref = &ref_poses[0];
         let cx = screen_pos[0] as f64;
         let cy = screen_pos[1] as f64;
-        let heading_delta = if art_holon.num_parts > 1 {
-            (holon.cde.heading_angle() * 0.12).clamp(-0.30, 0.30)
-        } else {
-            0.0
-        };
 
         let mut unfolded_poses = Vec::with_capacity(n_parts);
         let (mut min_x, mut max_x) = (w as i32 - 1, 0i32);
@@ -1244,10 +1394,9 @@ impl CausalUnfoldEngine {
             let rp = &ref_poses[p];
             let rel_dx = (rp.center[0] - root_ref.center[0]) * sx;
             let rel_dy = (rp.center[1] - root_ref.center[1]) * sy;
-            let rot = heading_delta;
-            let (sr, cr) = rot.sin_cos();
-            let px = cx + cr * rel_dx - sr * rel_dy;
-            let py = cy + sr * rel_dx + cr * rel_dy;
+            // Posture change is carried by the view idempotent; the drawing itself is not rotated.
+            let px = cx + rel_dx;
+            let py = cy + rel_dy;
             let rx = (rp.radii[0] * sx).max(3.0);
             let ry = (rp.radii[1] * sy).max(3.0);
             let max_r = (rx.max(ry) * 1.15).ceil() as i32 + 2;
@@ -1259,7 +1408,7 @@ impl CausalUnfoldEngine {
 
             unfolded_poses.push(SubHolonPose {
                 center: [px, py],
-                angle_rad: rp.angle_rad + rot,
+                angle_rad: rp.angle_rad,
                 radii: [rx, ry],
                 ..*rp
             });

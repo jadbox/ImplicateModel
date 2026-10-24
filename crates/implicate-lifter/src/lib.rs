@@ -17,6 +17,7 @@ pub use articulated_wavepacket::{
     ArticulatedComparisonReport, ArticulatedHolon, CharacterObservation, SubHolonPose,
     WavepacketPartKernel, choose_part_and_view_counts, compute_cliffordnet_laplacian_features,
     compute_perceptual_patch_lpips, evaluate_vs_single_box_baseline,
+    evaluate_vs_single_box_baseline_with_parts,
     extract_character_observation_tracks, extract_dominant_character_observations,
     fit_articulated_holon, mask_iou, render_articulated_holon_observation,
 };

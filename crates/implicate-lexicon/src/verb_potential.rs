@@ -17,6 +17,19 @@ pub struct VerbPotentialEntry {
     pub verb: String,
     pub spinor: Spinor16,
     pub potential: LearnedVerbPotential,
+    /// Empirical provenance when the potential was assimilated from tracked holons in an enfolded clip.
+    #[serde(default)]
+    pub grounding: Option<VerbGrounding>,
+}
+
+/// The enfolded clip and track indices whose relative motion $M_{\text{rel}} = \widetilde{M}_B M_A$
+/// defines a learned verb. Prompt holons bound by this verb inherit these tracks' appearance.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VerbGrounding {
+    pub clip_id: String,
+    pub subject_track: usize,
+    /// `None` when the object is a static anchor rather than a tracked holon.
+    pub target_track: Option<usize>,
 }
 
 /// Collection of learned Bohm-Hiley verb potentials indexed by wording-space spinors.
@@ -40,6 +53,7 @@ impl VerbPotentialLexicon {
                 verb: (*verb).to_string(),
                 spinor,
                 potential,
+                grounding: None,
             });
         }
         Self { entries }
@@ -66,14 +80,27 @@ impl VerbPotentialLexicon {
 
     /// Insert or update a learned verb potential entry in the lexicon.
     pub fn upsert(&mut self, verb: String, spinor: Spinor16, potential: LearnedVerbPotential) {
+        self.upsert_grounded(verb, spinor, potential, None);
+    }
+
+    /// Insert or update a learned verb potential together with its empirical track grounding.
+    pub fn upsert_grounded(
+        &mut self,
+        verb: String,
+        spinor: Spinor16,
+        potential: LearnedVerbPotential,
+        grounding: Option<VerbGrounding>,
+    ) {
         if let Some(existing) = self.entries.iter_mut().find(|e| e.verb == verb) {
             existing.spinor = spinor;
             existing.potential = potential;
+            existing.grounding = grounding;
         } else {
             self.entries.push(VerbPotentialEntry {
                 verb,
                 spinor,
                 potential,
+                grounding,
             });
         }
     }

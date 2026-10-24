@@ -5,7 +5,7 @@ use std::io::{self, ErrorKind};
 use std::path::Path;
 
 use implicate_lexicon::{
-    ShotLexicon, VlmHolonRecord, VlmVerbRecord, detect_cft_kinematic_impulses,
+    ShotLexicon, VerbGrounding, VlmHolonRecord, VlmVerbRecord, detect_cft_kinematic_impulses,
     format_timestamp_range, snap_verb_window_to_cft_impulses,
 };
 use implicate_lifter::{
@@ -23,7 +23,9 @@ use crate::container::{
 };
 
 pub const ENFOLDED_PAYLOAD_MAGIC: &[u8; 4] = b"ENFD";
-pub const ENFOLDED_PAYLOAD_VERSION: u32 = 1;
+pub const ENFOLDED_PAYLOAD_VERSION: u32 = 2;
+/// Oldest payload version still decodable (v1 lacks per-observation frame indices).
+pub const ENFOLDED_PAYLOAD_MIN_VERSION: u32 = 1;
 
 /// Lightweight manifest summary for an enfolded video clip stored in the `.implicate` binary payload.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -54,6 +56,15 @@ pub struct EnfoldedClipAssets {
 }
 
 impl EnfoldedClipAssets {
+    /// Source frame rate recovered from the shot table (frames per second of source time).
+    pub fn fps(&self) -> f64 {
+        self.shots
+            .iter()
+            .find(|s| s.end_sec > s.start_sec && s.frame_end > s.frame_start)
+            .map(|s| (s.frame_end - s.frame_start) as f64 / (s.end_sec - s.start_sec))
+            .unwrap_or(implicate_rolpa::DEFAULT_VIDEO_FPS as f64)
+    }
+
     pub fn summary(&self) -> EnfoldedClipSummary {
         EnfoldedClipSummary {
             clip_id: self.clip_id.clone(),
@@ -171,28 +182,43 @@ pub fn assimilate_clip_into_manifest(
     let verb_name = format!("enfolded_{}", clip.clip_id);
     let pair_verb_name = format!("enfolded_pair_{}", clip.clip_id);
 
-    let extract_root_traj = |h: &ArticulatedHolon| -> Vec<HolonPose2D> {
-        let mut traj = Vec::with_capacity(h.poses_per_obs.len());
-        for poses in &h.poses_per_obs {
-            if let Some(root) = poses.first() {
+    // Root trajectories in world coordinates (screen + camera trajectory), keyed by source frame.
+    let camera = |f: usize| -> [f64; 2] {
+        clip.atlas
+            .layers
+            .first()
+            .and_then(|l| l.trajectory.get(f))
+            .map(|t| [t[0] as f64, t[1] as f64])
+            .unwrap_or([0.0, 0.0])
+    };
+    let extract_root_traj = |h: &ArticulatedHolon| -> Vec<(usize, HolonPose2D)> {
+        h.poses_per_obs
+            .iter()
+            .enumerate()
+            .filter_map(|(oi, poses)| {
+                let root = poses.first()?;
+                let f = h.obs_frames.get(oi).copied().unwrap_or(oi);
+                let cam = camera(f);
                 let theta = if h.num_parts > 1 { root.angle_rad } else { 0.0 };
-                traj.push(HolonPose2D::new(
-                    root.center[0],
-                    root.center[1],
-                    theta,
-                ));
-            }
-        }
-        traj
+                Some((f, HolonPose2D::new(root.center[0] + cam[0], root.center[1] + cam[1], theta)))
+            })
+            .collect()
+    };
+    let mean_extent = |h: &ArticulatedHolon| -> f64 {
+        let n = h.poses_per_obs.len().max(1) as f64;
+        h.poses_per_obs
+            .iter()
+            .filter_map(|p| p.first())
+            .map(|r| 2.0 * r.radii[0].max(r.radii[1]))
+            .sum::<f64>()
+            / n
     };
 
-    let traj_a = clip
-        .holons
-        .first()
-        .map(extract_root_traj)
-        .unwrap_or_default();
+    let keyed_a = clip.holons.first().map(extract_root_traj).unwrap_or_default();
+    let traj_a: Vec<HolonPose2D> = keyed_a.iter().map(|(_, p)| *p).collect();
+    let extent_a = clip.holons.first().map(mean_extent).unwrap_or(1.0).max(1.0);
 
-    let fps = 24.0;
+    let fps = clip.fps();
     let cft_impulses = detect_cft_kinematic_impulses(&traj_a, fps);
     let raw_dur = (clip.num_frames.max(1) as f64) / fps;
     let snapped = snap_verb_window_to_cft_impulses((0.0, raw_dur), &cft_impulses, raw_dur.max(2.0));
@@ -254,18 +280,18 @@ pub fn assimilate_clip_into_manifest(
     manifest.concept_lexicon.learn_from_shot(&shot_lexicon);
 
     if traj_a.len() >= 4 {
+        // Static anchor at the atlas centre; if the actor starts on it, displace by two body extents
+        // so the canonical relative frame $P_A \vee P_B$ is well defined.
         let a0 = traj_a[0];
-        let anchor_pos = [
-            (clip.atlas.width as f64) * 0.5,
-            (clip.atlas.height as f64) * 0.5,
+        let cam0 = camera(keyed_a[0].0);
+        let anchor = [
+            (clip.atlas.width as f64) * 0.5 + cam0[0],
+            (clip.atlas.height as f64) * 0.5 + cam0[1],
         ];
-        let dx = anchor_pos[0] - a0.x;
-        let dy = anchor_pos[1] - a0.y;
-        let dist = (dx * dx + dy * dy).sqrt();
-        let (bx, by) = if dist < 20.0 {
-            (a0.x + 36.0, a0.y)
+        let (bx, by) = if (anchor[0] - a0.x).hypot(anchor[1] - a0.y) < extent_a {
+            (a0.x + 2.0 * extent_a, a0.y)
         } else {
-            (anchor_pos[0], anchor_pos[1])
+            (anchor[0], anchor[1])
         };
         let traj_b = vec![HolonPose2D::new(bx, by, 0.0); traj_a.len()];
         let potential =
@@ -276,19 +302,30 @@ pub fn assimilate_clip_into_manifest(
             .into_iter()
             .next()
         {
-            manifest.verb_potentials.upsert(verb_name, spinor, potential);
+            let grounding = VerbGrounding {
+                clip_id: clip.clip_id.clone(),
+                subject_track: 0,
+                target_track: None,
+            };
+            manifest
+                .verb_potentials
+                .upsert_grounded(verb_name, spinor, potential, Some(grounding));
         }
 
-        // If a second tracked actor is present, also fit the true two-body relative PGA potential M_rel(t) = ~M_B(t) M_A(t)
+        // Two-body relative PGA potential M_rel(t) = ~M_B(t) M_A(t) over the frames both tracks share.
         if let Some(holon_b) = clip.holons.get(1) {
-            let traj_b_actor = extract_root_traj(holon_b);
-            let n_pair = traj_a.len().min(traj_b_actor.len());
-            if n_pair >= 4 {
-                let mut pair_a = traj_a[..n_pair].to_vec();
-                let pair_b = traj_b_actor[..n_pair].to_vec();
+            let keyed_b = extract_root_traj(holon_b);
+            let (mut pair_a, mut pair_b) = (Vec::new(), Vec::new());
+            for (f, pa) in &keyed_a {
+                if let Some((_, pb)) = keyed_b.iter().find(|(fb, _)| fb == f) {
+                    pair_a.push(*pa);
+                    pair_b.push(*pb);
+                }
+            }
+            if pair_a.len() >= 4 {
                 let d0 = (pair_a[0].x - pair_b[0].x).hypot(pair_a[0].y - pair_b[0].y);
-                if d0 < 12.0 {
-                    pair_a[0].x += 16.0;
+                if d0 < 0.5 * extent_a {
+                    pair_a[0].x += extent_a;
                 }
                 let pair_pot = LearnedVerbPotential::fit_from_trajectories(
                     &pair_verb_name,
@@ -300,9 +337,14 @@ pub fn assimilate_clip_into_manifest(
                     .into_iter()
                     .next()
                 {
+                    let grounding = VerbGrounding {
+                        clip_id: clip.clip_id.clone(),
+                        subject_track: 0,
+                        target_track: Some(1),
+                    };
                     manifest
                         .verb_potentials
-                        .upsert(pair_verb_name, spinor, pair_pot);
+                        .upsert_grounded(pair_verb_name, spinor, pair_pot, Some(grounding));
                 }
             }
         }
@@ -437,7 +479,7 @@ pub fn decode_enfolded_payload(bytes: &[u8]) -> io::Result<Vec<EnfoldedClipAsset
         ));
     }
     let version = r.read_u32()?;
-    if version != ENFOLDED_PAYLOAD_VERSION {
+    if !(ENFOLDED_PAYLOAD_MIN_VERSION..=ENFOLDED_PAYLOAD_VERSION).contains(&version) {
         return Err(io::Error::new(
             ErrorKind::InvalidData,
             format!("Unsupported enfolded payload version {version}"),
@@ -513,7 +555,7 @@ pub fn decode_enfolded_payload(bytes: &[u8]) -> io::Result<Vec<EnfoldedClipAsset
         let num_holons = r.read_u32()? as usize;
         let mut holons = Vec::with_capacity(num_holons);
         for _ in 0..num_holons {
-            holons.push(r.read_articulated_holon()?);
+            holons.push(r.read_articulated_holon(version)?);
         }
 
         clips.push(EnfoldedClipAssets {
@@ -633,6 +675,10 @@ impl PayloadWriter {
         let poses_json = serde_json::to_vec(&holon.poses_per_obs)
             .map_err(|e| io::Error::new(ErrorKind::InvalidData, e.to_string()))?;
         self.write_bytes(&poses_json);
+        self.write_u32(holon.obs_frames.len() as u32);
+        for &f in &holon.obs_frames {
+            self.write_u32(f as u32);
+        }
         Ok(())
     }
 }
@@ -729,7 +775,7 @@ impl<'a> PayloadReader<'a> {
         })
     }
 
-    fn read_articulated_holon(&mut self) -> io::Result<ArticulatedHolon> {
+    fn read_articulated_holon(&mut self, version: u32) -> io::Result<ArticulatedHolon> {
         let num_parts = self.read_u32()? as usize;
         let num_view_cells = self.read_u32()? as usize;
         let n_par = self.read_u32()? as usize;
@@ -785,6 +831,12 @@ impl<'a> PayloadReader<'a> {
         let poses_bytes = self.read_bytes()?;
         let poses_per_obs: Vec<Vec<SubHolonPose>> = serde_json::from_slice(poses_bytes)
             .map_err(|e| io::Error::new(ErrorKind::InvalidData, e.to_string()))?;
+        let obs_frames = if version >= 2 {
+            let n = self.read_u32()? as usize;
+            (0..n).map(|_| self.read_u32().map(|f| f as usize)).collect::<io::Result<Vec<_>>>()?
+        } else {
+            (0..poses_per_obs.len()).collect()
+        };
 
         Ok(ArticulatedHolon {
             num_parts,
@@ -793,6 +845,7 @@ impl<'a> PayloadReader<'a> {
             part_colors,
             kernels,
             poses_per_obs,
+            obs_frames,
         })
     }
 }
