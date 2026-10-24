@@ -64,7 +64,7 @@ pub fn compute_cliffordnet_laplacian_features(rgb: &[u8], w: usize, h: usize) ->
 ///
 /// In the Implicate Video Engine (Track R10.2, Whitepaper §1, §2.3):
 /// - Grade 0 scalar inner product $D(\mathbf{x}) = u \cdot \nabla^2 u$ measures cel paint fill coherence and vitality diffusion.
-/// - Grade 2 bivector wedge product $W(\mathbf{x}) = u \wedge \nabla^2 u$ measures boundary vorticity blades (Don Bluth ink contours).
+/// - Grade 2 bivector wedge product $W(\mathbf{x}) = u \wedge \nabla^2 u$ measures boundary vorticity blades (animated film ink contours).
 #[derive(Clone, Debug, PartialEq)]
 pub struct CliffordDualDecomposition {
     pub width: usize,
@@ -463,7 +463,7 @@ mod tests {
                     rgb[idx * 3 + 2] = 40;
                     mask[idx] = true;
                 } else if d <= radius_outer {
-                    // Don Bluth ink contour line (dark pigment)
+                    // animated film ink contour line (dark pigment)
                     rgb[idx * 3] = 20;
                     rgb[idx * 3 + 1] = 15;
                     rgb[idx * 3 + 2] = 25;

@@ -16,7 +16,7 @@ use implicate_field::{
 };
 use implicate_lexicon::{ConceptLexicon, GatrHolonOutput, GatrHolonToken};
 use implicate_lifter::{
-    ArticulatedHolon, ParallaxLayer, SubHolonPose, mux_rgb_frames_and_wav_to_mp4,
+    ArticulatedHolon, GpuModelSheetMonad, ParallaxLayer, SubHolonPose, mux_rgb_frames_and_wav_to_mp4,
 };
 use implicate_math::{
     CanonicalRelFrame, HolonPose2D, LearnedVerbPotential, OrientedLine2, Spinor16,
@@ -24,7 +24,7 @@ use implicate_math::{
 };
 use implicate_rolpa::{
     AcousticRolpaProjector, DEFAULT_SAMPLE_RATE, DEFAULT_VIDEO_FPS, GpuCliffordNetRefiner,
-    RolpaGpuContext, RolpaInputGrid, RolpaUniforms,
+    GpuModelSheetUnfolder, RolpaGpuContext, RolpaInputGrid, RolpaUniforms, UnfoldUniforms,
 };
 use serde::{Deserialize, Serialize};
 
@@ -126,6 +126,7 @@ pub struct CausalUnfoldEngine {
     pub lattice: GpuWaveMatterLattice,
     pub acoustic: AcousticRolpaProjector,
     pub refiner: Option<GpuCliffordNetRefiner>,
+    pub unfolder: Option<GpuModelSheetUnfolder>,
     pub camera_pos: [f32; 2],
     pub enfolded_clip: Option<EnfoldedClipAssets>,
     /// For each prompt holon, the semantically matched `ArticulatedHolon` index in `enfolded_clip`.
@@ -333,6 +334,13 @@ impl CausalUnfoldEngine {
             None
         };
 
+        let unfolder = if scene.width > 0 && scene.height > 0 {
+            let rolpa_ctx = RolpaGpuContext::shared();
+            Some(GpuModelSheetUnfolder::new(rolpa_ctx, scene.width, scene.height))
+        } else {
+            None
+        };
+
         Self {
             manifest,
             scene,
@@ -346,6 +354,7 @@ impl CausalUnfoldEngine {
             lattice,
             acoustic: AcousticRolpaProjector::new(DEFAULT_SAMPLE_RATE, DEFAULT_VIDEO_FPS),
             refiner,
+            unfolder,
             camera_pos: cam0,
             enfolded_clip: None,
             wavepacket_matches: Vec::new(),
@@ -367,6 +376,24 @@ impl CausalUnfoldEngine {
         self.wavepacket_matches = Self::resolve_wavepacket_matches(&self.scene, &self.manifest, &clip);
         self.enfolded_clip = Some(clip);
         self
+    }
+
+    /// Unfold a character holon on the GPU using `GpuModelSheetUnfolder`.
+    pub fn unfold_holon_gpu(
+        &self,
+        monad: &GpuModelSheetMonad,
+        uniforms: &UnfoldUniforms,
+        kernel_data: Option<&[[f32; 4]]>,
+        out_rgb: &mut [u8],
+        out_mask: &mut [bool],
+    ) -> bool {
+        if let Some(ref unfolder) = self.unfolder {
+            let ctx = RolpaGpuContext::shared();
+            unfolder.unfold_and_readback_u8(ctx, monad, uniforms, kernel_data, out_rgb, out_mask);
+            true
+        } else {
+            false
+        }
     }
 
     /// Clip in which one of the scene's verbs was empirically grounded, if any.

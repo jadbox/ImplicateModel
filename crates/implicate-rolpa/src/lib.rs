@@ -14,4 +14,6 @@ pub use cliffordnet::{
     compute_lpips_rgb, compute_psnr_rgb, compute_temporal_warping_error,
     simulate_raw_wavepacket_splat,
 };
-pub use gpu_refiner::{GpuCliffordNetRefiner, RolpaGpuContext};
+pub use gpu_refiner::{
+    GpuCliffordNetRefiner, GpuModelSheetUnfolder, GpuPartPose, RolpaGpuContext, UnfoldUniforms,
+};

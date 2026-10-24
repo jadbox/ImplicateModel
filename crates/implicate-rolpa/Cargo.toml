@@ -8,11 +8,9 @@ license.workspace = true
 [dependencies]
 implicate-math = { path = "../implicate-math" }
 implicate-field = { path = "../implicate-field" }
+implicate-lifter = { path = "../implicate-lifter" }
 bytemuck.workspace = true
 hound.workspace = true
 pollster.workspace = true
 serde.workspace = true
 wgpu.workspace = true
-
-[dev-dependencies]
-implicate-lifter = { path = "../implicate-lifter" }

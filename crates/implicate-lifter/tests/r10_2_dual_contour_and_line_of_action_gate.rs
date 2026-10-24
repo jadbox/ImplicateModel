@@ -205,7 +205,7 @@ fn r10_2_visual_contact_sheet_generation() {
     // Create a 4-panel contact sheet:
     // Panel 1: Original RGB crop
     // Panel 2: Cel Paint Fill coherence (u · ∇²u)
-    // Panel 3: Don Bluth Ink Contour Blade (u ∧ ∇²u)
+    // Panel 3: Animated film ink contour blade (u ∧ ∇²u)
     // Panel 4: Line of Action spine overlay
     let padding = 4usize;
     let total_w = (w * 4) + (padding * 5);

@@ -468,7 +468,7 @@ pub struct HolonModelSheet {
 /// Flat 64-byte aligned Mv301 monad array directly mappable to GPU uniform/storage buffers (Pod, Zeroable).
 /// Enables zero heap allocation in unfold trajectory stepping (Carmack mechanical sympathy).
 #[repr(C, align(64))]
-#[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable, Default)]
 pub struct GpuModelSheetMonad {
     /// Monad 0: Line of Action screw blade L_spine ∈ G(3,0,1).
     pub line_of_action: Mv301,
