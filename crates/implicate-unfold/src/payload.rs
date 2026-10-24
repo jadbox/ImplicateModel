@@ -104,8 +104,36 @@ pub fn enfold_video_clip(
     let seg_report =
         segmenter.segment_video_range(video_path, Some(start_sec), Some(duration_sec))?;
 
-    let atlas = build_multiplane_atlas(&frames, &MultiPlaneOptions::default());
-    let obs_tracks = extract_character_observation_tracks(&frames, &atlas, 3);
+    // In a multi-shot clip, constrain atlas & track enfoldment to the continuous shot
+    // encompassing start_sec to avoid registering backgrounds across hard camera cuts.
+    let (shot_frames, active_shots) = if seg_report.shots.len() > 1 {
+        let shot = seg_report
+            .shots
+            .iter()
+            .find(|s| s.frame_start == 0)
+            .or_else(|| {
+                seg_report
+                    .shots
+                    .iter()
+                    .max_by_key(|s| s.frame_end.saturating_sub(s.frame_start))
+            });
+        if let Some(s) = shot {
+            let f0 = s.frame_start.min(frames.len());
+            let f1 = s.frame_end.min(frames.len());
+            if f1 > f0 && (f1 - f0) >= 6 {
+                (frames[f0..f1].to_vec(), vec![s.clone()])
+            } else {
+                (frames, seg_report.shots)
+            }
+        } else {
+            (frames, seg_report.shots)
+        }
+    } else {
+        (frames, seg_report.shots)
+    };
+
+    let atlas = build_multiplane_atlas(&shot_frames, &MultiPlaneOptions::default());
+    let obs_tracks = extract_character_observation_tracks(&shot_frames, &atlas, 3);
     let mut holons = Vec::with_capacity(obs_tracks.len());
     for obs in &obs_tracks {
         if !obs.is_empty() {
@@ -127,8 +155,8 @@ pub fn enfold_video_clip(
     Ok(EnfoldedClipAssets {
         clip_id,
         source_video,
-        num_frames: frames.len(),
-        shots: seg_report.shots,
+        num_frames: shot_frames.len(),
+        shots: active_shots,
         atlas,
         holons,
     })

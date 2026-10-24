@@ -293,24 +293,20 @@ pub fn accumulate_band_atlas_masked(
             }
             let wx = atlas.origin[0] + ix as i32;
             let wy = atlas.origin[1] + iy as i32;
-            let mut filled = false;
+            if let Some(c) = fallback.pixel(wx, wy) {
+                atlas.image.set_pixel(ix, iy, c);
+                continue;
+            }
             for delta in 1..=64 {
                 if ix >= delta && valid[iy * cw + (ix - delta)] {
                     let c = atlas.image.pixel(ix - delta, iy);
                     atlas.image.set_pixel(ix, iy, c);
-                    filled = true;
                     break;
                 }
                 if ix + delta < cw && valid[iy * cw + (ix + delta)] {
                     let c = atlas.image.pixel(ix + delta, iy);
                     atlas.image.set_pixel(ix, iy, c);
-                    filled = true;
                     break;
-                }
-            }
-            if !filled {
-                if let Some(c) = fallback.pixel(wx, wy) {
-                    atlas.image.set_pixel(ix, iy, c);
                 }
             }
         }

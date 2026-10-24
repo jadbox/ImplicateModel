@@ -38,3 +38,11 @@
     2. `smb3_novel_vault_and_patrol`: **`3.888 ms/frame`** (**`257.2 FPS`**), `100%` permanence, `100%` boundary compliance, `0.0000 px` HUD drift, `0.14%–0.45%` verb Fréchet error.
     3. `raptor_novel_plasma_intercept`: **`3.387 ms/frame`** (**`295.3 FPS`**), `100%` permanence, `100%` boundary compliance, `0.08%–0.48%` verb Fréchet error.
     4. `nimh_novel_amulet_sanctuary`: **`2.333 ms/frame`** (**`428.6 FPS`**), `100%` permanence, `100%` boundary compliance, `0.15%–0.47%` verb Fréchet error.
+
+## Track R8 — Visual Fidelity & Artifact Elimination (Active)
+- **Core Architectural Directive:** "Just remember, don't assume anything about the source video- so don't rely on magic number constants for things like tile extraction"
+- **Key Guidelines:**
+  1. No hardcoded tile dimensions (e.g., assuming $16 \times 16$ tiles), coordinate assumptions (assuming NES-like $y=42$ floor or $y=24$ top HUD), or arbitrary row thresholds.
+  2. Continuous Clifford geometry and projective algebra first: evaluate global camera transformation $M_{\text{cam}}(t) \in \text{Spin}(2,0,1)$ to determine whether camera is stationary or translating before partitioning.
+  3. Background recovery: do not punch arbitrary bounding-box holes filled with 1D linear smears; use temporal mode filtering and true fallback from unmasked video frames.
+  4. Multi-shot clips: respect shot boundaries from `StreamingShotSegmenter`; never fuse frames from across a camera cut into a single atlas.

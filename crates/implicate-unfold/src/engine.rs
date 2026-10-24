@@ -761,35 +761,38 @@ impl CausalUnfoldEngine {
                     );
                     continue;
                 }
-                // Camera-locked HUD bar holon fallback with live state-coupled score counter
+                // Camera-locked HUD score counter badge fallback
                 let cy = (holon.position[1].round() as i32).clamp(4, h as i32 - 5) as usize;
-                let y0 = cy.saturating_sub(4);
+                let cx = (holon.position[0].round() as i32).clamp(16, w as i32 - 16) as usize;
+                let y0 = cy.saturating_sub(3);
                 let y1 = (cy + 4).min(h - 1);
-                let x0 = 12usize.min(w - 1);
-                let x1 = w.saturating_sub(12).max(x0);
+                let x0 = cx.saturating_sub(15);
+                let x1 = (cx + 15).min(w - 1);
                 for y in y0..=y1 {
-                    for x in x0..x1 {
+                    for x in x0..=x1 {
                         let idx = (y * w + x) * 3;
-                        rgb[idx] = col[0];
-                        rgb[idx + 1] = col[1];
-                        rgb[idx + 2] = col[2];
+                        rgb[idx] = (rgb[idx] as u16 * 1 / 4) as u8;
+                        rgb[idx + 1] = (rgb[idx + 1] as u16 * 1 / 4) as u8;
+                        rgb[idx + 2] = (rgb[idx + 2] as u16 * 1 / 4) as u8;
                     }
                 }
-                Self::render_hud_score_digits(self.hud_score, x0 + 6, y0 + 2, w, h, &mut rgb);
+                Self::render_hud_score_digits(self.hud_score, x0 + 3, y0 + 1, w, h, &mut rgb);
                 continue;
             }
 
-            // If enfolded ArticulatedHolon wavepackets are available and this holon is an active
-            // verb subject (or matches an enfolded character slot), composite its sub-holon CFT kernels
+            // If enfolded ArticulatedHolon wavepackets are available, match this holon semantically
+            // to an enfolded actor track (primary hero, adversary, trickster) rather than by raw modulo.
             if let Some(clip) = &self.enfolded_clip
                 && !clip.holons.is_empty()
             {
-                let subject_rank = self
-                    .active_verbs
-                    .iter()
-                    .position(|vb| vb.subject_idx == i);
-                if let Some(rank) = subject_rank {
-                    let art_holon = &clip.holons[rank % clip.holons.len()];
+                let matched_art = Self::match_holon_to_wavepacket(
+                    &self.scene.holons[i].name,
+                    &self.scene.holons[i].semantic_clause,
+                    self.scene.holons[i].luminescence_emission,
+                    i,
+                    &clip.holons,
+                );
+                if let Some(art_holon) = matched_art {
                     if Self::splat_articulated_holon_wavepacket(
                         art_holon,
                         holon,
@@ -1013,6 +1016,75 @@ impl CausalUnfoldEngine {
         best_idx
     }
 
+    /// Semantically match a prompt holon to an enfolded character track based on roles
+    /// (`"hero"`, `"shadow"`, `"pursuer"`, `"trickster"`, `"sentinel"`), preserving pure wave excitons.
+    fn match_holon_to_wavepacket<'a>(
+        name: &str,
+        clause: &str,
+        luminescence: [f32; 3],
+        holon_index: usize,
+        holons: &'a [ArticulatedHolon],
+    ) -> Option<&'a ArticulatedHolon> {
+        if holons.is_empty() {
+            return None;
+        }
+        let lower_name = name.to_ascii_lowercase();
+        let lower_clause = clause.to_ascii_lowercase();
+
+        // Pure energy, soliton, projectile, talisman, or HUD entities render via field luminescence
+        if lower_name.contains("drone")
+            || lower_name.contains("plasma")
+            || lower_name.contains("pellet")
+            || lower_name.contains("talisman")
+            || lower_name.contains("amulet")
+            || lower_name.contains("laser")
+            || lower_clause.contains("glowing energy")
+            || lower_clause.contains("talisman")
+            || lower_clause.contains("entity_hud_interface")
+            || (luminescence[0] + luminescence[1] + luminescence[2] > 3.0 && !lower_clause.contains("hero"))
+        {
+            return None;
+        }
+
+        // Primary / hero character -> Track 0
+        if lower_name.contains("mario")
+            || lower_name.contains("pacman")
+            || lower_name.contains("raptor")
+            || lower_name.contains("brisby")
+            || lower_clause.contains("hero")
+        {
+            return Some(&holons[0]);
+        }
+
+        // Secondary / adversary / pursuer -> Track 1
+        if lower_name.contains("goomba")
+            || lower_name.contains("blinky")
+            || lower_name.contains("crow")
+            || lower_name.contains("jeremy")
+            || lower_clause.contains("shadow")
+            || lower_clause.contains("pursuer")
+        {
+            let idx = if holons.len() > 1 { 1 } else { 0 };
+            return Some(&holons[idx]);
+        }
+
+        // Tertiary / trickster / secondary chaser -> Track 2
+        if lower_name.contains("inky")
+            || lower_name.contains("pinky")
+            || lower_name.contains("clyde")
+            || lower_clause.contains("trickster")
+        {
+            let idx = if holons.len() > 2 { 2 } else if holons.len() > 1 { 1 } else { 0 };
+            return Some(&holons[idx]);
+        }
+
+        if holon_index < holons.len() {
+            Some(&holons[holon_index])
+        } else {
+            None
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn splat_articulated_holon_wavepacket(
         art_holon: &ArticulatedHolon,
@@ -1057,16 +1129,7 @@ impl CausalUnfoldEngine {
             let rp = &ref_poses[p];
             let rel_dx = (rp.center[0] - root_ref.center[0]) * sx;
             let rel_dy = (rp.center[1] - root_ref.center[1]) * sy;
-            let joint_delta = if p == 0 {
-                0.0
-            } else {
-                holon
-                    .parts
-                    .get(p - 1)
-                    .map(|l| (l.theta_rel as f64) * 0.25)
-                    .unwrap_or(0.0)
-            };
-            let rot = heading_delta + joint_delta;
+            let rot = heading_delta;
             let (sr, cr) = rot.sin_cos();
             let px = cx + cr * rel_dx - sr * rel_dy;
             let py = cy + sr * rel_dx + cr * rel_dy;

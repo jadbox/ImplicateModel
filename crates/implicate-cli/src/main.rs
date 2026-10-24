@@ -69,6 +69,7 @@ fn cmd_inspect(args: &[String]) -> Result<(), String> {
     }
     println!("GATr Rules:     {}", manifest.gatr_binder.rules.len());
     println!("Binary Payload: {} bytes ({} enfolded clip(s))", payload.len(), clips.len());
+    let do_dump = args.iter().any(|a| a == "--dump-png");
     for clip in &clips {
         let hud_info = clip.atlas.camera_locked_hud.as_ref().map(|h| format!("{:?}", h.y_band)).unwrap_or_else(|| "none".to_string());
         println!(
@@ -85,6 +86,14 @@ fn cmd_inspect(args: &[String]) -> Result<(), String> {
         );
         for (hi, h) in clip.holons.iter().enumerate() {
             println!("    Holon {}: P={}, views={}, obs_len={}", hi, h.num_parts, h.num_view_cells, h.poses_per_obs.len());
+        }
+        if do_dump && !clip.atlas.layers.is_empty() {
+            let img = &clip.atlas.layers[0].atlas.image;
+            let dump_ppm = format!("/tmp/opencode/dump_{}.ppm", clip.clip_id);
+            let mut header = format!("P6\n{} {}\n255\n", img.width, img.height).into_bytes();
+            header.extend_from_slice(&img.rgb);
+            let _ = fs::write(&dump_ppm, header);
+            println!("    Saved atlas layer 0 -> {dump_ppm}");
         }
     }
     Ok(())

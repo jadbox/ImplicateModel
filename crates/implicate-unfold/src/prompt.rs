@@ -191,7 +191,7 @@ impl UnfoldSceneSpec {
                     PromptHolonSpec {
                         name: "Koopa_Block".to_string(),
                         semantic_clause: "Koopa_Block threshold_guardian golden block".to_string(),
-                        initial_pos: [128.0, 72.0],
+                        initial_pos: [138.0, 144.0],
                         initial_vel: [0.0, 0.0],
                         radius: 6.0,
                         rho: 2.0,
@@ -204,8 +204,8 @@ impl UnfoldSceneSpec {
                     PromptHolonSpec {
                         name: "Mario".to_string(),
                         semantic_clause: "Mario hero joy jumper".to_string(),
-                        initial_pos: [86.0, 72.0],
-                        initial_vel: [22.0, 28.0],
+                        initial_pos: [86.0, 178.0],
+                        initial_vel: [22.0, -24.0],
                         radius: 6.5,
                         rho: 1.1,
                         bulk_modulus_k: 1.6,
@@ -217,7 +217,7 @@ impl UnfoldSceneSpec {
                     PromptHolonSpec {
                         name: "Goomba_Sentinel".to_string(),
                         semantic_clause: "Goomba shadow anger sentinel walker".to_string(),
-                        initial_pos: [94.0, 72.0],
+                        initial_pos: [98.0, 178.0],
                         initial_vel: [12.0, 0.0],
                         radius: 5.5,
                         rho: 1.0,
@@ -230,7 +230,7 @@ impl UnfoldSceneSpec {
                     PromptHolonSpec {
                         name: "SMB3_HUD_Panel".to_string(),
                         semantic_clause: "entity_hud_interface bottom status panel cards coins".to_string(),
-                        initial_pos: [128.0, 24.0],
+                        initial_pos: [128.0, 216.0],
                         initial_vel: [18.0, 0.0],
                         radius: 6.0,
                         rho: 1.0,
@@ -255,16 +255,20 @@ impl UnfoldSceneSpec {
                 ],
                 boundaries: vec![
                     PromptBoundaryBlade {
-                        point: [0.0, 42.0],
-                        normal: [0.0, 1.0],
+                        point: [0.0, 192.0],
+                        normal: [0.0, -1.0],
                     },
                     PromptBoundaryBlade {
-                        point: [8.0, 42.0],
+                        point: [8.0, 0.0],
                         normal: [1.0, 0.0],
                     },
                     PromptBoundaryBlade {
-                        point: [248.0, 42.0],
+                        point: [248.0, 0.0],
                         normal: [-1.0, 0.0],
+                    },
+                    PromptBoundaryBlade {
+                        point: [0.0, 8.0],
+                        normal: [0.0, 1.0],
                     },
                 ],
             },

@@ -132,6 +132,10 @@ implicatemodel/
 
 ## 6. Track R8 — Visual Fidelity & Artifact Elimination Attack Plan
 
+> **Core Directive:** "Just remember, don't assume anything about the source video- so don't rely on magic number constants for things like tile extraction."
+> 
+> The pipeline must operate strictly from continuous Clifford projective geometry, spectral CFT phase correlations, and field PDEs. Never assume a video is 16x16 tile-based, has hardcoded NES-like HUD bottom bands, or features clean sprite-sheet segmentation. Every representation must be general across arbitrary film, animation, and game footage.
+
 Following human visual inspection of the generated benchmark outputs in `/tmp/opencode/human_test/`, four distinct failure modes were identified across the test corpus. Track R8 resolves them systematically.
 
 | Scene | Observed Defect | Root Cause | Fix Strategy |

@@ -276,18 +276,21 @@ pub fn build_multiplane_atlas(frames: &[RawFrame], opts: &MultiPlaneOptions) -> 
 
     let w = frames[0].width as usize;
     let h = frames[0].height as usize;
+    let traj_span = |tr: &[[i32; 2]]| -> f32 {
+        tr.iter()
+            .map(|&[dx, dy]| ((dx * dx + dy * dy) as f32).sqrt())
+            .fold(0.0f32, f32::max)
+    };
+    let full_probe = estimate_band_trajectory(frames, 0, h);
+    let camera_is_static = traj_span(&full_probe) <= 3.5;
+
     let (mut y0, mut y1) = opts.active_y_range.unwrap_or_else(|| {
-        let hud = partition_hud_and_viewport(frames);
-        let mut top = 0usize;
-        for y in 0..h / 4 {
-            if hud.row_deviation[y] < 4.0 {
-                top = y + 1;
-            } else {
-                break;
-            }
+        if camera_is_static {
+            (0, h)
+        } else {
+            let hud = partition_hud_and_viewport(frames);
+            (0, hud.top.min(h))
         }
-        let bot = hud.top.max(top + 16).min(h);
-        (top, bot)
     });
     y0 = y0.min(h.saturating_sub(1));
     y1 = y1.clamp(y0 + 1, h);
@@ -314,24 +317,19 @@ pub fn build_multiplane_atlas(frames: &[RawFrame], opts: &MultiPlaneOptions) -> 
         raw_trajs.push(estimate_band_trajectory(frames, by0, by1));
     }
 
-    let traj_span = |tr: &[[i32; 2]]| -> f32 {
-        tr.iter()
-            .map(|&[dx, dy]| ((dx * dx + dy * dy) as f32).sqrt())
-            .fold(0.0f32, f32::max)
-    };
     let max_world_span = raw_trajs.iter().map(|t| traj_span(t)).fold(0.0f32, f32::max);
 
     // Isolate a Camera-Locked HUD Holon band at the bottom or top border if partitioned by
     // `partition_hud_and_viewport` or if its CFT trajectory is stationary while the world translates.
     let zero_traj = vec![[0i32, 0]; frames.len()];
-    let mut hud_band: Option<(usize, usize)> = if y1 < h {
+    let mut hud_band: Option<(usize, usize)> = if !camera_is_static && y1 < h {
         Some((y1, h))
-    } else if y0 > 0 {
+    } else if !camera_is_static && y0 > 0 {
         Some((0, y0))
     } else {
         None
     };
-    if hud_band.is_none() && max_world_span >= 8.0 && band_ranges.len() >= 2 {
+    if hud_band.is_none() && !camera_is_static && max_world_span >= 8.0 && band_ranges.len() >= 2 {
         let last_idx = band_ranges.len() - 1;
         let (by0, by1) = band_ranges[last_idx];
         let static_err = band_registration_error(frames, by0, by1, &zero_traj);
