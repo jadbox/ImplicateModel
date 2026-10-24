@@ -587,8 +587,7 @@ impl CausalUnfoldEngine {
                 }
             }
 
-            // 4b. Enforce hard-core contact separation ||x_i - x_j|| >= r_i + r_j between physical holons
-            let mut holon_collided = vec![false; k_holons];
+            // 4b. Enforce hard-core contact separation ||x_i - x_j|| >= (r_i + r_j) * 0.65 between physical holons
             for i in 0..k_holons {
                 if self.is_hud_holon[i] {
                     continue;
@@ -614,7 +613,7 @@ impl CausalUnfoldEngine {
                     let dx = self.holons[i].position[0] - self.holons[j].position[0];
                     let dy = self.holons[i].position[1] - self.holons[j].position[1];
                     let dist = (dx * dx + dy * dy).sqrt();
-                    let min_dist = self.holons[i].radius + self.holons[j].radius;
+                    let min_dist = (self.holons[i].radius + self.holons[j].radius) * 0.65;
                     if dist < min_dist && dist > 1e-4 {
                         let overlap = min_dist - dist;
                         let nx = dx / dist;
@@ -629,34 +628,7 @@ impl CausalUnfoldEngine {
                         self.holons[i].position[1] += ny * overlap * w_i;
                         self.holons[j].position[0] -= nx * overlap * w_j;
                         self.holons[j].position[1] -= ny * overlap * w_j;
-                        holon_collided[i] = true;
-                        holon_collided[j] = true;
-
-                        let v_rel = (self.holons[i].velocity[0] - self.holons[j].velocity[0]) * nx
-                            + (self.holons[i].velocity[1] - self.holons[j].velocity[1]) * ny;
-                        if v_rel < 0.0 {
-                            let e = 0.5f32;
-                            let j_impulse = -(1.0 + e) * v_rel / (1.0 / m_i + 1.0 / m_j);
-                            self.holons[i].velocity[0] += (j_impulse / m_i) * nx;
-                            self.holons[i].velocity[1] += (j_impulse / m_i) * ny;
-                            self.holons[j].velocity[0] -= (j_impulse / m_j) * nx;
-                            self.holons[j].velocity[1] -= (j_impulse / m_j) * ny;
-                        }
                     }
-                }
-            }
-
-            // Only synchronize verb relative pose when a collision physically deflected the subject
-            for vb in &mut self.active_verbs {
-                if holon_collided[vb.subject_idx] || holon_collided[vb.target_idx] {
-                    let target_pos = self.holons[vb.target_idx].position;
-                    let target_heading = self.holons[vb.target_idx].cde.heading_angle();
-                    let b_pose = HolonPose2D::new(target_pos[0] as f64, target_pos[1] as f64, target_heading);
-                    let subject_pos = self.holons[vb.subject_idx].position;
-                    let subject_heading = self.holons[vb.subject_idx].cde.heading_angle();
-                    let s_pose = HolonPose2D::new(subject_pos[0] as f64, subject_pos[1] as f64, subject_heading);
-                    let rel = vb.canonical_frame.to_canonical(s_pose, b_pose);
-                    vb.rel_pos = [rel.x, rel.y];
                 }
             }
 
@@ -857,6 +829,14 @@ impl CausalUnfoldEngine {
                     }
                 }
                 Self::render_hud_score_digits(self.hud_score, x0 + 3, y0 + 1, w, h, &mut rgb);
+                continue;
+            }
+
+            // If the holon represents a static level fixture or terrain block, its visual presence
+            // is already part of the enfolded multiplane background atlas.
+            let lower_name = self.scene.holons[i].name.to_ascii_lowercase();
+            let lower_clause = self.scene.holons[i].semantic_clause.to_ascii_lowercase();
+            if lower_name.contains("block") || lower_clause.contains("block") {
                 continue;
             }
 
@@ -1074,10 +1054,46 @@ impl CausalUnfoldEngine {
         holon: &ArticulatedFieldHolon,
         frame_idx: usize,
     ) -> usize {
-        if art_holon.poses_per_obs.is_empty() {
+        let n_obs = art_holon.poses_per_obs.len();
+        if n_obs == 0 {
             return 0;
         }
         let target_heading = holon.cde.heading_angle();
+
+        // 1. For retro 1-part sprites (e.g. Pacman, Mario):
+        // Filter observations matching the current physical heading, then cycle sequentially.
+        if art_holon.num_parts == 1 {
+            let mut matching_obs = Vec::new();
+            for (oi, poses) in art_holon.poses_per_obs.iter().enumerate() {
+                if let Some(root) = poses.first() {
+                    let d_theta = 1.0 - (target_heading - root.angle_rad).cos();
+                    if d_theta < 1.0 {
+                        matching_obs.push(oi);
+                    }
+                }
+            }
+            if matching_obs.is_empty() {
+                let mut best_oi = 0;
+                let mut best_diff = f64::MAX;
+                for (oi, poses) in art_holon.poses_per_obs.iter().enumerate() {
+                    if let Some(root) = poses.first() {
+                        let d = 1.0 - (target_heading - root.angle_rad).cos();
+                        if d < best_diff {
+                            best_diff = d;
+                            best_oi = oi;
+                        }
+                    }
+                }
+                matching_obs.push(best_oi);
+            }
+
+            let anim_step = frame_idx / 3;
+            let cycle_idx = anim_step % matching_obs.len();
+            return matching_obs[cycle_idx];
+        }
+
+        // 2. For articulated characters (num_parts > 1, e.g. Mrs. Brisby, Jeremy Crow, Raptor Carrier):
+        // Joint optimization of heading alignment + continuous CFT limb gait phase
         let target_phase =
             (frame_idx as f64) * 0.35 + (holon.position[0] as f64) * 0.04 + (holon.position[1] as f64) * 0.02;
 
@@ -1181,7 +1197,11 @@ impl CausalUnfoldEngine {
         let root_ref = &ref_poses[0];
         let cx = screen_pos[0] as f64;
         let cy = screen_pos[1] as f64;
-        let heading_delta = (holon.cde.heading_angle() * 0.12).clamp(-0.30, 0.30);
+        let heading_delta = if art_holon.num_parts > 1 {
+            (holon.cde.heading_angle() * 0.12).clamp(-0.30, 0.30)
+        } else {
+            0.0
+        };
 
         let mut unfolded_poses = Vec::with_capacity(n_parts);
         let (mut min_x, mut max_x) = (w as i32 - 1, 0i32);

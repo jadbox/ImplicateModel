@@ -296,15 +296,38 @@ pub fn fit_articulated_holon(
         let view_cell = view_assignments[oi];
         let mut frame_poses = Vec::with_capacity(num_parts);
 
+        let motion_heading = if observations.len() > 1 {
+            let (c_curr, c_next) = if oi + 1 < observations.len() {
+                (observations[oi].bbox.center(), observations[oi + 1].bbox.center())
+            } else {
+                (observations[oi - 1].bbox.center(), observations[oi].bbox.center())
+            };
+            let dx = c_next[0] - c_curr[0];
+            let dy = c_next[1] - c_curr[1];
+            if dx.abs() + dy.abs() > 0.25 {
+                dy.atan2(dx)
+            } else if oi > 0 && !poses_per_obs.is_empty() {
+                poses_per_obs[oi - 1][0].angle_rad
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+
         for p in 0..num_parts {
-            frame_poses.push(fit_part_gaussian_pose(
+            let mut pose = fit_part_gaussian_pose(
                 obs,
                 &pixel_part,
                 p,
                 num_parts,
                 view_cell,
                 phase_rad,
-            ));
+            );
+            if num_parts == 1 {
+                pose.angle_rad = motion_heading;
+            }
+            frame_poses.push(pose);
         }
 
         let root_pose = frame_poses[0];

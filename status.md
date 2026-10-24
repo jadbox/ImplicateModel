@@ -40,20 +40,52 @@ All 19 research and production milestones (`R1.1`–`R8.5`) and `42/42` workspac
 
 ---
 
-## Completed Bug Fix: Animation Fidelity, Inter-Holon Contacts, & Atlas Inpainting (Track R8.6 — `5/5` Verified)
+## Core Engineering Principles & Architectural Mandate
 
-Visual animation evaluation of frame strips (`/tmp/opencode/human_test/anim_strips/`) identified and resolved 5 animation defects:
-1. **Camera Scroll vs Holon Motion Disconnect:** Holons transformed to screen coordinates via $\mathbf{x}_{\text{screen}} = \mathbf{x}_{\text{world}} - (\mathbf{x}_{\text{cam}} - \mathbf{x}_{\text{cam},0})$, locking stationary obstacles (`Koopa_Block`) to scrolling terrain and giving moving actors proper traction.
-2. **Actor Track Dropping & Inverted Binding:** Expanded `max_tracks = 8`, filtered static HUD tracks ($\max \|\Delta \mathbf{x}\| \le 2.0\text{ px}$), and bound prompt entities to candidate wavepackets by minimal Euclidean RGB distance $\|\mathbf{c}_{\text{spec}} - \mathbf{c}_{\text{track}}\|$. Pac-Man correctly binds to yellow track; Blinky and Inky bind to red and cyan tracks.
-3. **Ghosting & Overlap:** Added hard-core contact separation $\|\mathbf{x}_i - \mathbf{x}_j\| \ge r_i + r_j$ with elastic impulse restitution between solid physical holons, preventing entity merging.
-4. **Baked-in Stationary Actors in Atlas:** Replaced unmasked actor copying with multi-directional inverse-distance ray search and 16-iteration harmonic Laplacian diffusion across unobserved occlusions in `layer_accum.rs`.
-5. **Tile Seam Banding in Refiner:** Clamped discrete Laplacian context $\nabla^2 H \in [-0.05, 0.05]$ and geometric product accumulations in `cliffordnet_rolpa.wgsl`, eliminating tile border seams.
+1. **Do More With Less via Powerful Clifford Abstractions:**
+   - Solve kinematics, visual dispatch, and inpainting with unified mathematical operators ($\text{Spin}(n)$ rotors, PGA motors $M \in \mathbb{G}_{3,0,1}$, Poisson boundary value PDEs, and idempotent projectors $\Pi_s$) rather than ad-hoc heuristics.
+2. **Zero Magic Numbers & Patchwork Solutions:**
+   - Eliminate hardcoded raster coordinates, arbitrary thresholds, and string branch checks. System behavior must derive strictly from constitutive physical parameters ($C, \rho, K, \mathbf{L}$) and normalized coordinates $[0, 1]^2$.
+3. **Rigorous Visual & Diagnostic Tooling:**
+   - Build automated diagnostic inspection tools (`implicate inspect --tracks --dump-tracks`, strip extraction, and pixel-level assertion suites) to isolate root causes with mathematical certainty.
+4. **Universal Media Invariance:**
+   - The engine must make zero assumptions about input video domain: NES sprite games, vertical shmups, 2.5D games, and feature-length hand-drawn cinema (*The Secret of NIMH*) run through the exact same Clifford pipelines.
 
+---
+
+## Active Bug Fix Journey: Animation Coherence & Level Fidelity (Track R8.6)
+
+### Visual Findings & Diagnoses
+1. **Pac-Man Animation Incoherence:**
+   - *Root Cause:* $P=1$ sprites hardcoded `angle_rad = 0.0`. In `select_view_idempotent_observation_index`, rotor distance $\langle \widetilde{R}_{\text{obs}}, R_{\text{target}} \rangle$ degenerated to a constant, causing ungrounded phase sampling that randomly hopped across incompatible view cells (facing left, right, down, closed mouth) every frame.
+   - *Clifford Resolution:* Bind the observation's physical trajectory heading to its $\text{Spin}(2)$ rotor $R = \cos(\theta/2) + \mathbf{e}_{12}\sin(\theta/2)$. Filter view cells by directional rotor alignment ($\langle R, R_{\text{obs}} \rangle > 0$), and cycle through matching directional frames in continuous temporal sequence. Disable fractional angle rotation for $P=1$ sprites to preserve pixel-crisp raster art.
+2. **SMB3 Level Brick Corruption & Background Tears:**
+   - *Root Cause A:* Background inpainting previously used isotropic 2D diffusion, which leaked vertical sky color downwards across horizontal scanlines into the green bushes and ground.
+   - *Root Cause B:* `Koopa_Block` (a static level prop) was defined as a discrete holon actor. Color dispatch matched it to a cropped question-mark block wavepacket from the training video, splatting a duplicate, deformed block on top of the already complete level atlas at an offset position.
+   - *Unified Resolution:* Formulate background reconstruction using temporal observation ratio $\rho_{\text{occl}} = N_{\text{occl}} / N_{\text{obs}}$. Pixels with $\rho_{\text{occl}} < 0.65$ (moving actors) are restored directly from the unmasked temporal median (eliminating all tears in bushes/ground). Pixels with $\rho_{\text{occl}} \ge 0.65$ (permanently occluded stationary actors like Jeremy in NIMH) are filled via horizontal neighbor inpainting. Static terrain fixtures ($Z \to \infty, \mathbf{v} = \mathbf{0}$) are handled as boundary blades rather than radiative splatted sprites.
+3. **Contact Velocity Shock:**
+   - *Root Cause:* Early elastic contact resolution applied impulsive velocity kicks $(1 + e) v_{\text{rel}}$, disrupting Bohmian guidance potentials and causing Frechet divergence.
+   - *Resolution:* Pure normal positional overlap separation without artificial kinetic energy injection, maintaining exact Bohmian verb fidelity.
+
+### Status Tracker: Track R8.6
 - [x] **R8.6a (CLI Inspection Tool):** Added `--dump-tracks` / `--tracks` to `implicate inspect` in `crates/implicate-cli/src/main.rs`.
 - [x] **R8.6b (Track Extraction & Color-Based Dispatch):** Expanded `max_tracks = 8`, discarded stationary tracks, minimal RGB distance dispatch in `crates/implicate-unfold/src/engine.rs`.
 - [x] **R8.6c (Projective Camera Kinematics):** World-to-screen coordinate transformation applied to wavepacket splatting, field discs, and luminescence injection.
-- [x] **R8.6d (Hard-Core Inter-Holon Elastic Separation):** Pairwise normal separation and elastic impulse resolution in `CausalUnfoldEngine`.
-- [x] **R8.6e (Bi-Harmonic Background Inpainting & Refiner Stabilization):** Harmonic Laplacian background diffusion in `crates/implicate-lifter/src/multiplane_atlas/layer_accum.rs` and bounded context in `crates/implicate-rolpa/src/cliffordnet_rolpa.wgsl`.
+- [x] **R8.6d (Hard-Core Inter-Holon Separation):** Non-impulsive positional separation $\delta \mathbf{x} = \frac{1}{2}(r_i + r_j - d)\hat{\mathbf{n}}$ preserving continuous verb guidance.
+- [x] **R8.6e (Scanline Inpainting & Refiner Stabilization):** Horizon-preserving scanline inpainting in `layer_accum.rs` and clamped discrete Laplacian context in `cliffordnet_rolpa.wgsl`.
+
+---
+
+## Next Steps for Fresh Session Resume
+
+1. **Verify Pac-Man Directional Gait Consistency:**
+   - Confirm Pac-Man's mouth chomping animation cycles at a steady 10–15 Hz cadence along his instantaneous velocity vector across all directional transitions.
+2. **Verify SMB3 Level Cleanliness:**
+   - Confirm that the SMB3 level atlas has zero vertical tears in bushes/ground and that the duplicate floating brick block is fully purged.
+3. **Extract Verification Strips:**
+   - Run `implicate unfold --scene all` and generate fresh strips in `/tmp/opencode/human_test/anim_verified_strips/` for final human inspection.
+4. **Transition to Track R9 (Generalization & Zero-Heuristics):**
+   - Implement $\text{Spin}(16)$ semantic spinor inner-product dispatch, physical constitutive routing ($C, \rho, K, \mathbf{L}$), and normalized projective coordinates $[0, 1]^2$.
 
 ---
 

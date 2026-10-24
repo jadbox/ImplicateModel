@@ -13,6 +13,16 @@
 | **Tier 1C** | `../holonengine/example_input2d_raptor/raptor.mp4` | $320 \times 240$, `Ortho2D-Scroll` (Vertical) | Vertical scroll odometry, attached thruster wakes, directional soliton projectiles, radial dispersion bursts. |
 | **Tier 2** | `/mnt/storage/DDownloads/The Secret Of NIMH (1982) [BluRay] [1080p] [YTS.AM]/The.Secret.Of.NIMH.1982.1080p.BluRay.x264-[YTS.AM].mp4` | $1920 \times 1080$, Multi-Shot `MultiPlane-2.5D` + Cel/Light | Streaming shot cut segmentation, multi-plane parallax unwarping, articulated sub-holon trees, `Qwen-VL` verb harvesting, exciton luminescence ($L$), and generating novel shots from text/DzogLang prompts. |
 
+### Core Engineering Principles
+1. **Do More With Less via Powerful Clifford Abstractions:**
+   - Solve kinematics, visual dispatch, and inpainting with unified mathematical operators ($\text{Spin}(n)$ rotors, PGA motors $M \in \mathbb{G}_{3,0,1}$, Poisson boundary value PDEs, and idempotent projectors $\Pi_s$) rather than ad-hoc heuristics.
+2. **Zero Magic Numbers & Patchwork Solutions:**
+   - Eliminate hardcoded raster coordinates, arbitrary thresholds, and string branch checks. System behavior must derive strictly from constitutive physical parameters ($C, \rho, K, \mathbf{L}$) and normalized coordinates $[0, 1]^2$.
+3. **Rigorous Visual & Diagnostic Tooling:**
+   - Build automated diagnostic inspection tools (`implicate inspect --tracks --dump-tracks`, strip extraction, and pixel-level assertion suites) to isolate root causes with mathematical certainty.
+4. **Universal Media Invariance:**
+   - The engine must make zero assumptions about input video domain: NES sprite games, vertical shmups, 2.5D games, and feature-length hand-drawn cinema (*The Secret of NIMH*) run through the exact same Clifford pipelines.
+
 ---
 
 ## 2. Core Brainstorming Steps & Architectural Decisions

@@ -175,10 +175,11 @@ pub fn assimilate_clip_into_manifest(
         let mut traj = Vec::with_capacity(h.poses_per_obs.len());
         for poses in &h.poses_per_obs {
             if let Some(root) = poses.first() {
+                let theta = if h.num_parts > 1 { root.angle_rad } else { 0.0 };
                 traj.push(HolonPose2D::new(
                     root.center[0],
                     root.center[1],
-                    root.angle_rad,
+                    theta,
                 ));
             }
         }

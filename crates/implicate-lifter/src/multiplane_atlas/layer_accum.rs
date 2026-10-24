@@ -262,6 +262,8 @@ pub fn accumulate_band_atlas_masked(
     let ch = atlas.image.height;
 
     let mut valid = vec![false; cw * ch];
+    let mut obs_count = vec![0u16; cw * ch];
+    let mut occl_count = vec![0u16; cw * ch];
     let w = frames[0].width as usize;
     let y1 = y1.min(frames[0].height as usize);
     for (fi, _) in frames.iter().enumerate() {
@@ -273,14 +275,17 @@ pub fn accumulate_band_atlas_masked(
         for y in y0..y1 {
             let wy = y as i32 + off[1];
             for x in 0..w {
-                if mask.map_or(false, |m| m[y * w + x]) {
-                    continue;
-                }
                 let wx = x as i32 + off[0];
                 let ix = (wx - atlas.origin[0]) as usize;
                 let iy = (wy - atlas.origin[1]) as usize;
                 if ix < cw && iy < ch {
-                    valid[iy * cw + ix] = true;
+                    let idx = iy * cw + ix;
+                    obs_count[idx] += 1;
+                    if mask.map_or(false, |m| m[y * w + x]) {
+                        occl_count[idx] += 1;
+                    } else {
+                        valid[idx] = true;
+                    }
                 }
             }
         }
@@ -300,115 +305,52 @@ pub fn accumulate_band_atlas_masked(
         return atlas;
     }
 
-    // Step 1: Initialize occluded pixels via multi-direction inverse-distance ray search
+    // Fill occluded regions:
+    // 1. Moving actors (occluded in <65% of frames): sample genuine background from temporal median fallback.
+    // 2. Stationary actors (occluded in >=65% of frames): fill from nearest horizontal neighbors to avoid baking in silhouettes.
     for iy in 0..ch {
         for ix in 0..cw {
-            if valid[iy * cw + ix] {
+            let idx = iy * cw + ix;
+            if valid[idx] {
                 continue;
             }
-            let mut sum_r = 0.0f32;
-            let mut sum_g = 0.0f32;
-            let mut sum_b = 0.0f32;
-            let mut weight_sum = 0.0f32;
+            let wx = atlas.origin[0] + ix as i32;
+            let wy = atlas.origin[1] + iy as i32;
+            let ratio = occl_count[idx] as f32 / obs_count[idx].max(1) as f32;
+            if ratio < 0.65 {
+                if let Some(c) = fallback.pixel(wx, wy) {
+                    atlas.image.set_pixel(ix, iy, c);
+                    continue;
+                }
+            }
 
-            for delta in 1..=(cw.max(ch) as usize) {
-                let mut found = false;
+            let mut filled = false;
+            for delta in 1..=cw {
                 if ix >= delta && valid[iy * cw + (ix - delta)] {
                     let c = atlas.image.pixel(ix - delta, iy);
-                    let w = 1.0 / (delta as f32);
-                    sum_r += c[0] as f32 * w;
-                    sum_g += c[1] as f32 * w;
-                    sum_b += c[2] as f32 * w;
-                    weight_sum += w;
-                    found = true;
+                    atlas.image.set_pixel(ix, iy, c);
+                    filled = true;
+                    break;
                 }
                 if ix + delta < cw && valid[iy * cw + (ix + delta)] {
                     let c = atlas.image.pixel(ix + delta, iy);
-                    let w = 1.0 / (delta as f32);
-                    sum_r += c[0] as f32 * w;
-                    sum_g += c[1] as f32 * w;
-                    sum_b += c[2] as f32 * w;
-                    weight_sum += w;
-                    found = true;
-                }
-                if iy >= delta && valid[(iy - delta) * cw + ix] {
-                    let c = atlas.image.pixel(ix, iy - delta);
-                    let w = 1.0 / (delta as f32);
-                    sum_r += c[0] as f32 * w;
-                    sum_g += c[1] as f32 * w;
-                    sum_b += c[2] as f32 * w;
-                    weight_sum += w;
-                    found = true;
-                }
-                if iy + delta < ch && valid[(iy + delta) * cw + ix] {
-                    let c = atlas.image.pixel(ix, iy + delta);
-                    let w = 1.0 / (delta as f32);
-                    sum_r += c[0] as f32 * w;
-                    sum_g += c[1] as f32 * w;
-                    sum_b += c[2] as f32 * w;
-                    weight_sum += w;
-                    found = true;
-                }
-                if found {
+                    atlas.image.set_pixel(ix, iy, c);
+                    filled = true;
                     break;
                 }
             }
-
-            if weight_sum > 0.0 {
-                let inv = 1.0 / weight_sum;
-                atlas.image.set_pixel(
-                    ix,
-                    iy,
-                    [
-                        (sum_r * inv).round() as u8,
-                        (sum_g * inv).round() as u8,
-                        (sum_b * inv).round() as u8,
-                    ],
-                );
-            }
-        }
-    }
-
-    // Step 2: Harmonic Laplacian diffusion relaxation (16 iterations)
-    for _ in 0..16 {
-        for iy in 0..ch {
-            for ix in 0..cw {
-                if valid[iy * cw + ix] {
-                    continue;
-                }
-                let mut sum_r = 0.0f32;
-                let mut sum_g = 0.0f32;
-                let mut sum_b = 0.0f32;
-                let mut n_nbrs = 0.0f32;
-
-                if ix > 0 {
-                    let c = atlas.image.pixel(ix - 1, iy);
-                    sum_r += c[0] as f32; sum_g += c[1] as f32; sum_b += c[2] as f32; n_nbrs += 1.0;
-                }
-                if ix + 1 < cw {
-                    let c = atlas.image.pixel(ix + 1, iy);
-                    sum_r += c[0] as f32; sum_g += c[1] as f32; sum_b += c[2] as f32; n_nbrs += 1.0;
-                }
-                if iy > 0 {
-                    let c = atlas.image.pixel(ix, iy - 1);
-                    sum_r += c[0] as f32; sum_g += c[1] as f32; sum_b += c[2] as f32; n_nbrs += 1.0;
-                }
-                if iy + 1 < ch {
-                    let c = atlas.image.pixel(ix, iy + 1);
-                    sum_r += c[0] as f32; sum_g += c[1] as f32; sum_b += c[2] as f32; n_nbrs += 1.0;
-                }
-
-                if n_nbrs > 0.0 {
-                    let inv = 1.0 / n_nbrs;
-                    atlas.image.set_pixel(
-                        ix,
-                        iy,
-                        [
-                            (sum_r * inv).round() as u8,
-                            (sum_g * inv).round() as u8,
-                            (sum_b * inv).round() as u8,
-                        ],
-                    );
+            if !filled {
+                for delta in 1..=ch {
+                    if iy >= delta && valid[(iy - delta) * cw + ix] {
+                        let c = atlas.image.pixel(ix, iy - delta);
+                        atlas.image.set_pixel(ix, iy, c);
+                        break;
+                    }
+                    if iy + delta < ch && valid[(iy + delta) * cw + ix] {
+                        let c = atlas.image.pixel(ix, iy + delta);
+                        atlas.image.set_pixel(ix, iy, c);
+                        break;
+                    }
                 }
             }
         }
