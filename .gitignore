@@ -24,6 +24,7 @@
 # Compiled Implicate containers, caches, and local model weights
 *.implicate
 .implicate_cache/
+generative_output/
 *.gguf
 *.bin
 *.safetensors

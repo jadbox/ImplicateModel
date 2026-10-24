@@ -12,3 +12,7 @@ image.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 bytemuck.workspace = true
+
+[dev-dependencies]
+implicate-rolpa = { path = "../implicate-rolpa" }
+implicate-unfold = { path = "../implicate-unfold" }

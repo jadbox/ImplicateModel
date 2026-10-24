@@ -3,7 +3,8 @@ use std::path::Path;
 use implicate_lifter::{
     CameraRegime, CharacterObservation, MultiPlaneOptions, RawFrame, Rect, ShotSegmenterConfig,
     StreamingShotSegmenter, build_multiplane_atlas, evaluate_boundary_precision_recall,
-    evaluate_vs_single_box_baseline, evaluate_vs_single_box_baseline_with_parts, extract_dominant_character_observations, video_io,
+    evaluate_vs_single_box_baseline, evaluate_vs_single_box_baseline_with_parts,
+    extract_character_observation_tracks, extract_dominant_character_observations, video_io,
 };
 
 const PACMAN_PATH: &str =
@@ -288,7 +289,19 @@ fn r2_3_articulated_sub_holon_wavepackets_vs_single_box() {
     }
 
     // 2. Tier-2 articulated characters (Mrs. Brisby walking/turning with red cape & Jeremy the Crow flapping wings)
-    let brisby_obs = build_brisby_cape_turn_sequence();
+    let nimh_frames = video_io::read_frames_scaled(Path::new(NIMH_PATH), Some(600.0), Some(1.2), 320, 176)
+        .expect("read nimh frames");
+    let atlas = build_multiplane_atlas(&nimh_frames, &MultiPlaneOptions::default());
+    let tracks = extract_character_observation_tracks(&nimh_frames, &atlas, 2);
+    println!("NIMH tracks extracted: count={}", tracks.len());
+    for (ti, tr) in tracks.iter().enumerate() {
+        println!("  track {}: len={}", ti, tr.len());
+    }
+    let brisby_obs = if !tracks.is_empty() {
+        tracks[0].clone()
+    } else {
+        panic!("No tracks extracted from NIMH");
+    };
     let brisby_rep = evaluate_vs_single_box_baseline(&brisby_obs);
     println!(
         "[R2.3 Tier-2 Mrs. Brisby] P={}, views={} | Baseline Single-Box: IoU={:.4}, LPIPS={:.4} | Articulated Wavepacket: IoU={:.4}, LPIPS={:.4}",
@@ -341,63 +354,6 @@ fn r2_3_articulated_sub_holon_wavepackets_vs_single_box() {
     assert!(tier1_failures.is_empty(), "Tier-1 failures: {tier1_failures:?}");
 }
 
-fn build_brisby_cape_turn_sequence() -> Vec<CharacterObservation> {
-    let mut seq = Vec::new();
-    let (w, h) = (84usize, 76usize);
-    for t in 0..16 {
-        let phase = t as f64 * std::f64::consts::TAU / 16.0;
-        let cape_swing = 0.45 * phase.sin();
-        let stride = 5.0 * phase.cos();
-        let mut mask = vec![false; w * h];
-        let mut rgb = vec![0u8; w * h * 3];
-
-        for y in 0..h {
-            for x in 0..w {
-                let fx = x as f64;
-                let fy = y as f64;
-                let idx = y * w + x;
-
-                // Head/ears (warm brown rodent)
-                let dh = ((fx - 42.0) / 11.0).powi(2) + ((fy - 20.0) / 10.0).powi(2);
-                // Red flowing cape (rotates with cape_swing)
-                let dx_c = fx - (42.0 + 8.0 * cape_swing);
-                let dy_c = fy - 44.0;
-                let (s, c) = cape_swing.sin_cos();
-                let rx_c = c * dx_c + s * dy_c;
-                let ry_c = -s * dx_c + c * dy_c;
-                let dc = (rx_c / 18.0).powi(2) + (ry_c / 15.0).powi(2);
-                // Lower paws/skirt stride
-                let dl = ((fx - (42.0 + stride)) / 12.0).powi(2) + ((fy - 60.0) / 9.0).powi(2);
-
-                if dh <= 1.0 {
-                    mask[idx] = true;
-                    rgb[idx * 3..idx * 3 + 3].copy_from_slice(&[158, 118, 88]);
-                } else if dc <= 1.0 {
-                    mask[idx] = true;
-                    rgb[idx * 3..idx * 3 + 3].copy_from_slice(&[212, 42, 48]);
-                } else if dl <= 1.0 {
-                    mask[idx] = true;
-                    rgb[idx * 3..idx * 3 + 3].copy_from_slice(&[138, 102, 76]);
-                }
-            }
-        }
-        seq.push(CharacterObservation {
-            frame_idx: t,
-            bbox: Rect::new(
-                100 + t as i32 * 2,
-                80,
-                100 + t as i32 * 2 + w as i32 - 1,
-                80 + h as i32 - 1,
-            ),
-            mask,
-            rgb,
-            camera_offset: [0.0, 0.0],
-            truncated: false,
-            line_of_action: None,
-        });
-    }
-    seq
-}
 
 fn build_jeremy_crow_wing_flap_sequence() -> Vec<CharacterObservation> {
     let mut seq = Vec::new();

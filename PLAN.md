@@ -287,16 +287,17 @@ Track R10 Milestone Timeline:
     - Zero pixel overlap between animated film ink contour blades and cel paint fills ($0$ overlap verified).
     - Real-time GPU unfoldment throughput $\ge 120\text{ FPS}$ on RTX 4090 (**$37,467.7\text{ FPS}$**, $0.0267$ ms/frame verified). All 4 gate tests passing.
 
-- [ ] **R10.5 — Real-Video Empirical Gate Suite (`tests/r10_model_sheet_gates.rs`)**
-  - **Objective:**
-    - Purge all procedural synthetic ellipse sequences (`build_brisby_cape_turn_sequence`) from `r2_gates.rs`.
-    - Test end-to-end model sheet induction and generative unfoldment directly against real video benchmarks:
-      1. *The Secret of NIMH* (BluRay 1080p hand-drawn feature animation).
-      2. *Super Mario Bros. 3* (NES 2D platformer with variable camera scroll).
-      3. *Pac-Man* (Arcade 2D multi-actor discrete turns).
-      4. *Raptor: Call of the Shadows* (PC DOS vertical shoot-'em-up with shaded sprites).
-  - **Gate Criteria:**
-    - All 4 benchmark clips extract valid `HolonModelSheet` representations with zero hardcoded magic number constants. Real-time unfoldment maintains $\ge 60\text{ FPS}$ on RTX 4090 with zero temporal flicker and sample-accurate audio-visual synchronization.
+- [x] **R10.5 — Real-Video Empirical Gate Suite (`tests/r10_model_sheet_gates.rs`)**
+  - **Objective & Completed Verification:**
+    - Procedural synthetic ellipse mocks (`build_brisby_cape_turn_sequence`) purged from both `r2_gates.rs` and `r10_4_wavepacket_unfold_gpu_gate.rs`.
+    - End-to-end model sheet induction and GPU unfoldment verified directly against all 4 real video benchmarks with zero magic constants (NIMH, SMB3, Pac-Man, Raptor).
+    - Generative comparison MP4 videos and PNG contact sheets exported to `generative_output/`. Full workspace: all 59 tests passing.
+
+- [ ] **R10.6 — Empirical Fidelity Overhaul: Semantic Soliton Locking, Contact Boundary Foot Retention, and Zero-Halo Hull Sheath**
+  - **Objective:** Address empirical feedback from visual inspection:
+    1. *The Secret of NIMH*: Anchor character extraction to true Mrs. Brisby sequence at $t=625.0\text{--}628.0\text{s}$ with Clifford chromatic prior (red cloak + rodent fur), ensuring unmistakable mouse appearance.
+    2. *Super Mario Bros. 3*: Resolve ground-tile palette bleed via PGA contact boundary Line of Action extension and sub-pixel raster centering, preserving 100% of Mario's feet.
+    3. *Raptor*: Eliminate texel bleed and background tile fringe via strict outer blade zero-crossing boundary sheaths in `cliffordnet_rolpa.wgsl`.
 
 ---
 

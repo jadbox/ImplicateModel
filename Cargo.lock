@@ -463,6 +463,8 @@ dependencies = [
  "bytemuck",
  "image",
  "implicate-math",
+ "implicate-rolpa",
+ "implicate-unfold",
  "rustfft",
  "serde",
  "serde_json",
