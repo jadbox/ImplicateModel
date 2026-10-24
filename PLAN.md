@@ -7,6 +7,9 @@
 
 **Goal:** Build the Implicate Video Engine (`ImplicateModel`)—an engine that enfolds arbitrary video inputs (from 2D arcade gameplay to hand-drawn feature animation) into a compact, symbolic Clifford world-and-verb lexicon, and unfolds new, controllable videos in a single causal wave pass at **real-time framerates ($\ge 60\text{ FPS}$ standard, $120+\text{ FPS}$ GPU target)**.
 
+For project context, read the README, docs/whitepaper, docs/philosophy, and the PLAN.md proposal. The engine has bugs related to character/object/spinnors extractions. You are much smarter than the original developers. Let's fix character extraction by emulating what the old animation film masters like Don Bluth work by creating character board model sheets that are stored in higher symbolic representations. Investiage using CliffordNet or use Clifford Fourier Transforms or Clifford Density Elements (see PDFs for CliffordNet and GATR under ./docs). Our first step is just to create a rock solid plan into PLAN.md for review.
+You may run quick experiments to explore hypothesis. Keep in mind our video generator is for ANY video game or animated movie. Our solution should be robust, flexible, and not rely on arbitrary magic number constants to work. Keep **Basil Hiley** in mind as mathematical thinker who understands that the future of system design is using Clifford mathematics (like Projective Geometric Algebra and Clifford Fourier Transforms) to find the inner unity of observations by knowing that all reality unfolds from the Implicate Order of Wholeness. Develop isolated tests as needed to formalize the ultimate pure perfect solution.
+
 ---
 
 ## I. Executive Philosophical & Systems Context
