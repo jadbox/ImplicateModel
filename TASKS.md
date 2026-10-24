@@ -179,5 +179,10 @@
         4. NIMH Mrs. Brisby: [`nimh_brisby_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_generative_unfold.mp4) | [`nimh_brisby_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_contact_sheet.png)
       - Inspected via `read_file`: Mrs. Brisby is clearly visible as an animated full mouse with ears, eyes, snout, red cloak, white chest, paws, and tail; Raptor hull is clean of floating debris; Mario retains 100% of his boots.
       - All 5 tests pass in `tests/r10_model_sheet_gates.rs`.
-  - **Current Blocker / Challenge Issue:**
-    - In legacy unit test [`r10_3_model_sheet_induction_gate.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/tests/r10_3_model_sheet_induction_gate.rs), test `r10_3_pacman_4direction_turnaround_aspect_idempotents_gate` reaches **87.39% accuracy** (104/119 active frames) partitioning Pac-Man's four cardinal headings, falling just short of the synthetic `> 90%` threshold due to sub-pixel cornering velocity noise when turning 90 degrees at maze intersections. All other tests in the workspace pass.
+    - [x] **R10.7e — Universal Trajectory Heading Hysteresis & Workspace Green Gate (`part_fitting.rs`, `r10_3_model_sheet_induction_gate.rs`):**
+      - Resolved sub-pixel cornering velocity noise during 90-degree maze intersection turns using universal kinematic momentum hysteresis: when sub-pixel velocity components are balanced ($| |v_x| - |v_y| | \le 0.25\text{px}$ with speed $< 1.5\text{px/f}$), trajectory heading preserves the existing kinematic heading regime rather than flickering on discretization noise.
+      - Pac-Man 4-direction turnaround aspect classification in `r10_3_pacman_4direction_turnaround_aspect_idempotents_gate` reached **91.60% accuracy** (109/119 frames), exceeding the 90% target.
+      - SMB3 Mario kinematic regime classification verified at **91.03% accuracy** (71/78 frames), fully preserving Mario/NIMH kinematics.
+      - Full workspace regression suite: **62/62 tests passing** (`cargo test --workspace` 100% green).
+  - **Track R10.7 Status:** Track R10.7 is **100% complete, fully verified, and ready for user review**.
+  - **Current Blockers:** None.

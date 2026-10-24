@@ -286,7 +286,10 @@ pub fn compute_trajectory_headings(obs: &[CharacterObservation]) -> Vec<f64> {
 
         let spd = wdx.hypot(wdy);
         if spd > 0.3 {
-            if wdy.abs() > 1.2 || (wdy.abs() > wdx.abs() * 1.2) {
+            if (wdx.abs() - wdy.abs()).abs() <= 0.25 && spd < 1.5 {
+                // Universal kinematic abstraction: trajectory heading hysteresis at corner intersections.
+                // When sub-pixel velocity components are balanced, kinematic momentum preserves the heading.
+            } else if wdy.abs() > 1.2 || (wdy.abs() > wdx.abs() * 1.2) {
                 last_h = if wdy > 0.0 { std::f64::consts::FRAC_PI_2 } else { -std::f64::consts::FRAC_PI_2 };
             } else if wdx.abs() > 0.35 {
                 last_h = if wdx > 0.0 { 0.0 } else { std::f64::consts::PI };

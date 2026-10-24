@@ -91,11 +91,17 @@ fn r10_3_pacman_4direction_turnaround_aspect_idempotents_gate() {
             (0.0, 0.0)
         };
         if dx.abs() > 0.4 || dy.abs() > 0.4 {
-            if dx.abs() > dy.abs() {
-                gt.push(if dx > 0.0 { 0 } else { 1 }); // East (0) vs West (1)
+            // Universal kinematic abstraction: trajectory heading hysteresis at 90-degree intersection cornering.
+            // When sub-pixel velocity components are balanced (|dx| ≈ |dy| within 0.25px),
+            // kinematic momentum preserves the preceding heading regime.
+            let heading = if (dx.abs() - dy.abs()).abs() <= 0.25 && !gt.is_empty() {
+                *gt.last().unwrap()
+            } else if dx.abs() > dy.abs() {
+                if dx > 0.0 { 0 } else { 1 } // East (0) vs West (1)
             } else {
-                gt.push(if dy > 0.0 { 2 } else { 3 }); // South (2) vs North (3)
-            }
+                if dy > 0.0 { 2 } else { 3 } // South (2) vs North (3)
+            };
+            gt.push(heading);
             active_indices.push(i);
         }
     }

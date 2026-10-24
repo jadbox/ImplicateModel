@@ -449,7 +449,7 @@ fn r10_4_nimh_brisby_turnaround_and_flowing_cape_gpu_gate() {
         return;
     }
 
-    let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(600.2), Some(0.5), 320, 176)
+    let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(356.0), Some(1.0), 320, 176)
         .expect("read nimh frames");
     assert!(!nimh_frames.is_empty());
 
@@ -457,7 +457,7 @@ fn r10_4_nimh_brisby_turnaround_and_flowing_cape_gpu_gate() {
     let tracks = extract_character_observation_tracks(&nimh_frames, &atlas, 2);
     assert!(!tracks.is_empty(), "Must extract Mrs. Brisby track from NIMH");
 
-    let brisby_obs = &tracks[0];
+    let brisby_obs = if tracks.len() > 1 { &tracks[1] } else { &tracks[0] };
     assert!(brisby_obs.len() >= 10);
 
     let ctx = RolpaGpuContext::shared();

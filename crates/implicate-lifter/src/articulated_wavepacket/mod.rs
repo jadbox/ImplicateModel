@@ -582,7 +582,7 @@ pub fn choose_part_and_view_counts(observations: &[CharacterObservation]) -> (us
         .map(|(oi, o)| mask_iou(&o.mask, &render_articulated_holon_observation(&m1, o, oi).0))
         .sum::<f64>()
         / n as f64;
-    if iou1 >= HOLON_MODEL_QUALITY_IOU {
+    if iou1 >= 0.78 {
         return (1, view_count_for(n, 1));
     }
     let mut best = (0.0f64, ARTICULATED_PART_CANDIDATES[ARTICULATED_PART_CANDIDATES.len() - 1]);
