@@ -25,7 +25,7 @@ pub use articulated_wavepacket::{
     extract_character_observation_tracks, extract_dominant_character_observations,
     extract_line_of_action, extract_line_of_action_weighted,
     factor_temporal_covariance_idempotents, fit_articulated_holon, induce_holon_model_sheet,
-    mask_iou, render_articulated_holon_observation,
+    mask_iou, merge_overlapping_boxes, render_articulated_holon_observation,
 };
 pub use enfold2d::{
     ActorKind, ActorTrack, AtlasAccumulator, Fft2, HudPartition, Rect, RgbImage8, ScrollEstimator,

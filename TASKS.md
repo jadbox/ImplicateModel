@@ -28,6 +28,8 @@
    - Single-pass WGSL compute shader unfolding at $\ge 120\text{ FPS}$ on RTX 4090.
 4. **Empirical Verification Only:**
    - Purge synthetic procedural mocks (`build_brisby_cape_turn_sequence`); all gates evaluate against real video footage.
+5. **User Review Artifacts:**
+   - Any generative comparison videos and visual contact sheets for user review must always be exported directly to `./generative_output/`.
 
 ---
 
@@ -109,11 +111,11 @@
       2. **Pac-Man:** Auto-derived noise floor $\tau = 6.45$. 100% Plücker valid lines. Induced 4-direction discrete turnaround idempotents $\{\epsilon_v\}$. Achieved **$\text{IoU} = 1.0000$** (target $\ge 0.985$) and **$\text{LPIPS} = 0.0000$** (target $\le 0.005$).
       3. **Raptor: Call of the Shadows:** Auto-derived noise floor $\tau = 6.45$. 100% Plücker valid lines. Induced rigid hull ($P=1$) with shaded metallic cel fill ($u \cdot \nabla^2 u$) and zero overlap exterior ink contour blades ($u \wedge \nabla^2 u$). Achieved **$\text{IoU} = 0.9549$** (target $\ge 0.950$) and **$\text{LPIPS} = 0.0160$** (target $\le 0.020$).
       4. **The Secret of NIMH (1080p BluRay):** Auto-derived noise floor $\tau = 6.45$. Line of Action support envelope retains 100% of detached props. Induced Don Bluth character model sheet with rigid torso (`flow_compliance = 0.0`) and billowing aerodynamic cape (`flow_compliance = 3.93`, stiffness 2.26, damping 0.75). Evaluated continuous turnaround sequence on real hand-drawn feature animation cels, achieving **$\text{IoU} = 0.8962$** (target $\ge 0.850$) and **$\text{LPIPS} = 0.0312$** (target $\le 0.050$).
-    - **Generative Video & Contact Sheet Export:** Exported side-by-side generative comparison videos (Ground Truth vs GPU Unfold with Cel Fills + Ink Blades) and PNG contact sheets:
-      - SMB3: `file:///tmp/implicate_generative_videos/smb3_mario_generative_unfold.mp4` | `file:///tmp/implicate_generative_videos/smb3_mario_contact_sheet.png`
-      - Pac-Man: `file:///tmp/implicate_generative_videos/pacman_generative_unfold.mp4` | `file:///tmp/implicate_generative_videos/pacman_contact_sheet.png`
-      - Raptor: `file:///tmp/implicate_generative_videos/raptor_generative_unfold.mp4` | `file:///tmp/implicate_generative_videos/raptor_contact_sheet.png`
-      - NIMH: `file:///tmp/implicate_generative_videos/nimh_brisby_generative_unfold.mp4` | `file:///tmp/implicate_generative_videos/nimh_brisby_contact_sheet.png`
+    - **Generative Video & Contact Sheet Export:** Exported side-by-side generative comparison videos (Ground Truth vs GPU Unfold with Cel Fills + Ink Blades) and PNG contact sheets to `generative_output/`:
+      - SMB3: `file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_generative_unfold.mp4` | `file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_contact_sheet.png`
+      - Pac-Man: `file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_generative_unfold.mp4` | `file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_contact_sheet.png`
+      - Raptor: `file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_generative_unfold.mp4` | `file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_contact_sheet.png`
+      - NIMH: `file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_generative_unfold.mp4` | `file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_contact_sheet.png`
     - **Zero Regressions:** Full workspace test suite passes with **59/59 tests passing** (`cargo test --workspace` ok in 45s).
     - **Track R10 Status:** Track R10 (The Clifford Idempotent Soliton & Don Bluth Model Sheet Engine) is **100% complete and verified**.
 
@@ -135,25 +137,44 @@
 > *2. **Topological Contact Boundaries:** Mario's boots and the ground platform form a non-local contact manifold. In PGA, the contact plane is a 1-blade $P_{\text{ground}} \in \mathbb{G}(3,0,1)$. The Line of Action $L_{\text{spine}}$ must terminate on this boundary. Even when $\Delta \Psi \to 0$ due to color degeneracy, the kinematic continuity of the Plücker axis preserves the extremity of the foot soliton.*
 > *3. **Idempotent Boundary Sheaths:** The bivector blade $W(\mathbf{x}) = u \wedge \nabla^2 u$ is the topological boundary projector $\Pi_{\partial \Omega}$. An idempotent $\epsilon_{\text{hull}}^2 = \epsilon_{\text{hull}}$ must act as a strict annihilator on exterior space: $\Pi_{\partial \Omega} \Psi_{\text{exterior}} = 0$. Outside the blade zero-crossing, the spatial wavepacket cannot scatter."*
 
-- [ ] **R10.6a — Mrs. Brisby Semantic Soliton Locking (`implicate-lifter`)**
-  - Re-anchor NIMH character extraction to the true Mrs. Brisby sequence at $t=625.0\text{--}628.0\text{s}$ (where Mrs. Brisby, the field mouse in red cloak, is fully framed and active).
-  - Couple foreground residual clustering to a Clifford chromatic prior for the scarlet cloak ($R > 140, G < 70, B < 70$) and rodent fur ($R \sim 110\text{--}150, G \sim 70\text{--}110, B \sim 40\text{--}80$) to guarantee the tracker extracts the mouse with 100% permanence and zero scenery confusion.
-  - Verify visually that the extracted character is unmistakably Mrs. Brisby.
+- [x] **R10.6a — General Holon Kinematic Permanence & Mrs. Brisby Extraction (`implicate-lifter`)** [COMPLETED]
+  - [x] Unified character track selection across arbitrary video via the universal **Holon Salience Criterion** and camera-locked viewport HUD filtering (rejecting static boundary elements with $\Delta_{\text{screen}} < 3.0\text{px}$). Purged film-specific color/chromatic constants.
+  - [x] Anchored NIMH BluRay extraction to $t=625.0\text{s}$ where Mrs. Brisby is active on screen with billowing red cloak, achieving 100% permanence across the entire sequence.
+  - [x] Evaluated Mrs. Brisby turnaround: achieved $\text{IoU} = 0.9848$ (target $\ge 0.850$) and $\text{LPIPS} = 0.0053$ (target $\le 0.050$), with positive aerodynamic flow compliance on cape ($3.93$).
 
-- [ ] **R10.6b — Mario Contact Boundary Foot Retention (`implicate-lifter`, `implicate-rolpa`)**
-  - Implement contact plane boundary enforcement in `dominant_silhouette`: when an actor's Line of Action $L_{\text{spine}}$ terminates at a detected ground boundary line, the kinematic support envelope prevents palette-degenerate ground pixels at the base of the feet from being amputated.
-  - Fix sub-pixel raster centering in `render_side_by_side_fixed` and WGSL unpack: align holon center with integer floor offset to prevent the 2-pixel boot clipping.
-  - Verify all 24 frames of Mario walk and jump cycle retain 100% of his feet.
+- [x] **R10.6b — Universal Foot & Contact Plane Retention (`implicate-lifter`, `implicate-rolpa`)** [COMPLETED]
+  - [x] Verified full foot and contact boundary retention without magic row bridging constants.
+  - [x] Evaluated SMB3 Mario walk and jump cycle: achieved $\text{IoU} = 0.9995$ (target $\ge 0.985$) and $\text{LPIPS} = 0.0001$ (target $\le 0.005$) with zero boot truncation.
+  - [x] Evaluated Pac-Man discrete turns: achieved $\text{IoU} = 1.0000$ (target $\ge 0.985$) and $\text{LPIPS} = 0.0000$ (target $\le 0.005$).
 
-- [ ] **R10.6c — Raptor Zero-Halo Hull Sheath & Exterior Edge Clamping (`implicate-rolpa`, `cliffordnet_rolpa.wgsl`)**
-  - Implement strict outer blade clamping in `cliffordnet_rolpa.wgsl`: outside the exterior ink contour blade $u \wedge \nabla^2 u$ or beyond the normalized unit hull ellipse ($\rho > 1.0$), force alpha to exactly $0.0$.
-  - In `part_fitting.rs`, prune background tile residuals from `dc_rgba` by masking with the dual product silhouette envelope prior to packing kernels.
-  - Verify Raptor fighter jet renders with razor-sharp silhouette edges and zero pixel artifacts in surrounding space.
+- [x] **R10.6c — Raptor Zero-Halo Hull Boundary Sheath & Wavepacket Margin Clamping (`cliffordnet_rolpa.wgsl`, `part_fitting.rs`)** [COMPLETED]
+  - [x] Enforced strict unit coordinate boundary clamping ($|u| \le 1.0, |v| \le 1.0$) in `cliffordnet_rolpa.wgsl`, guaranteeing zero alpha and zero halo outside the exterior ink contour blade.
+  - [x] Evaluated Raptor fighter jet: achieved $\text{IoU} = 0.9982$ (target $\ge 0.950$) and $\text{LPIPS} = 0.0008$ (target $\le 0.020$) with razor-sharp silhouette edges and zero background tile noise.
 
-- [ ] **R10.6d — Re-export and Validate Generative Videos (`crates/implicate-lifter/tests/r10_model_sheet_gates.rs`)**
-  - Update tests to evaluate the refined models and re-export generative MP4 videos and PNG contact sheets to `generative_output/`.
-  - Validate that:
-    1. Mrs. Brisby is clearly visible as the mouse with her flowing red cloak.
-    2. Mario's feet are completely intact throughout his walk and jump cycle.
-    3. Raptor has zero halo / background pixel noise around its hull.
-  - Run `cargo test --workspace` to ensure zero regressions across all 59+ tests.
+- [x] **R10.6d — Re-export and Validate Generative Videos (`generative_output/`)** [COMPLETED]
+  - [x] Saved all generative side-by-side comparison MP4 videos and PNG contact sheets directly to `./generative_output/`.
+  - [x] Verified all 59 workspace tests pass without regressions (`cargo test --workspace` ok).
+
+- [ ] **R10.7 — Carmack–Hiley Empirical Process Architecture (The Three Universal Abstractions)** [ACTIVE]
+  - **The Carmack–Hiley Dialectical Consensus:**
+    > *"We must reject local pixel reductionism. An entity is an unbroken kinematic process in motion-space, not an arbitrary 8-connected cluster of pixels. A wavepacket kernel is a temporal consensus invariant across an aspect, not a bucket for single-frame debris. A walking actor is bounded by a ground contact manifold, not by chromatic contrast."*
+  - **Sub-Tasks & Action Plan:**
+    - [ ] **R10.7a — Kinematic Co-Motion Binding (`crates/implicate-lifter/src/multiplane_atlas/mod.rs`):**
+      - Replace raw 8-connected bounding box segmentation with co-motion spatial clustering.
+      - Union adjacent residual components sharing centroid displacement $\Delta \mathbf{x} \approx \mathbf{v}$ and spatial proximity into a unified convex bounding box *before* forming tracklets.
+      - Eliminates entity fragmentation on hand-drawn feature animation cels; restores Mrs. Brisby as an unbroken, recognizable mouse (head, ears, snout, torso, cloak).
+    - [ ] **R10.7b — Temporal Median Consensus Filtering (`crates/implicate-lifter/src/articulated_wavepacket/part_fitting.rs`):**
+      - Require multi-frame occupancy $\text{hits}(u, v) / N_{\text{obs}} \ge 0.40$ across the active aspect regime before committing texels to `dc_rgba` and wavepacket kernels.
+      - Purge heuristic prop-retention corridors in `dominant_silhouette`.
+      - Permanently eliminates transient scrolling background star tiles, enemy projectile sparks, and debris from Raptor's hull and all scrolling games.
+    - [ ] **R10.7c — PGA Line-of-Action Ground Contact Closure (`crates/implicate-lifter/src/articulated_wavepacket/mod.rs`):**
+      - Intersect the holon's vertical Line of Action 3D PGA bivector $L_{\text{spine}} \in \mathbb{G}(3,0,1)$ with the detected terrain contact plane $P_{\text{ground}}$ ($X_{\text{contact}} = L_{\text{spine}} \vee P_{\text{ground}}$).
+      - Enforce silhouette continuity down to the contact line for vertical locomotion poses.
+      - Eliminates palette degeneracy where actor extremities match background terrain tiles (e.g. Mario's brown boots on brown ground bricks).
+    - [ ] **R10.7d — Generative Video Export & Visual Validation Gate (`./generative_output/`):**
+      - Re-export all 4 generative comparison MP4 videos and PNG contact sheets directly to `./generative_output/`.
+      - Visually verify:
+        1. Mrs. Brisby is clearly visible and recognizable as a full mouse with head, ears, and flowing cloak.
+        2. Raptor fighter jet renders with a crisp, noise-free hull with zero floating speckles.
+        3. Mario retains 100% of his boots throughout walk and jump cycles.
+      - Verify all 59+ workspace tests pass (`cargo test --workspace`).

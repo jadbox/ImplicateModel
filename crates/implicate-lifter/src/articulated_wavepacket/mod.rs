@@ -1344,6 +1344,36 @@ pub fn dominant_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
         .collect()
 }
 
+/// Merge intersecting or adjacent actor bounding boxes belonging to the same entity
+/// within a frame (e.g. Mrs. Brisby's head, cloak, and cape, or Mario's body and boots).
+pub fn merge_overlapping_boxes(boxes: &[crate::enfold2d::Rect]) -> Vec<crate::enfold2d::Rect> {
+    let mut merged: Vec<crate::enfold2d::Rect> = Vec::new();
+    for &b in boxes {
+        let mut curr = b;
+        let mut i = 0;
+        while i < merged.len() {
+            let m = merged[i];
+            let intersects = !(curr.x1 < m.x0 - 2
+                || curr.x0 > m.x1 + 2
+                || curr.y1 < m.y0 - 2
+                || curr.y0 > m.y1 + 2);
+            if intersects {
+                curr = crate::enfold2d::Rect::new(
+                    curr.x0.min(m.x0),
+                    curr.y0.min(m.y0),
+                    curr.x1.max(m.x1),
+                    curr.y1.max(m.y1),
+                );
+                merged.remove(i);
+            } else {
+                i += 1;
+            }
+        }
+        merged.push(curr);
+    }
+    merged
+}
+
 fn color_dist(a: [f32; 3], b: [f32; 3]) -> f32 {
     (a[0] - b[0]).abs().max((a[1] - b[1]).abs()).max((a[2] - b[2]).abs())
 }
@@ -1545,9 +1575,23 @@ pub fn extract_character_observation_tracks(
         }
     }
 
+    // Rank tracks by Holon Salience Criterion:
+    // A genuine physical actor / holon exhibits temporal permanence across the shot,
+    // interiority (operating inside the domain Omega rather than pinned to the boundary dOmega
+    // as HUDs/letterbox borders do), and consistent mass.
     let mut scored: Vec<(usize, Vec<CharacterObservation>)> = tracks
         .into_iter()
         .filter(|tr| tr.len() >= MIN_TRACK_LEN || max_tracks == 1)
+        .filter(|tr| {
+            // Filter out camera-locked viewport HUDs/borders:
+            // Elements that are glued to the screen boundary on every single frame
+            // and have negligible screen displacement (< 3.0 px) across the clip.
+            let c0 = tr.first().unwrap().obs.bbox.center();
+            let c1 = tr.last().unwrap().obs.bbox.center();
+            let screen_travel = (c1[0] - c0[0]).hypot(c1[1] - c0[1]);
+            let edge_locked = tr.iter().all(|c| c.obs.truncated);
+            !(edge_locked && screen_travel < 3.0)
+        })
         .map(|tr| {
             let total_fg: usize = tr.iter().map(|c| c.obs.mask.iter().filter(|&&m| m).count()).sum();
             let score = tr.len() * 1000 + total_fg;

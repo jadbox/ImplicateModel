@@ -213,7 +213,8 @@ fn r10_3_nimh_brisby_bluth_model_sheet_and_cape_gate() {
     }
 
     // 1. Read real 1080p feature film frames (Mrs. Brisby turnaround and billowing cape cycle)
-    let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(600.0), Some(1.0), 320, 176)
+    // Anchored to t=625.0s (Track R10.6) where Mrs. Brisby is in full motion
+    let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(625.0), Some(1.0), 320, 176)
         .expect("read nimh frames");
     assert!(!nimh_frames.is_empty());
 
