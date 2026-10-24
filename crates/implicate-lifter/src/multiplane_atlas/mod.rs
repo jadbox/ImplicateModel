@@ -495,25 +495,27 @@ pub fn build_multiplane_atlas(frames: &[RawFrame], opts: &MultiPlaneOptions) -> 
         });
     }
 
-    let mut actor_boxes_per_frame: Vec<Vec<Rect>> = Vec::with_capacity(n_frames);
-    let mut dilated_masks: Vec<Vec<bool>> = vec![vec![false; w * h]; n_frames];
+    let actor_boxes_per_frame = kinematic_co_motion_binding(
+        frames,
+        &raw_actor_masks,
+        w,
+        h,
+        opts.actor_min_area,
+        opts.actor_mask_dilation,
+    );
 
+    let mut dilated_masks: Vec<Vec<bool>> = vec![vec![false; w * h]; n_frames];
     for fi in 0..n_frames {
-        let boxes = connected_boxes(&raw_actor_masks[fi], w, h, opts.actor_min_area);
-        let expanded: Vec<Rect> = boxes
-            .iter()
-            .map(|r| r.expand(opts.actor_mask_dilation))
-            .collect();
+        let boxes = &actor_boxes_per_frame[fi];
         for y in 0..h {
             for x in 0..w {
                 if raw_actor_masks[fi][y * w + x]
-                    || expanded.iter().any(|r| r.contains(x as i32, y as i32))
+                    || boxes.iter().any(|r| r.contains(x as i32, y as i32))
                 {
                     dilated_masks[fi][y * w + x] = true;
                 }
             }
         }
-        actor_boxes_per_frame.push(expanded);
     }
 
     let mut layers: Vec<ParallaxLayer> = Vec::with_capacity(n_layers);
@@ -580,4 +582,173 @@ pub fn build_multiplane_atlas(frames: &[RawFrame], opts: &MultiPlaneOptions) -> 
         actor_masks_per_frame: dilated_masks,
         luminescence_per_frame,
     }
+}
+
+/// Estimate 2D translation displacement of a component between adjacent frames
+fn estimate_component_displacement(
+    curr_frame: &RawFrame,
+    other_frame: &RawFrame,
+    mask: &[bool],
+    w: usize,
+    h: usize,
+    bbox: &Rect,
+    forward: bool,
+) -> [f32; 2] {
+    let mut best_dx = 0i32;
+    let mut best_dy = 0i32;
+    let mut best_sad = u64::MAX;
+
+    let y_start = bbox.y0.max(0).min(h.saturating_sub(1) as i32);
+    let y_end = bbox.y1.max(0).min(h.saturating_sub(1) as i32);
+    let x_start = bbox.x0.max(0).min(w.saturating_sub(1) as i32);
+    let x_end = bbox.x1.max(0).min(w.saturating_sub(1) as i32);
+
+    for dy in -4..=4 {
+        for dx in -4..=4 {
+            let mut sad = 0u64;
+            let mut count = 0u64;
+
+            for y in y_start..=y_end {
+                let ny = y + dy;
+                if ny < 0 || ny >= h as i32 {
+                    continue;
+                }
+                for x in x_start..=x_end {
+                    let nx = x + dx;
+                    if nx < 0 || nx >= w as i32 {
+                        continue;
+                    }
+                    let idx = y as usize * w + x as usize;
+                    if !mask[idx] {
+                        continue;
+                    }
+                    let p_cur = curr_frame.pixel(x as u32, y as u32);
+                    let p_oth = other_frame.pixel(nx as u32, ny as u32);
+                    let diff = (p_cur[0] as i32 - p_oth[0] as i32).abs()
+                        + (p_cur[1] as i32 - p_oth[1] as i32).abs()
+                        + (p_cur[2] as i32 - p_oth[2] as i32).abs();
+                    sad += diff as u64;
+                    count += 1;
+                }
+            }
+
+            if count > 0 && sad < best_sad {
+                best_sad = sad;
+                best_dx = dx;
+                best_dy = dy;
+            }
+        }
+    }
+
+    if forward {
+        [best_dx as f32, best_dy as f32]
+    } else {
+        [-best_dx as f32, -best_dy as f32]
+    }
+}
+
+/// Kinematic Co-Motion Binding (Track R10.7a):
+/// Groups co-moving adjacent residual components sharing spatial proximity and velocity
+/// displacement v before forming tracklets, restoring fragmented animated entities
+/// (e.g. Mrs. Brisby's head, ears, snout, torso, cloak).
+pub fn kinematic_co_motion_binding(
+    frames: &[RawFrame],
+    raw_masks: &[Vec<bool>],
+    w: usize,
+    h: usize,
+    min_comp_area: usize,
+    dilation: i32,
+) -> Vec<Vec<Rect>> {
+    let n_frames = frames.len();
+    let mut out = Vec::with_capacity(n_frames);
+
+    for fi in 0..n_frames {
+        let mask = &raw_masks[fi];
+        let boxes = crate::enfold2d::connected_boxes(mask, w, h, min_comp_area);
+        if boxes.is_empty() {
+            out.push(Vec::new());
+            continue;
+        }
+
+        let other_fi = if fi + 1 < n_frames { fi + 1 } else { fi.saturating_sub(1) };
+        let forward = fi + 1 < n_frames;
+
+        let mut velocities = Vec::with_capacity(boxes.len());
+        for b in &boxes {
+            let v = if n_frames > 1 {
+                estimate_component_displacement(&frames[fi], &frames[other_fi], mask, w, h, b, forward)
+            } else {
+                [0.0, 0.0]
+            };
+            velocities.push(v);
+        }
+
+        let mut parent: Vec<usize> = (0..boxes.len()).collect();
+        fn find(p: &mut [usize], i: usize) -> usize {
+            if p[i] == i { i } else { p[i] = find(p, p[i]); p[i] }
+        }
+
+        for i in 0..boxes.len() {
+            for j in (i + 1)..boxes.len() {
+                let bi = &boxes[i];
+                let bj = &boxes[j];
+
+                let dx = (bi.x0 - bj.x1).max(bj.x0 - bi.x1).max(0);
+                let dy = (bi.y0 - bj.y1).max(bj.y0 - bi.y1).max(0);
+                let gap = dx.max(dy);
+
+                // Kinematic Co-Motion Binding (Track R10.7a):
+                // Union co-moving adjacent residual components sharing spatial proximity (gap <= 8)
+                // and velocity displacement v (v_diff <= 2.5) within a localized actor scale.
+                if gap <= 8 {
+                    let union_w = (bi.x1.max(bj.x1) - bi.x0.min(bj.x0) + 1) as usize;
+                    let union_h = (bi.y1.max(bj.y1) - bi.y0.min(bj.y0) + 1) as usize;
+                    if union_w <= w / 2 && union_h <= h / 2 {
+                        let vi = velocities[i];
+                        let vj = velocities[j];
+                        let v_diff = (vi[0] - vj[0]).hypot(vi[1] - vj[1]);
+                        if v_diff <= 2.5 {
+                            let ri = find(&mut parent, i);
+                            let rj = find(&mut parent, j);
+                            if ri != rj {
+                                parent[ri] = rj;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut united_boxes: Vec<Option<Rect>> = vec![None; boxes.len()];
+
+        for i in 0..boxes.len() {
+            let root = find(&mut parent, i);
+            let b = &boxes[i];
+            united_boxes[root] = match united_boxes[root] {
+                Some(prev) => Some(Rect::new(
+                    prev.x0.min(b.x0),
+                    prev.y0.min(b.y0),
+                    prev.x1.max(b.x1),
+                    prev.y1.max(b.y1),
+                )),
+                None => Some(*b),
+            };
+        }
+
+        let mut merged: Vec<Rect> = Vec::new();
+        for opt_b in united_boxes.into_iter().flatten() {
+            merged.push(opt_b.expand(dilation));
+        }
+
+        for b in &mut merged {
+            b.x0 = b.x0.clamp(0, w as i32 - 1);
+            b.y0 = b.y0.clamp(0, h as i32 - 1);
+            b.x1 = b.x1.clamp(b.x0, w as i32 - 1);
+            b.y1 = b.y1.clamp(b.y0, h as i32 - 1);
+        }
+
+        out.push(merged);
+    }
+
+    out
 }

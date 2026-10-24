@@ -284,12 +284,15 @@ pub fn compute_trajectory_headings(obs: &[CharacterObservation]) -> Vec<f64> {
             (0.0, 0.0)
         };
 
-        if wdy.abs() > 1.2 {
-            last_h = if wdy > 0.0 { std::f64::consts::FRAC_PI_2 } else { -std::f64::consts::FRAC_PI_2 };
-        } else if wdx.abs() > 0.4 {
-            last_h = if wdx > 0.0 { 0.0 } else { std::f64::consts::PI };
-        } else if wdx.abs() > 0.2 || wdy.abs() > 0.2 {
-            last_h = wdy.atan2(wdx);
+        let spd = wdx.hypot(wdy);
+        if spd > 0.3 {
+            if wdy.abs() > 1.2 || (wdy.abs() > wdx.abs() * 1.2) {
+                last_h = if wdy > 0.0 { std::f64::consts::FRAC_PI_2 } else { -std::f64::consts::FRAC_PI_2 };
+            } else if wdx.abs() > 0.35 {
+                last_h = if wdx > 0.0 { 0.0 } else { std::f64::consts::PI };
+            } else {
+                last_h = wdy.atan2(wdx);
+            }
         } else if let Some(loa) = obs[i].line_of_action() {
             last_h = loa.angle_rad;
         }
@@ -1048,6 +1051,13 @@ pub fn accumulate_part_wavepacket_kernel(
         }
     }
 
+    let n_obs_cell = cell_obs_indices.len();
+    let min_consensus_hits: u32 = if n_obs_cell >= 2 {
+        (n_obs_cell as f64 * 0.40).ceil() as u32
+    } else {
+        1
+    };
+
     let mut dc_rgba = vec![0u8; n_cells * 4];
     let harmonic_rgba = vec![128u8; n_cells * 4];
     let mut cft_rgba_coeffs = vec![[0.0f32; CFT_WAVEPACKET_MODES]; n_cells * 4];
@@ -1055,9 +1065,11 @@ pub fn accumulate_part_wavepacket_kernel(
     let mut mode_rgb = vec![[0u8; 3]; n_cells];
 
     for k_idx in 0..n_cells {
-        if let Some((c, _)) = buckets[k_idx].mode() {
-            mode_rgb[k_idx] = c;
-            dc_rgba[k_idx * 4..k_idx * 4 + 3].copy_from_slice(&c);
+        if fg_hits[k_idx] >= min_consensus_hits {
+            if let Some((c, _)) = buckets[k_idx].mode() {
+                mode_rgb[k_idx] = c;
+                dc_rgba[k_idx * 4..k_idx * 4 + 3].copy_from_slice(&c);
+            }
         }
     }
 
@@ -1106,7 +1118,7 @@ pub fn accumulate_part_wavepacket_kernel(
         rgb_slice[i * 3] = mode_rgb[i][0];
         rgb_slice[i * 3 + 1] = mode_rgb[i][1];
         rgb_slice[i * 3 + 2] = mode_rgb[i][2];
-        mask_slice[i] = fg_hits[i] > 0;
+        mask_slice[i] = fg_hits[i] >= min_consensus_hits;
     }
     let dual = decompose_masked_clifford_dual_product(&rgb_slice, Some(&mask_slice), res_w, res_h);
 
@@ -1117,7 +1129,7 @@ pub fn accumulate_part_wavepacket_kernel(
             let k_idx = ky * res_w + kx;
             let r2 = u * u + v * v;
             gaussian_envelope[k_idx] = (-0.08 * r2 * r2).exp();
-            if fg_hits[k_idx] > 0 {
+            if fg_hits[k_idx] >= min_consensus_hits {
                 for ch in 0..4 {
                     let coeffs = solve_5x5(gram, rhs[k_idx * 4 + ch]);
                     cft_rgba_coeffs[k_idx * 4 + ch] = coeffs;

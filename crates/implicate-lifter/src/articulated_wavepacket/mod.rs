@@ -902,8 +902,8 @@ pub fn fit_articulated_holon(
     }
 }
 
-/// Robust outlier bound in median absolute deviations (the conventional 3-sigma-equivalent).
-const OUTLIER_MADS: f64 = 3.0;
+/// Robust outlier bound in median absolute deviations (the conventional 2-sigma / 95% confidence bound).
+const OUTLIER_MADS: f64 = 2.0;
 /// Scale factor making the MAD a consistent estimator of the standard deviation.
 const MAD_TO_SIGMA: f64 = 1.4826;
 
@@ -1330,10 +1330,12 @@ pub fn dominant_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
             false
         };
 
-        // Retain props, capes, and limbs:
-        // Any component with >= 2 pixels within the envelope or corridor is kept.
-        // Even 1-pixel components within tight proximity (<= 3 px) are kept.
-        if (in_distance_envelope || in_corridor) && (comp_sz >= 2 || min_dist_to_primary <= 3.0) {
+        // Retain genuine limbs, capes, ears, and boots while rejecting detached debris and sparks:
+        // A character component is either intimately contiguous (min_dist <= 2.5 across ink contours)
+        // or a significant limb/cape along the kinematic line of action (min_dist <= 5.0).
+        let intimately_contiguous = min_dist_to_primary <= 2.5;
+        let kinematic_limb = (in_distance_envelope || in_corridor) && min_dist_to_primary <= 5.0 && comp_sz >= 8;
+        if intimately_contiguous || kinematic_limb {
             keep[id] = true;
         }
     }
@@ -1488,17 +1490,22 @@ pub fn extract_character_observation_tracks(
                 }
             }
             let silhouette = dominant_silhouette(&residual, bw0, bh0);
+            let fg_cnt = silhouette.iter().filter(|&&m| m).count();
+            if fg_cnt < 8 {
+                continue;
+            }
+
             let (mut tx0, mut ty0, mut tx1, mut ty1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-            let mut fg_cnt = 0usize;
+            let mut final_fg_cnt = 0usize;
             for (i, _) in silhouette.iter().enumerate().filter(|(_, m)| **m) {
                 let (fx, fy) = (x0 + (i % bw0) as i32, y0 + (i / bw0) as i32);
-                fg_cnt += 1;
+                final_fg_cnt += 1;
                 tx0 = tx0.min(fx);
                 ty0 = ty0.min(fy);
                 tx1 = tx1.max(fx);
                 ty1 = ty1.max(fy);
             }
-            if fg_cnt < 8 {
+            if final_fg_cnt < 8 {
                 continue;
             }
             let tight = Rect::new(tx0, ty0, tx1, ty1);
@@ -1579,26 +1586,41 @@ pub fn extract_character_observation_tracks(
     // A genuine physical actor / holon exhibits temporal permanence across the shot,
     // interiority (operating inside the domain Omega rather than pinned to the boundary dOmega
     // as HUDs/letterbox borders do), and consistent mass.
-    let mut scored: Vec<(usize, Vec<CharacterObservation>)> = tracks
+    let mut scored: Vec<(f64, Vec<CharacterObservation>)> = tracks
         .into_iter()
         .filter(|tr| tr.len() >= MIN_TRACK_LEN || max_tracks == 1)
         .filter(|tr| {
             // Filter out camera-locked viewport HUDs/borders:
-            // Elements that are glued to the screen boundary on every single frame
-            // and have negligible screen displacement (< 3.0 px) across the clip.
-            let c0 = tr.first().unwrap().obs.bbox.center();
-            let c1 = tr.last().unwrap().obs.bbox.center();
-            let screen_travel = (c1[0] - c0[0]).hypot(c1[1] - c0[1]);
-            let edge_locked = tr.iter().all(|c| c.obs.truncated);
-            !(edge_locked && screen_travel < 3.0)
+            // Elements spanning a significant portion of the boundary (> 1/3 viewport)
+            // or flat horizontal/vertical border strips (AR > 3.0 or < 0.25 pinned to edge)
+            // that are glued to the screen boundary on >= 80% of frames.
+            let edge_count = tr.iter().filter(|c| c.obs.truncated).count();
+            let edge_locked = (edge_count as f64 / tr.len() as f64) >= 0.80;
+            let b0 = tr.first().unwrap().obs.bbox;
+            let on_edge = b0.y0 == 0 || b0.y1 == frames[0].height as i32 - 1
+                || b0.x0 == 0 || b0.x1 == frames[0].width as i32 - 1;
+            let ar = (b0.width() as f32) / (b0.height() as f32).max(1.0);
+            let is_border_strip = on_edge && (ar > 3.0 || ar < 0.25);
+            let spans_border = b0.width() as usize > frames[0].width as usize / 3
+                || b0.height() as usize > frames[0].height as usize / 3;
+            !(edge_locked && (is_border_strip || spans_border))
         })
         .map(|tr| {
             let total_fg: usize = tr.iter().map(|c| c.obs.mask.iter().filter(|&&m| m).count()).sum();
-            let score = tr.len() * 1000 + total_fg;
+            let c0 = tr.first().unwrap().obs.bbox.center();
+            let c1 = tr.last().unwrap().obs.bbox.center();
+            let mean_cx = (c0[0] + c1[0]) * 0.5;
+            let screen_w = frames[0].width as f64;
+            // Interiority weight: genuine holons operate within the camera safe area / central domain,
+            // whereas border and status elements are pinned to the peripheral margins.
+            let dx_center = (mean_cx - screen_w * 0.5) / (screen_w * 0.35);
+            let interiority = (-0.5 * dx_center * dx_center).exp();
+
+            let score = (tr.len() as f64 * 1000.0 + total_fg as f64) * interiority;
             (score, tr.into_iter().map(|c| c.obs).collect())
         })
         .collect();
-    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     scored.into_iter().take(max_tracks.max(1)).map(|(_, obs)| obs).collect()
 }
 

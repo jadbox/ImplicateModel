@@ -29,6 +29,7 @@ generative_output/
 *.bin
 *.safetensors
 *_ignore/
+*_tmp/
 
 # Environment & editor files
 .DS_Store
