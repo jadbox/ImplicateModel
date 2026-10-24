@@ -18,8 +18,10 @@ fn main() {
     let ctx = RolpaGpuContext::shared();
     let art_holon = fit_articulated_holon(&obs, Some(1));
 
-    let mut total_iou = 0.0;
-    for oi in 0..30 {
+    let (mut all_iou, mut clean_iou) = (0.0, 0.0);
+    let (mut all_n, mut clean_n) = (0, 0);
+
+    for oi in 0..obs.len().min(30) {
         let obsi = &obs[oi];
         let (w, h) = (obsi.width(), obsi.height());
         let unfolder = GpuModelSheetUnfolder::new(ctx, w as u32, h as u32);
@@ -66,8 +68,16 @@ fn main() {
         let inter = (0..w * h).filter(|&i| obsi.mask[i] && pred_mask[i]).count();
         let union = (0..w * h).filter(|&i| obsi.mask[i] || pred_mask[i]).count();
         let iou = inter as f64 / union.max(1) as f64;
-        total_iou += iou;
-        println!("Frame {:02}: IoU={:.4}, extent={}x{}, bbox={:?}", oi, iou, w, h, obsi.bbox);
+        all_iou += iou;
+        all_n += 1;
+
+        let is_firing_merge = obsi.height() > 53;
+        if !is_firing_merge {
+            clean_iou += iou;
+            clean_n += 1;
+        }
+        println!("Frame {:02}: h={}, IoU={:.4} (clean={})", oi, h, iou, !is_firing_merge);
     }
-    println!("Mean IoU across 30 frames: {:.4}", total_iou / 30.0);
+    println!("All {} frames: Mean IoU = {:.4}", all_n, all_iou / all_n as f64);
+    println!("Clean {} frames: Mean IoU = {:.4}", clean_n, clean_iou / clean_n as f64);
 }

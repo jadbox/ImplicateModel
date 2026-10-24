@@ -572,7 +572,7 @@ pub fn choose_part_and_view_counts(observations: &[CharacterObservation]) -> (us
         return (1, view_count_for(n, 1));
     }
     let rec = rigid_recurrence_iou(observations);
-    if rec >= HOLON_MODEL_QUALITY_IOU {
+    if rec >= 0.80 {
         return (1, view_count_for(n, 1));
     }
     let m1 = fit_articulated_holon(observations, Some(1));
@@ -582,7 +582,12 @@ pub fn choose_part_and_view_counts(observations: &[CharacterObservation]) -> (us
         .map(|(oi, o)| mask_iou(&o.mask, &render_articulated_holon_observation(&m1, o, oi).0))
         .sum::<f64>()
         / n as f64;
-    if iou1 >= 0.78 {
+    let (med_w, med_h) = median_obs_dims(observations);
+    let area_est = (med_w * med_h).max(16) as f64;
+    // Scale-aware rigidity threshold: for small sprites (e.g. Pacman 14x14), perimeter texel
+    // quantization naturally bounds maximum mask IoU across opening/closing mouth cycles.
+    let rigidity_thresh = (1.0 - 3.5 / area_est.sqrt()).clamp(0.74, HOLON_MODEL_QUALITY_IOU);
+    if iou1 >= rigidity_thresh {
         return (1, view_count_for(n, 1));
     }
     let mut best = (0.0f64, ARTICULATED_PART_CANDIDATES[ARTICULATED_PART_CANDIDATES.len() - 1]);
@@ -1075,8 +1080,8 @@ const MAX_LINK_GAP: usize = 8;
 /// Minimum number of observations for a track to define a holon.
 const MIN_TRACK_LEN: usize = 4;
 
-/// Compute the statistical lattice noise floor tau = median(I_nz) + 3 * 1.4826 * MAD(I_nz)
-/// derived from the non-zero lattice-tolerant residual multivector |ΔΨ|.
+/// Compute the statistical background noise floor tau = max(median(I_nz) + 3 * 1.4826 * MAD(I_nz), Q(0.98))
+/// derived from the empirical non-zero pointwise background residual field outside actor bounding boxes.
 pub fn compute_shot_noise_floor(
     frames: &[crate::video_io::RawFrame],
     atlas: &crate::multiplane_atlas::MultiPlaneAtlas,
@@ -1089,27 +1094,25 @@ pub fn compute_shot_noise_floor(
     let mut sample_res = Vec::new();
     let (ay0, ay1) = atlas.active_y_range;
     let w = atlas.width;
-    let h = atlas.height;
+    let _h = atlas.height;
 
     for fi in (0..n).step_by(stride) {
         let f = &frames[fi];
         let bg = atlas.reconstruct_background_frame(fi);
+        let boxes = atlas.actor_boxes_per_frame.get(fi);
         for y in (ay0..ay1).step_by(2) {
             for x in (0..w).step_by(2) {
-                let c = f.pixel(x as u32, y as u32);
-                let mut best_d = i32::MAX;
-                for dy in -1i32..=1 {
-                    for dx in -1i32..=1 {
-                        let (bx, by) = (x as i32 + dx, y as i32 + dy);
-                        if bx >= 0 && by >= 0 && bx < w as i32 && by < h as i32 {
-                            let b = bg.pixel(bx as usize, by as usize);
-                            let d = (0..3).map(|k| (c[k] as i32 - b[k] as i32).abs()).max().unwrap_or(0);
-                            best_d = best_d.min(d);
-                        }
-                    }
-                }
-                if best_d > 0 && best_d != i32::MAX {
-                    sample_res.push(best_d as f64);
+                let in_actor = boxes.map(|bs| {
+                    bs.iter().any(|b| {
+                        (b.x0 - 4..=b.x1 + 4).contains(&(x as i32))
+                            && (b.y0 - 4..=b.y1 + 4).contains(&(y as i32))
+                    })
+                }).unwrap_or(false);
+                if !in_actor {
+                    let c = f.pixel(x as u32, y as u32);
+                    let b = bg.pixel(x, y);
+                    let d = (0..3).map(|k| (c[k] as i32 - b[k] as i32).abs()).max().unwrap_or(0);
+                    sample_res.push(d as f64);
                 }
             }
         }
@@ -1125,7 +1128,9 @@ pub fn compute_shot_noise_floor(
     devs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mad = devs[devs.len() / 2];
 
-    let tau = median + 3.0 * MAD_TO_SIGMA * mad;
+    let tau_mad = median + 3.0 * MAD_TO_SIGMA * mad;
+    let q98 = sample_res[((sample_res.len() - 1) as f64 * 0.98).round() as usize];
+    let tau = tau_mad.max(q98);
     tau.clamp(6.0, 36.0)
 }
 
@@ -1586,7 +1591,7 @@ pub fn extract_character_observation_tracks(
     // A genuine physical actor / holon exhibits temporal permanence across the shot,
     // interiority (operating inside the domain Omega rather than pinned to the boundary dOmega
     // as HUDs/letterbox borders do), and consistent mass.
-    let mut scored: Vec<(f64, Vec<CharacterObservation>)> = tracks
+    let mut scored: Vec<(usize, Vec<CharacterObservation>)> = tracks
         .into_iter()
         .filter(|tr| tr.len() >= MIN_TRACK_LEN || max_tracks == 1)
         .filter(|tr| {
@@ -1607,20 +1612,11 @@ pub fn extract_character_observation_tracks(
         })
         .map(|tr| {
             let total_fg: usize = tr.iter().map(|c| c.obs.mask.iter().filter(|&&m| m).count()).sum();
-            let c0 = tr.first().unwrap().obs.bbox.center();
-            let c1 = tr.last().unwrap().obs.bbox.center();
-            let mean_cx = (c0[0] + c1[0]) * 0.5;
-            let screen_w = frames[0].width as f64;
-            // Interiority weight: genuine holons operate within the camera safe area / central domain,
-            // whereas border and status elements are pinned to the peripheral margins.
-            let dx_center = (mean_cx - screen_w * 0.5) / (screen_w * 0.35);
-            let interiority = (-0.5 * dx_center * dx_center).exp();
-
-            let score = (tr.len() as f64 * 1000.0 + total_fg as f64) * interiority;
+            let score = tr.len() * 1000 + total_fg;
             (score, tr.into_iter().map(|c| c.obs).collect())
         })
         .collect();
-    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| b.0.cmp(&a.0));
     scored.into_iter().take(max_tracks.max(1)).map(|(_, obs)| obs).collect()
 }
 

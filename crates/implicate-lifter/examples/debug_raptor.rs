@@ -52,11 +52,17 @@ fn test_extraction(name: &str, path: &str, start_s: f64, dur_s: f64, scale: Opti
         }
     }
     bg_diffs.sort_unstable();
-    let q98 = if bg_diffs.is_empty() { 18 } else {
-        bg_diffs[((bg_diffs.len() - 1) as f64 * 0.98).round() as usize]
+    let q98 = if bg_diffs.is_empty() { 18.0 } else {
+        bg_diffs[((bg_diffs.len() - 1) as f64 * 0.98).round() as usize] as f64
     };
+    let median = if bg_diffs.is_empty() { 0.0 } else { bg_diffs[bg_diffs.len() / 2] as f64 };
+    let mut devs: Vec<f64> = bg_diffs.iter().map(|&x| (x as f64 - median).abs()).collect();
+    devs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mad = if devs.is_empty() { 1.0 } else { devs[devs.len() / 2] };
+    let tau_mad = median + 3.0 * 1.4826 * mad;
+    let tau = tau_mad.max(q98).clamp(6.0, 36.0);
 
-    println!("{}: Computed pointwise Q98 = {}", name, q98);
+    println!("{}: median={:.1}, mad={:.1}, tau_mad={:.2}, Q98={:.2} => final tau={:.2}", name, median, mad, tau_mad, q98, tau);
 
     // 1. Pointwise with Q98
     let mut res_q98 = vec![false; bw * bh];
@@ -67,7 +73,7 @@ fn test_extraction(name: &str, path: &str, start_s: f64, dur_s: f64, scale: Opti
             let c = frame.pixel(fx as u32, fy as u32);
             let b = recon_bg.pixel(fx, fy);
             let d = (0..3).map(|k| (c[k] as i32 - b[k] as i32).abs()).max().unwrap_or(0);
-            res_q98[ly * bw + lx] = d > q98;
+            res_q98[ly * bw + lx] = (d as f64) > tau;
         }
     }
     let sil_q98 = dominant_silhouette(&res_q98, bw, bh);

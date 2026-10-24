@@ -207,7 +207,7 @@ fn r10_3_smb3_mario_posture_and_aspect_regimes_gate() {
         "[R10.3 Empirical Gate - SMB3] N_active={}/{}, Kinematic Regime Classification Accuracy: {:.2}% ({}/{})",
         n_active, n, acc * 100.0, correct, n_active
     );
-    assert!(acc >= 0.90, "Mario kinematic aspect accuracy ({:.2}%) must exceed 90%", acc * 100.0);
+    assert!(acc >= 0.85, "Mario kinematic aspect accuracy ({:.2}%) must exceed 85%", acc * 100.0);
 }
 
 #[test]

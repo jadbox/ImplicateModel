@@ -289,12 +289,10 @@ pub fn compute_trajectory_headings(obs: &[CharacterObservation]) -> Vec<f64> {
             if (wdx.abs() - wdy.abs()).abs() <= 0.25 && spd < 1.5 {
                 // Universal kinematic abstraction: trajectory heading hysteresis at corner intersections.
                 // When sub-pixel velocity components are balanced, kinematic momentum preserves the heading.
-            } else if wdy.abs() > 1.2 || (wdy.abs() > wdx.abs() * 1.2) {
+            } else if wdy.abs() > wdx.abs() {
                 last_h = if wdy > 0.0 { std::f64::consts::FRAC_PI_2 } else { -std::f64::consts::FRAC_PI_2 };
-            } else if wdx.abs() > 0.35 {
-                last_h = if wdx > 0.0 { 0.0 } else { std::f64::consts::PI };
             } else {
-                last_h = wdy.atan2(wdx);
+                last_h = if wdx > 0.0 { 0.0 } else { std::f64::consts::PI };
             }
         } else if let Some(loa) = obs[i].line_of_action() {
             last_h = loa.angle_rad;
@@ -1055,8 +1053,10 @@ pub fn accumulate_part_wavepacket_kernel(
     }
 
     let n_obs_cell = cell_obs_indices.len();
+    let is_rigid = poses_per_obs.first().map(|p| p.len()).unwrap_or(1) == 1;
+    let consensus_fraction = if is_rigid { 0.60 } else { 0.40 };
     let min_consensus_hits: u32 = if n_obs_cell >= 2 {
-        (n_obs_cell as f64 * 0.40).ceil() as u32
+        (n_obs_cell as f64 * consensus_fraction).ceil() as u32
     } else {
         1
     };
@@ -1200,7 +1200,7 @@ pub fn fit_rigid_single_box_baseline(
     }
 
     let mut rgba = vec![0u8; n * 4];
-    let min_hits = (total * 2 / 5).max(1);
+    let min_hits = (total * 3 / 5).max(1);
     for i in 0..n {
         if hits[i] >= min_hits {
             if let Some((c, _)) = buckets[i].mode() {
