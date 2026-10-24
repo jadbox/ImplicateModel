@@ -2,7 +2,7 @@
 
 **WARNING: Work in progress - Pre-Alpha (not ready for general use)**
 
-**ImplicateModel** is a real-time, field-first video and audio world engine written in native Rust (`Edition 2024`) and WGSL (`wgpu` / Vulkan / CUDA). Rather than memorizing pixel transitions via autoregressive tokens or multi-step diffusion, it **enfolds** arbitrary input videos into an **Implicate Order**—a vocabulary of Projective Geometric Algebra ($\mathbb{G}_{3,0,1}$) holons, multi-plane spatial atlases, and Bohm-Hiley Clifford Quantum Potentials ($\mathcal{Q}_{\text{Cl}}$)—and **unfolds** new videos and synchronized $48\text{ kHz}$ stereo audio in a single causal forward pass ($\ge 60\text{ FPS}$).
+**ImplicateModel** is a real-time, field-first video and audio world engine written in native Rust and WGSL (`wgpu`). Rather than memorizing pixel transitions via autoregressive tokens or multi-step diffusion, it **enfolds** arbitrary input videos into an **Implicate Order**—a vocabulary of Projective Geometric Algebra ($\mathbb{G}_{3,0,1}$) holons, multi-plane spatial atlases, and Bohm-Hiley Clifford Quantum Potentials ($\mathcal{Q}_{\text{Cl}}$)—and **unfolds** new videos and synchronized $48\text{ kHz}$ stereo audio in a single causal forward pass ($\ge 60\text{ FPS}$).
 
 ---
 
