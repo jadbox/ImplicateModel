@@ -9,10 +9,11 @@ use implicate_lexicon::{
     format_timestamp_range, snap_verb_window_to_cft_impulses,
 };
 use implicate_lifter::{
-    ArticulatedHolon, LuminescenceFrame, MultiPlaneAtlas, MultiPlaneOptions, ParallaxLayer, Rect,
-    RgbImage8, ShotSegment, ShotSegmenterConfig, StreamingShotSegmenter, SubHolonPose,
-    WavepacketPartKernel, WorldAtlas, build_multiplane_atlas,
-    extract_character_observation_tracks, fit_articulated_holon, probe, video_io,
+    ArticulatedHolon, HolonModelSheet, LuminescenceFrame, MultiPlaneAtlas, MultiPlaneOptions,
+    ParallaxLayer, Rect, RgbImage8, ShotSegment, ShotSegmenterConfig, StreamingShotSegmenter,
+    SubHolonPose, WavepacketPartKernel, WorldAtlas, build_multiplane_atlas,
+    extract_character_observation_tracks, fit_articulated_holon, induce_holon_model_sheet, probe,
+    video_io,
 };
 use implicate_math::{HolonPose2D, LearnedVerbPotential};
 use serde::{Deserialize, Serialize};
@@ -23,8 +24,8 @@ use crate::container::{
 };
 
 pub const ENFOLDED_PAYLOAD_MAGIC: &[u8; 4] = b"ENFD";
-pub const ENFOLDED_PAYLOAD_VERSION: u32 = 2;
-/// Oldest payload version still decodable (v1 lacks per-observation frame indices).
+pub const ENFOLDED_PAYLOAD_VERSION: u32 = 3;
+/// Oldest payload version still decodable (v1 lacks per-observation frame indices, v2 lacks model sheets).
 pub const ENFOLDED_PAYLOAD_MIN_VERSION: u32 = 1;
 
 /// Lightweight manifest summary for an enfolded video clip stored in the `.implicate` binary payload.
@@ -41,9 +42,11 @@ pub struct EnfoldedClipSummary {
     pub num_articulated_holons: usize,
     pub holon_part_counts: Vec<usize>,
     pub holon_view_counts: Vec<usize>,
+    #[serde(default)]
+    pub num_model_sheets: usize,
 }
 
-/// Complete enfolded assets (`MultiPlaneAtlas` background/HUD layers + `ArticulatedHolon` wavepackets)
+/// Complete enfolded assets (`MultiPlaneAtlas` background/HUD layers + `ArticulatedHolon` wavepackets + `HolonModelSheet`)
 /// for a video clip stored inside a `.implicate` v1 container.
 #[derive(Clone, Debug)]
 pub struct EnfoldedClipAssets {
@@ -53,6 +56,7 @@ pub struct EnfoldedClipAssets {
     pub shots: Vec<ShotSegment>,
     pub atlas: MultiPlaneAtlas,
     pub holons: Vec<ArticulatedHolon>,
+    pub model_sheets: Vec<HolonModelSheet>,
 }
 
 impl EnfoldedClipAssets {
@@ -78,6 +82,7 @@ impl EnfoldedClipAssets {
             num_articulated_holons: self.holons.len(),
             holon_part_counts: self.holons.iter().map(|h| h.num_parts).collect(),
             holon_view_counts: self.holons.iter().map(|h| h.num_view_cells).collect(),
+            num_model_sheets: self.model_sheets.len(),
         }
     }
 }
@@ -143,15 +148,6 @@ pub fn enfold_video_clip(
         (frames, seg_report.shots)
     };
 
-    let atlas = build_multiplane_atlas(&shot_frames, &MultiPlaneOptions::default());
-    let obs_tracks = extract_character_observation_tracks(&shot_frames, &atlas, 8);
-    let mut holons = Vec::with_capacity(obs_tracks.len());
-    for obs in &obs_tracks {
-        if !obs.is_empty() {
-            holons.push(fit_articulated_holon(obs, None));
-        }
-    }
-
     let clip_id = video_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -163,6 +159,18 @@ pub fn enfold_video_clip(
         .unwrap_or("video.mp4")
         .to_string();
 
+    let atlas = build_multiplane_atlas(&shot_frames, &MultiPlaneOptions::default());
+    let obs_tracks = extract_character_observation_tracks(&shot_frames, &atlas, 8);
+    let mut holons = Vec::with_capacity(obs_tracks.len());
+    let mut model_sheets = Vec::with_capacity(obs_tracks.len());
+    for (idx, obs) in obs_tracks.iter().enumerate() {
+        if !obs.is_empty() {
+            holons.push(fit_articulated_holon(obs, None));
+            let actor_name = format!("{}_actor_{}", clip_id, idx + 1);
+            model_sheets.push(induce_holon_model_sheet(&actor_name, obs, None, None));
+        }
+    }
+
     Ok(EnfoldedClipAssets {
         clip_id,
         source_video,
@@ -170,6 +178,7 @@ pub fn enfold_video_clip(
         shots: active_shots,
         atlas,
         holons,
+        model_sheets,
     })
 }
 
@@ -463,6 +472,11 @@ pub fn encode_enfolded_payload(clips: &[EnfoldedClipAssets]) -> io::Result<Vec<u
         for holon in &clip.holons {
             w.write_articulated_holon(holon)?;
         }
+
+        // HolonModelSheets
+        let ms_json = serde_json::to_vec(&clip.model_sheets)
+            .map_err(|e| io::Error::new(ErrorKind::InvalidData, e.to_string()))?;
+        w.write_bytes(&ms_json);
     }
 
     Ok(w.buf)
@@ -558,6 +572,14 @@ pub fn decode_enfolded_payload(bytes: &[u8]) -> io::Result<Vec<EnfoldedClipAsset
             holons.push(r.read_articulated_holon(version)?);
         }
 
+        let model_sheets: Vec<HolonModelSheet> = if version >= 3 {
+            let ms_bytes = r.read_bytes()?;
+            serde_json::from_slice(ms_bytes)
+                .map_err(|e| io::Error::new(ErrorKind::InvalidData, e.to_string()))?
+        } else {
+            Vec::new()
+        };
+
         clips.push(EnfoldedClipAssets {
             clip_id,
             source_video,
@@ -565,6 +587,7 @@ pub fn decode_enfolded_payload(bytes: &[u8]) -> io::Result<Vec<EnfoldedClipAsset
             shots,
             atlas,
             holons,
+            model_sheets,
         });
     }
 

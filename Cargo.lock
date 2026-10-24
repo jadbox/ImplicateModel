@@ -460,6 +460,7 @@ dependencies = [
 name = "implicate-lifter"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "image",
  "implicate-math",
  "rustfft",
@@ -471,6 +472,7 @@ dependencies = [
 name = "implicate-math"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "clifford",
  "serde",
 ]

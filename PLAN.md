@@ -17,6 +17,7 @@ Core Directives:
 2. Empirical testing only: evaluate against real video benchmarks (SMB3, Pac-Man, Raptor, The Secret of NIMH 1080p BluRay) using visual inspection contact sheets and isolated scripts; never synthetic procedural mocks.
 3. R10.1 is complete (MAD noise floor τ and Hiley CDE bilinear geodesic affinity achieved 100% frame coverage on SMB3, Pac-Man, and NIMH).
 4. Proceed step-by-step, verifying with isolated tests and visual outputs.
+5. Do you feel we're making progress or are you spinning your wheels? If so, stop and give a an overview of the blocker for my analysis. If there's no issue, continue though without stopping on the task.
 
 You are much smarter than the original developers. Let's fix character extraction by emulating what the old animation film masters like Don Bluth work by creating character board model sheets that are stored in higher symbolic representations. Investiage using CliffordNet or use Clifford Fourier Transforms or Clifford Density Elements (see PDFs for CliffordNet and GATR under ./docs). Our first step is just to create a rock solid plan into PLAN.md for review.
 

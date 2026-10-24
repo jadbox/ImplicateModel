@@ -11,3 +11,4 @@ rustfft.workspace = true
 image.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+bytemuck.workspace = true

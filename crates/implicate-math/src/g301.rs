@@ -9,10 +9,11 @@
 //! - `11`: `e123`, `12`: `e032` ($x$), `13`: `e013` ($y$), `14`: `e021` ($z$) (Grade 3 points)
 //! - `15`: `e0123` (Grade 4 pseudoscalar)
 
+use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
 /// 16-blade multivector in $\mathbb{G}_{3,0,1}$ stored in SIMD-friendly `f32` layout.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Pod, Zeroable)]
 #[repr(C, align(64))]
 pub struct Mv301 {
     pub c: [f32; 16],

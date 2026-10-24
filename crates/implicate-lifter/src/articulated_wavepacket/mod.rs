@@ -8,7 +8,10 @@
 pub mod clifford_features;
 pub mod part_fitting;
 
-use implicate_math::{CliffordDensityElement, Motor, Mv301};
+use bytemuck::{Pod, Zeroable};
+use implicate_math::{
+    CliffordDensityElement, Motor, Mv2, Mv301, StateIdempotent, TransitionOperator,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::enfold2d::{Rect, RgbImage8};
@@ -19,6 +22,10 @@ pub use clifford_features::{
     decompose_clifford_dual_product, decompose_masked_clifford_dual_product,
     decompose_observation_dual_product, evaluate_vs_single_box_baseline,
     evaluate_vs_single_box_baseline_with_parts, mask_iou,
+};
+pub use part_fitting::{
+    SpectralIdempotentDecomposition, factor_temporal_covariance_idempotents,
+    induce_holon_model_sheet,
 };
 use part_fitting::{
     accumulate_part_wavepacket_kernel, assign_view_idempotent_cells_and_cft_phases,
@@ -202,7 +209,7 @@ impl CharacterObservation {
 }
 
 /// 2D anisotropic Gaussian pose and covariance parameters for a sub-holon part $p$ at frame $t$.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SubHolonPose {
     pub part_id: usize,
     pub parent_id: usize,
@@ -323,6 +330,217 @@ pub struct ArticulatedHolon {
     pub poses_per_obs: Vec<Vec<SubHolonPose>>,
     /// Source frame index of each entry in `poses_per_obs`.
     pub obs_frames: Vec<usize>,
+}
+
+/// Physical constitutive parameters: Cohesion C, Density ρ, Bulk Modulus K, Luminescence L.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Pod, Zeroable)]
+#[repr(C)]
+pub struct ConstitutiveTuple {
+    pub cohesion: f32,
+    pub density: f32,
+    pub bulk_modulus: f32,
+    pub luminescence: [f32; 3],
+    /// Alignment padding for 32-byte GPU uniform alignment.
+    pub _pad: [f32; 2],
+}
+
+impl Default for ConstitutiveTuple {
+    fn default() -> Self {
+        Self {
+            cohesion: 1.0,
+            density: 1.0,
+            bulk_modulus: 1.0,
+            luminescence: [0.0, 0.0, 0.0],
+            _pad: [0.0, 0.0],
+        }
+    }
+}
+
+/// Turnaround view regime classification.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ViewRegime {
+    Front,
+    ThreeQuarterFront,
+    Profile,
+    ThreeQuarterBack,
+    Back,
+    ActionPose,
+}
+
+/// Classify the view regime from heading rotor on Spin(2), Line of Action angle, and spread ratio.
+pub fn classify_view_regime(heading_rotor: [f32; 2], loa_angle: f64, spread_ratio: f64) -> ViewRegime {
+    let [c, s] = heading_rotor;
+    let heading_angle = (s as f64).atan2(c as f64);
+
+    if spread_ratio > 1.8 && (loa_angle.abs() > 1.2 || s.abs() > 0.8) {
+        ViewRegime::ActionPose
+    } else {
+        let ang_norm = heading_angle.rem_euclid(2.0 * std::f64::consts::PI);
+        let deg = ang_norm * 180.0 / std::f64::consts::PI;
+        if (deg >= 337.5 || deg < 22.5) || (deg >= 157.5 && deg < 202.5) {
+            ViewRegime::Profile
+        } else if deg >= 67.5 && deg < 112.5 {
+            ViewRegime::Front
+        } else if deg >= 247.5 && deg < 292.5 {
+            ViewRegime::Back
+        } else if (deg >= 22.5 && deg < 67.5) || (deg >= 112.5 && deg < 157.5) {
+            ViewRegime::ThreeQuarterFront
+        } else {
+            ViewRegime::ThreeQuarterBack
+        }
+    }
+}
+
+/// Invariant cel fill paint and ink contour blade kernel per part for a canonical view aspect.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ModelSheetPartKernel {
+    pub part_id: usize,
+    pub canonical_res: [usize; 2],
+    /// Invariant cel fill paint signature (inner product coherence u · ∇²u).
+    pub cel_fill_rgb: Vec<u8>,
+    /// Invariant ink line contour mask (wedge vorticity |u ∧ ∇²u|).
+    pub ink_contour_blade: Vec<f32>,
+    /// Continuous Clifford Fourier deformation wavepacket coefficients (5 modes).
+    pub cft_deformation_coeffs: Vec<[f32; CFT_WAVEPACKET_MODES]>,
+}
+
+/// Articulated sub-holon kinematic part specification with aerodynamic compliance.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SubHolonPartSpec {
+    pub part_id: usize,
+    pub name: String,
+    pub parent_part_id: Option<usize>,
+    /// Fluid-structure / aerodynamic coupling to ambient lattice flow v(x,t) - v_root (e.g. 0.0 for rigid, 4.5 for flowing).
+    pub flow_compliance: f32,
+    /// Restoring harmonic spring stiffness.
+    pub spring_stiffness: f32,
+    /// Joint angular damping.
+    pub damping: f32,
+    /// Local attachment anchor in parent frame.
+    pub anchor_local: [f32; 2],
+    /// Rest angle in radians.
+    pub rest_angle: f32,
+}
+
+/// Turnaround model sheet view aspect with primitive idempotent projector and Spin(2) Lie transitions.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TurnaroundViewAspect {
+    pub view_index: usize,
+    pub view_regime: ViewRegime,
+    /// Discrete primitive idempotent projector ε_v on Spin(2) × S¹.
+    pub idempotent: StateIdempotent,
+    /// Reference heading rotor on Spin(2): [cos θ, sin θ].
+    pub reference_rotor: [f32; 2],
+    /// Articulated part poses for this canonical aspect.
+    pub part_poses: Vec<SubHolonPose>,
+    /// Invariant contour blades (wedge vorticity) and cel fill kernels per part.
+    pub part_kernels: Vec<ModelSheetPartKernel>,
+}
+
+impl TurnaroundViewAspect {
+    /// Closed-form Lie transition operator T_{u -> v} = ε_v M ε_u between aspects on Spin(2).
+    pub fn transition_to(&self, target: &Self, motor: Mv2) -> Option<TransitionOperator> {
+        TransitionOperator::from_motor(&self.idempotent, &target.idempotent, motor)
+    }
+}
+
+/// Unified symbolic Character Board Model Sheet for an autonomous process holon (Track R10.3).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HolonModelSheet {
+    /// Semantic identifier (e.g., "Mrs_Brisby", "Mario", "Jeremy_Crow").
+    pub name: String,
+    /// Physical constitutive parameters: Cohesion C, Density ρ, Bulk Modulus K, Luminescence L.
+    pub constitutive: ConstitutiveTuple,
+    /// Line of Action: 3D PGA screw axis blade L_spine ∈ G(3,0,1).
+    pub line_of_action: Mv301,
+    /// Invariant projective cross-ratios and anatomical proportions.
+    pub invariant_proportions: Vec<f32>,
+    /// Turnaround model sheet: discrete view-aspect idempotents {ε_v}.
+    pub turnaround_views: Vec<TurnaroundViewAspect>,
+    /// Articulated sub-holon kinematic tree.
+    pub parts: Vec<SubHolonPartSpec>,
+    /// Invariant Hiley Clifford Density Element signature.
+    pub cde_signature: CliffordDensityElement,
+}
+
+/// Flat 64-byte aligned Mv301 monad array directly mappable to GPU uniform/storage buffers (Pod, Zeroable).
+/// Enables zero heap allocation in unfold trajectory stepping (Carmack mechanical sympathy).
+#[repr(C, align(64))]
+#[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable)]
+pub struct GpuModelSheetMonad {
+    /// Monad 0: Line of Action screw blade L_spine ∈ G(3,0,1).
+    pub line_of_action: Mv301,
+    /// Monad 1: Constitutive parameters (cohesion, density, bulk_modulus, luminescence).
+    pub constitutive_monad: Mv301,
+    /// Monad 2: Invariant CDE signature (amplitude, angle, idempotent_u, idempotent_v, rgb).
+    pub cde_monad: Mv301,
+    /// Monads 3..11: Up to 8 canonical turnaround aspect heading rotors & idempotents.
+    pub aspect_monads: [Mv301; 8],
+    /// Monads 11..19: Up to 8 articulated part specs (anchor, compliance, stiffness, damping).
+    pub part_monads: [Mv301; 8],
+}
+
+impl HolonModelSheet {
+    /// Convert to flat 64-byte aligned Mv301 GPU monad array for uniform/storage buffer dispatch.
+    pub fn to_gpu_monad(&self) -> GpuModelSheetMonad {
+        let mut const_c = [0.0f32; 16];
+        const_c[0] = self.constitutive.cohesion;
+        const_c[1] = self.constitutive.density;
+        const_c[2] = self.constitutive.bulk_modulus;
+        const_c[3] = self.constitutive.luminescence[0];
+        const_c[4] = self.constitutive.luminescence[1];
+        const_c[5] = self.constitutive.luminescence[2];
+
+        let mut cde_c = [0.0f32; 16];
+        cde_c[0] = self.cde_signature.amplitude as f32;
+        cde_c[1] = self.cde_signature.heading_angle() as f32;
+        cde_c[2] = self.cde_signature.idempotent.state as f32;
+        cde_c[3] = self.cde_signature.density() as f32;
+        cde_c[4] = self.cde_signature.signature[0].s as f32;
+        cde_c[5] = self.cde_signature.signature[1].s as f32;
+        cde_c[6] = self.cde_signature.signature[2].s as f32;
+
+        let mut aspect_monads = [Mv301::ZERO; 8];
+        for (i, aspect) in self.turnaround_views.iter().take(8).enumerate() {
+            let mut c = [0.0f32; 16];
+            c[0] = aspect.reference_rotor[0];
+            c[1] = aspect.reference_rotor[1];
+            if aspect.idempotent.m.len() >= 4 {
+                c[2] = aspect.idempotent.m[0] as f32;
+                c[3] = aspect.idempotent.m[1] as f32;
+                c[4] = aspect.idempotent.m[2] as f32;
+                c[5] = aspect.idempotent.m[3] as f32;
+            }
+            c[6] = aspect.view_regime as u32 as f32;
+            aspect_monads[i] = Mv301 { c };
+        }
+
+        let mut part_monads = [Mv301::ZERO; 8];
+        for (i, part) in self.parts.iter().take(8).enumerate() {
+            let mut c = [0.0f32; 16];
+            c[0] = part.anchor_local[0];
+            c[1] = part.anchor_local[1];
+            c[2] = part.flow_compliance;
+            c[3] = part.spring_stiffness;
+            c[4] = part.damping;
+            c[5] = part.rest_angle;
+            c[6] = part.parent_part_id.map_or(-1.0, |p| p as f32);
+            part_monads[i] = Mv301 { c };
+        }
+
+        GpuModelSheetMonad {
+            line_of_action: self.line_of_action,
+            constitutive_monad: Mv301 { c: const_c },
+            cde_monad: Mv301 { c: cde_c },
+            aspect_monads,
+            part_monads,
+        }
+    }
+
+    /// Read GPU monad as raw byte slice.
+    pub fn as_gpu_bytes<'a>(monad: &'a GpuModelSheetMonad) -> &'a [u8] {
+        bytemuck::bytes_of(monad)
+    }
 }
 
 /// Silhouette IoU a holon model must reach to be accepted (the R2.3 reconstruction gate).
