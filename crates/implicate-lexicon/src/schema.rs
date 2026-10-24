@@ -83,10 +83,27 @@ impl Default for ConceptLexicon {
             ("glow_radiate", KinematicAction, &["glow", "glows", "radiate", "radiates", "shine", "shines", "illuminate", "illuminates", "sparkle"], 3.5),
             ("collide_strike", KinematicAction, &["stomp", "stomps", "crush", "crushes", "squash", "squashes", "collide", "collides", "strike", "strikes"], 3.5),
             // Baseline entities
-            ("entity_rodent", PhysicalEntity, &["mouse", "brisby", "rodent", "shrew", "rat"], 3.0),
-            ("entity_avian", PhysicalEntity, &["crow", "jeremy", "bird", "owl", "winged", "avian"], 3.0),
-            ("entity_vessel", PhysicalEntity, &["jet", "ship", "raptor", "aircraft", "fighter", "vessel", "tractor", "plow"], 3.0),
+            ("entity_rodent", PhysicalEntity, &["mouse", "small_mammal", "rodent", "shrew", "rat"], 3.0),
+            ("entity_avian", PhysicalEntity, &["crow", "raptor_bird", "bird", "owl", "winged", "avian"], 3.0),
+            ("entity_vessel", PhysicalEntity, &["jet", "ship", "aircraft", "fighter", "vessel", "tractor", "plow", "carrier"], 3.0),
             ("entity_hud_interface", PhysicalEntity, &["hud", "interface", "scoreboard", "meter", "gauge", "counter", "status", "overlay", "cockpit", "radar", "panel"], 3.0),
+            // Chromatic appearance
+            ("color_chroma_red", PhysicalEntity, &["red", "crimson", "scarlet", "ruby", "vermilion"], 3.0),
+            ("color_chroma_yellow", PhysicalEntity, &["yellow", "lemon", "blonde"], 3.0),
+            ("color_chroma_gold", PhysicalEntity, &["gold", "golden", "amber"], 3.0),
+            ("color_chroma_blue_cyan", PhysicalEntity, &["blue", "cyan", "azure", "sapphire", "teal"], 3.0),
+            ("color_chroma_green", PhysicalEntity, &["green", "emerald", "lime", "olive"], 3.0),
+            ("color_chroma_brown", PhysicalEntity, &["brown", "tan", "chestnut", "earth"], 3.0),
+            ("color_chroma_orange", PhysicalEntity, &["orange", "copper", "rust", "bronze"], 3.0),
+            ("color_chroma_dark_black", PhysicalEntity, &["black", "dark", "shadowy", "charcoal", "obsidian"], 3.0),
+            ("color_chroma_bright_white", PhysicalEntity, &["white", "bright", "silver", "pale", "light"], 3.0),
+            // Morphology & structural anatomy
+            ("morphology_rigid_single", PhysicalEntity, &["rigid", "single", "orb", "ball", "sphere", "disc", "block", "p1"], 3.0),
+            ("morphology_articulated_limbs", PhysicalEntity, &["articulated", "limbs", "quadruped", "biped", "humanoid", "walker", "creature", "p4"], 3.0),
+            ("morphology_winged_aerodynamic", PhysicalEntity, &["winged", "avian", "bird", "wings", "flight", "soaring", "vessel", "aircraft", "p6", "p8"], 3.0),
+            // Constitutive physical categories
+            ("constitutive_field_soliton", PhysicalEntity, &["soliton", "plasma", "exciton", "luminescence", "beam", "laser", "energy", "radiance"], 3.2),
+            ("constitutive_terrain_boundary", PhysicalEntity, &["terrain", "fixture", "wall", "ground", "obstacle", "barrier", "platform"], 3.2),
             // Affective emotions
             ("emotion_fear_dread", AffectiveEmotion, &["fear", "terrified", "dread", "panic", "anxious", "frightened", "tremble", "trembling", "cower", "cowering"], 3.2),
             ("emotion_courage_resolve", AffectiveEmotion, &["courage", "brave", "resolute", "defiant", "determined", "steadfast", "undaunted", "bold"], 3.2),
@@ -96,12 +113,12 @@ impl Default for ConceptLexicon {
             ("emotion_awe_numinous", AffectiveEmotion, &["awe", "reverence", "mystical", "numinous", "sacred", "trance", "solemn", "enchanted"], 3.2),
             // Jungian archetypes
             ("archetype_self_talisman", JungianArchetype, &["self", "wholeness", "amulet", "talisman", "mandala", "stone", "medallion", "nexus"], 3.4),
-            ("archetype_shadow_beast", JungianArchetype, &["shadow", "predator", "dragon", "cat", "monster", "beast", "stalker", "jenner", "villain", "fiend"], 3.4),
-            ("archetype_hero_protector", JungianArchetype, &["hero", "heroine", "seeker", "protector", "rescuer", "champion", "savior", "martyr", "mario", "player"], 3.4),
-            ("archetype_sage_hierophant", JungianArchetype, &["sage", "elder", "nicodemus", "oracle", "wizard", "mystic", "mentor", "hierophant", "patriarch"], 3.4),
+            ("archetype_shadow_beast", JungianArchetype, &["shadow", "predator", "dragon", "cat", "monster", "beast", "stalker", "adversary", "villain", "fiend"], 3.4),
+            ("archetype_hero_protector", JungianArchetype, &["hero", "heroine", "seeker", "protector", "rescuer", "champion", "savior", "martyr", "protagonist", "player"], 3.4),
+            ("archetype_sage_hierophant", JungianArchetype, &["sage", "elder", "patriarch", "oracle", "wizard", "mystic", "mentor", "hierophant"], 3.4),
             ("archetype_trickster_fool", JungianArchetype, &["trickster", "jester", "fool", "clumsy", "tangled", "comic", "mischief", "buffoon"], 3.4),
             ("archetype_threshold_guardian", JungianArchetype, &["guardian", "sentinel", "gatekeeper", "watcher", "warden", "guard", "threshold"], 3.4),
-            ("archetype_anima_guide", JungianArchetype, &["anima", "animus", "guide", "muse", "justin", "companion", "ally", "psychopomp"], 3.4),
+            ("archetype_anima_guide", JungianArchetype, &["anima", "animus", "guide", "muse", "companion", "ally", "psychopomp"], 3.4),
             ("archetype_great_mother_sanctuary", JungianArchetype, &["mother", "maternal", "sanctuary", "hearth", "nest", "burrow", "shelter", "cradle", "nurture"], 3.4),
         ];
 

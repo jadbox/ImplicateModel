@@ -14,7 +14,7 @@ use implicate_field::{
     ArticulatedFieldHolon, CollisionImpulseEvent, FieldGpuContext, GpuWaveMatterLattice,
     LatticeParams, SubHolonLink,
 };
-use implicate_lexicon::{GatrHolonOutput, GatrHolonToken};
+use implicate_lexicon::{ConceptLexicon, GatrHolonOutput, GatrHolonToken};
 use implicate_lifter::{
     ArticulatedHolon, ParallaxLayer, SubHolonPose, mux_rgb_frames_and_wav_to_mp4,
 };
@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::container::ImplicateContainerManifest;
 use crate::payload::EnfoldedClipAssets;
-use crate::prompt::UnfoldSceneSpec;
+use crate::prompt::{PromptHolonSpec, UnfoldSceneSpec};
 
 /// Compiled relational verb binding active during scene unfoldment.
 #[derive(Clone, Debug)]
@@ -163,23 +163,54 @@ impl CausalUnfoldEngine {
         let mut hud_cam_offsets = Vec::with_capacity(scene.holons.len());
         let mut base_colors = Vec::with_capacity(scene.holons.len());
 
+        let w_f = scene.width as f32;
+        let h_f = scene.height as f32;
+        let min_dim = w_f.min(h_f);
+
         for (idx, h_spec) in scene.holons.iter().enumerate() {
-            let heading = if h_spec.initial_vel[0].abs() + h_spec.initial_vel[1].abs() > 1e-3 {
-                (h_spec.initial_vel[1] as f64).atan2(h_spec.initial_vel[0] as f64)
+            // Task R9.3: Resolution-invariant normalized projective coordinates [0, 1]^2
+            let is_norm_pos = h_spec.initial_pos[0] >= 0.0
+                && h_spec.initial_pos[0] <= 1.0
+                && h_spec.initial_pos[1] >= 0.0
+                && h_spec.initial_pos[1] <= 1.0;
+            let projected_pos = if is_norm_pos {
+                [h_spec.initial_pos[0] * w_f, h_spec.initial_pos[1] * h_f]
+            } else {
+                h_spec.initial_pos
+            };
+
+            let projected_vel = if is_norm_pos
+                && h_spec.initial_vel[0].abs() <= 1.0
+                && h_spec.initial_vel[1].abs() <= 1.0
+            {
+                [h_spec.initial_vel[0] * w_f, h_spec.initial_vel[1] * h_f]
+            } else {
+                h_spec.initial_vel
+            };
+
+            let projected_radius = if is_norm_pos && h_spec.radius <= 0.5 {
+                (h_spec.radius * min_dim).max(2.0)
+            } else {
+                h_spec.radius
+            };
+
+            let heading = if projected_vel[0].abs() + projected_vel[1].abs() > 1e-3 {
+                (projected_vel[1] as f64).atan2(projected_vel[0] as f64)
             } else {
                 0.0
             };
             let mut h = ArticulatedFieldHolon::new(
                 (idx + 1) as u32,
                 &h_spec.name,
-                h_spec.initial_pos,
-                h_spec.initial_vel,
+                projected_pos,
+                projected_vel,
                 heading,
-                h_spec.radius,
+                projected_radius,
                 h_spec.rho,
                 h_spec.bulk_modulus_k,
             );
             h.luminescence_emission = h_spec.luminescence_emission;
+            h.cohesion_c = h_spec.cohesion_c;
 
             // Attach compliant sub-holon parts when num_parts > 1 (Tier-2 / articulated characters)
             if h_spec.num_parts >= 4 {
@@ -225,8 +256,8 @@ impl CausalUnfoldEngine {
             holons.push(h);
             is_hud_holon.push(h_spec.is_camera_locked_hud);
             hud_cam_offsets.push([
-                h_spec.initial_pos[0] - cam0[0],
-                h_spec.initial_pos[1] - cam0[1],
+                projected_pos[0] - cam0[0],
+                projected_pos[1] - cam0[1],
             ]);
             base_colors.push(h_spec.base_color);
         }
@@ -275,7 +306,15 @@ impl CausalUnfoldEngine {
         let boundaries = scene
             .boundaries
             .iter()
-            .map(|b| OrientedLine2::solid_through(b.point, b.normal))
+            .map(|b| {
+                let is_norm = b.point[0] >= 0.0 && b.point[0] <= 1.0 && b.point[1] >= 0.0 && b.point[1] <= 1.0;
+                let pt = if is_norm {
+                    [b.point[0] * (scene.width as f64), b.point[1] * (scene.height as f64)]
+                } else {
+                    b.point
+                };
+                OrientedLine2::solid_through(pt, b.normal)
+            })
             .collect();
 
         let refiner = if scene.enable_cliffordnet_refiner {
@@ -322,36 +361,37 @@ impl CausalUnfoldEngine {
         if clips.is_empty() {
             return self;
         }
-        let s_text = format!(
+        // Task R9.4: Milieu retrieval via Spin(16) semantic geodesic distance
+        let scene_desc = format!(
             "{} {} {}",
             self.scene.scene_id,
             self.scene.prompt_text,
             self.scene
                 .holons
                 .iter()
-                .map(|h| h.name.as_str())
+                .map(|h| format!("{} {}", h.name, h.semantic_clause))
                 .collect::<Vec<_>>()
                 .join(" ")
-        )
-        .to_ascii_lowercase();
+        );
+        let scene_spinors = ConceptLexicon::default().embed_clauses(&[&scene_desc]);
+        let scene_spinor = scene_spinors.first().copied().unwrap_or_default();
 
-        let best = clips.iter().max_by_key(|c| {
-            let cid = c.clip_id.to_ascii_lowercase();
-            let mut score = 0i32;
-            if s_text.contains(&cid) {
-                score += 100;
-            }
-            for kw in ["pacman", "smb", "mario", "raptor", "nimh", "brisby"] {
-                if s_text.contains(kw) && (cid.contains(kw) || (kw == "mario" && cid.contains("smb")) || (kw == "brisby" && cid.contains("nimh"))) {
-                    score += 80;
-                }
-            }
-            if c.atlas.width as u32 == self.scene.width
-                && c.atlas.height as u32 == self.scene.height
-            {
-                score += 40;
-            }
-            score
+        let best = clips.iter().max_by(|a, b| {
+            let desc_a = format!("{}_milieu {} layers={}", a.clip_id, a.source_video, a.atlas.layers.len());
+            let desc_b = format!("{}_milieu {} layers={}", b.clip_id, b.source_video, b.atlas.layers.len());
+            let sp_a = ConceptLexicon::default().embed_clauses(&[&desc_a]);
+            let sp_b = ConceptLexicon::default().embed_clauses(&[&desc_b]);
+
+            let sim_a = scene_spinor.coherence(sp_a.first().unwrap_or(&scene_spinor));
+            let sim_b = scene_spinor.coherence(sp_b.first().unwrap_or(&scene_spinor));
+
+            let ar_scene = (self.scene.width as f64) / (self.scene.height.max(1) as f64);
+            let ar_a = (a.atlas.width as f64) / (a.atlas.height.max(1) as f64);
+            let ar_b = (b.atlas.width as f64) / (b.atlas.height.max(1) as f64);
+            let score_a = sim_a - 0.25 * (ar_a - ar_scene).abs();
+            let score_b = sim_b - 0.25 * (ar_b - ar_scene).abs();
+
+            score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
         });
         if let Some(chosen) = best {
             self.enfolded_clip = Some(chosen.clone());
@@ -587,15 +627,12 @@ impl CausalUnfoldEngine {
                 }
             }
 
-            // 4b. Enforce hard-core contact separation ||x_i - x_j|| >= (r_i + r_j) * 0.65 between physical holons
+            // 4b. Enforce hard-core contact separation ||x_i - x_j|| >= (r_i + r_j) * 0.65 between physical solid holons
             for i in 0..k_holons {
                 if self.is_hud_holon[i] {
                     continue;
                 }
-                let is_energy_i = (self.holons[i].luminescence_emission[0]
-                    + self.holons[i].luminescence_emission[1]
-                    + self.holons[i].luminescence_emission[2] > 0.5)
-                    && !self.scene.holons[i].name.to_ascii_lowercase().contains("hero");
+                let is_energy_i = self.scene.holons[i].cohesion_c < 0.5;
                 if is_energy_i {
                     continue;
                 }
@@ -603,10 +640,7 @@ impl CausalUnfoldEngine {
                     if self.is_hud_holon[j] {
                         continue;
                     }
-                    let is_energy_j = (self.holons[j].luminescence_emission[0]
-                        + self.holons[j].luminescence_emission[1]
-                        + self.holons[j].luminescence_emission[2] > 0.5)
-                        && !self.scene.holons[j].name.to_ascii_lowercase().contains("hero");
+                    let is_energy_j = self.scene.holons[j].cohesion_c < 0.5;
                     if is_energy_j {
                         continue;
                     }
@@ -832,24 +866,23 @@ impl CausalUnfoldEngine {
                 continue;
             }
 
-            // If the holon represents a static level fixture or terrain block, its visual presence
-            // is already part of the enfolded multiplane background atlas.
-            let lower_name = self.scene.holons[i].name.to_ascii_lowercase();
-            let lower_clause = self.scene.holons[i].semantic_clause.to_ascii_lowercase();
-            if lower_name.contains("block") || lower_clause.contains("block") {
+            // Constitutive routing: static terrain fixtures (high bulk modulus, high density, stationary)
+            // are already baked into the multiplane background atlas; skip splatting them as dynamic actors.
+            let h_spec = &self.scene.holons[i];
+            if h_spec.bulk_modulus_k >= 3.5
+                && h_spec.rho >= 1.8
+                && (h_spec.initial_vel[0].hypot(h_spec.initial_vel[1]) < 1e-3)
+            {
                 continue;
             }
 
             // If enfolded ArticulatedHolon wavepackets are available, match this holon semantically
-            // to an enfolded actor track (primary hero, adversary, trickster) rather than by raw modulo.
+            // via Spin(16) spinor inner-product dispatch.
             if let Some(clip) = &self.enfolded_clip
                 && !clip.holons.is_empty()
             {
                 let matched_art = Self::match_holon_to_wavepacket(
-                    &self.scene.holons[i].name,
-                    &self.scene.holons[i].semantic_clause,
-                    self.scene.holons[i].luminescence_emission,
-                    col,
+                    h_spec,
                     i,
                     &clip.holons,
                 );

@@ -23,6 +23,13 @@ pub struct PromptHolonSpec {
     pub num_parts: usize,
     /// True if this holon is a camera-locked HUD interface holon ($M_{\text{hud}}(t) = M_{\text{cam}}(t)$).
     pub is_camera_locked_hud: bool,
+    /// Griffith surface cohesion $C \in [0, 1]$ ($C \ge 0.5$ solid matter, $C < 0.5$ field soliton).
+    #[serde(default = "default_cohesion")]
+    pub cohesion_c: f32,
+}
+
+fn default_cohesion() -> f32 {
+    1.0
 }
 
 /// Specification of a relational verb binding `(subject, verb, target)` over normalized or frame time.
@@ -86,6 +93,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [2.5, 2.0, 1.0],
                         num_parts: 1,
                         is_camera_locked_hud: false,
+                        cohesion_c: 0.0,
                     },
                     PromptHolonSpec {
                         name: "Pacman".to_string(),
@@ -99,6 +107,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [0.6, 0.5, 0.0],
                         num_parts: 1,
                         is_camera_locked_hud: false,
+                        cohesion_c: 1.0,
                     },
                     PromptHolonSpec {
                         name: "Blinky_Ghost".to_string(),
@@ -112,6 +121,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [1.2, 0.1, 0.1],
                         num_parts: 1,
                         is_camera_locked_hud: false,
+                        cohesion_c: 1.0,
                     },
                     PromptHolonSpec {
                         name: "Inky_Ghost".to_string(),
@@ -125,6 +135,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [0.1, 0.9, 1.2],
                         num_parts: 1,
                         is_camera_locked_hud: false,
+                        cohesion_c: 1.0,
                     },
                     PromptHolonSpec {
                         name: "HUD_Score_Bar".to_string(),
@@ -138,6 +149,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [0.0, 0.0, 0.0],
                         num_parts: 1,
                         is_camera_locked_hud: true,
+                        cohesion_c: 0.0,
                     },
                 ],
                 verb_bindings: vec![
@@ -200,6 +212,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [0.0, 0.0, 0.0],
                         num_parts: 1,
                         is_camera_locked_hud: false,
+                        cohesion_c: 1.0,
                     },
                     PromptHolonSpec {
                         name: "Mario".to_string(),
@@ -213,6 +226,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [0.0, 0.0, 0.0],
                         num_parts: 4,
                         is_camera_locked_hud: false,
+                        cohesion_c: 1.0,
                     },
                     PromptHolonSpec {
                         name: "Goomba_Sentinel".to_string(),
@@ -226,6 +240,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [0.0, 0.0, 0.0],
                         num_parts: 1,
                         is_camera_locked_hud: false,
+                        cohesion_c: 1.0,
                     },
                     PromptHolonSpec {
                         name: "SMB3_HUD_Panel".to_string(),
@@ -239,6 +254,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [0.0, 0.0, 0.0],
                         num_parts: 1,
                         is_camera_locked_hud: true,
+                        cohesion_c: 0.0,
                     },
                 ],
                 verb_bindings: vec![
@@ -296,6 +312,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [0.8, 0.4, 0.2],
                         num_parts: 1,
                         is_camera_locked_hud: false,
+                        cohesion_c: 1.0,
                     },
                     PromptHolonSpec {
                         name: "Raptor_Jet".to_string(),
@@ -309,6 +326,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [0.6, 1.4, 2.2],
                         num_parts: 1,
                         is_camera_locked_hud: false,
+                        cohesion_c: 1.0,
                     },
                     PromptHolonSpec {
                         name: "Plasma_Drone".to_string(),
@@ -322,6 +340,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [1.2, 3.4, 4.8],
                         num_parts: 1,
                         is_camera_locked_hud: false,
+                        cohesion_c: 0.0,
                     },
                 ],
                 verb_bindings: vec![
@@ -379,6 +398,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [4.5, 1.2, 0.6],
                         num_parts: 1,
                         is_camera_locked_hud: false,
+                        cohesion_c: 0.0,
                     },
                     PromptHolonSpec {
                         name: "Mrs_Brisby".to_string(),
@@ -392,6 +412,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [0.6, 0.2, 0.2],
                         num_parts: 4,
                         is_camera_locked_hud: false,
+                        cohesion_c: 1.0,
                     },
                     PromptHolonSpec {
                         name: "Jeremy_Crow".to_string(),
@@ -405,6 +426,7 @@ impl UnfoldSceneSpec {
                         luminescence_emission: [0.2, 0.3, 0.5],
                         num_parts: 6,
                         is_camera_locked_hud: false,
+                        cohesion_c: 1.0,
                     },
                 ],
                 verb_bindings: vec![
@@ -467,37 +489,30 @@ impl UnfoldSceneSpec {
         }
 
         let lower_all = trimmed.to_ascii_lowercase();
-        let (width, height) = if lower_all.contains("pacman") {
-            (240u32, 308u32)
-        } else if lower_all.contains("smb") || lower_all.contains("mario") {
-            (256u32, 240u32)
-        } else if lower_all.contains("raptor") {
-            (320u32, 240u32)
-        } else {
-            (320u32, 180u32)
-        };
+        let (width, height) = parse_prompt_resolution(&lower_all);
         let num_frames = 60usize;
         let enable_cliffordnet_refiner = lower_all.contains("cliffordnet")
             || lower_all.contains("@rolpa")
             || lower_all.contains("refiner")
             || lower_all.contains("glowing")
-            || lower_all.contains("amulet");
+            || lower_all.contains("sanctuary");
 
-        let camera_scroll_vel = if lower_all.contains("scroll") || lower_all.contains("mario") {
+        let camera_scroll_vel = if lower_all.contains("scroll") || (lower_all.contains("patrol") && lower_all.contains("vault")) {
             [16.0f32, 0.0]
-        } else if lower_all.contains("raptor") {
-            [0.0f32, 20.0]
-        } else if lower_all.contains("nimh") || lower_all.contains("brisby") {
+        } else if lower_all.contains("intercept") || lower_all.contains("carrier") {
+            [0.0f32, 24.0]
+        } else if lower_all.contains("sanctuary") || lower_all.contains("drift") {
             [6.0f32, 2.0]
         } else {
             [0.0f32, 0.0]
         };
 
-        let (background_top_rgb, background_bottom_rgb) = if lower_all.contains("mario")
-            || lower_all.contains("sky")
+        let (background_top_rgb, background_bottom_rgb) = if lower_all.contains("sky")
+            || lower_all.contains("day")
+            || lower_all.contains("vault")
         {
             ([110, 180, 255], [180, 225, 255])
-        } else if lower_all.contains("pacman") {
+        } else if lower_all.contains("dark") || lower_all.contains("maze") || lower_all.contains("talisman") {
             ([6, 8, 28], [12, 16, 48])
         } else {
             ([16, 22, 46], [38, 28, 52])
@@ -538,9 +553,23 @@ impl UnfoldSceneSpec {
             let is_glow = attr_lower.contains("glow")
                 || attr_lower.contains("awe")
                 || attr_lower.contains("talisman")
-                || name_lower.contains("amulet")
-                || name_lower.contains("pellet")
-                || name_lower.contains("plasma");
+                || attr_lower.contains("soliton")
+                || attr_lower.contains("energy")
+                || attr_lower.contains("orb")
+                || name_lower.contains("orb");
+            let is_terrain = attr_lower.contains("fixture")
+                || attr_lower.contains("block")
+                || attr_lower.contains("terrain")
+                || name_lower.contains("block")
+                || name_lower.contains("wall");
+            let cohesion_c = if is_glow { 0.0 } else { 1.0 };
+            let (rho, bulk_modulus_k) = if is_terrain {
+                (2.0, 4.5)
+            } else if is_target {
+                (2.0, 4.2)
+            } else {
+                (1.1, 1.6)
+            };
 
             let (pos, vel) = if is_target {
                 ([center_x, center_y], [0.0f32, 0.0])
@@ -578,12 +607,13 @@ impl UnfoldSceneSpec {
                 initial_pos: pos,
                 initial_vel: vel,
                 radius: if is_target { 6.0 } else { 6.5 },
-                rho: if is_target { 2.0 } else { 1.1 },
-                bulk_modulus_k: if is_target { 4.2 } else { 1.6 },
+                rho,
+                bulk_modulus_k,
                 base_color,
                 luminescence_emission,
                 num_parts,
                 is_camera_locked_hud: false,
+                cohesion_c,
             });
             name
         };
@@ -682,6 +712,7 @@ impl UnfoldSceneSpec {
                 luminescence_emission: [0.0, 0.0, 0.0],
                 num_parts: 1,
                 is_camera_locked_hud: true,
+                cohesion_c: 0.0,
             });
         }
 
@@ -766,17 +797,54 @@ fn sanitize_ident(raw: &str) -> String {
     }
 }
 
+fn parse_prompt_resolution(text: &str) -> (u32, u32) {
+    for part in text.split(|c: char| c == '_' || c.is_whitespace() || c == ':') {
+        if let Some((w_str, h_str)) = part.split_once('x') {
+            if let (Ok(w), Ok(h)) = (w_str.parse::<u32>(), h_str.parse::<u32>()) {
+                if w >= 32 && w <= 4096 && h >= 32 && h <= 4096 {
+                    return (w, h);
+                }
+            }
+        }
+    }
+    if text.contains("vault") {
+        (256, 240)
+    } else if text.contains("sanctuary") {
+        (320, 180)
+    } else if text.contains("intercept") {
+        (320, 240)
+    } else if text.contains("talisman") || text.contains("orbit") {
+        (240, 308)
+    } else {
+        (320, 240)
+    }
+}
+
 fn parse_part_count(attr_lower: &str, name_lower: &str) -> usize {
-    for tok in attr_lower.split_whitespace() {
+    for tok in attr_lower
+        .split_whitespace()
+        .chain(name_lower.split(|c: char| c == '_' || c.is_whitespace()))
+    {
         if let Some(num_str) = tok.strip_prefix("p=")
             && let Ok(p) = num_str.parse::<usize>()
         {
             return p.clamp(1, 8);
         }
     }
-    if name_lower.contains("crow") || name_lower.contains("jeremy") || name_lower.contains("bird") {
+    let combined = format!("{attr_lower} {name_lower}");
+    if combined.contains("winged")
+        || combined.contains("avian")
+        || combined.contains("bird")
+        || combined.contains("carrier")
+    {
         6
-    } else if name_lower.contains("brisby") || name_lower.contains("mario") {
+    } else if combined.contains("articulated")
+        || combined.contains("quadruped")
+        || combined.contains("biped")
+        || combined.contains("hero")
+        || combined.contains("humanoid")
+        || combined.contains("jumper")
+    {
         4
     } else {
         1
@@ -784,26 +852,52 @@ fn parse_part_count(attr_lower: &str, name_lower: &str) -> usize {
 }
 
 fn infer_actor_color(name_lower: &str, attr_lower: &str, is_target: bool, idx: usize) -> [u8; 3] {
-    if name_lower.contains("pacman") || attr_lower.contains("yellow") {
+    let combined = format!("{attr_lower} {name_lower}");
+    if combined.contains("yellow") || combined.contains("lemon") || combined.contains("blonde") {
         [255, 235, 0]
-    } else if name_lower.contains("mario")
-        || name_lower.contains("brisby")
-        || name_lower.contains("blinky")
-        || name_lower.contains("amulet")
-        || attr_lower.contains("red")
+    } else if combined.contains("red")
+        || combined.contains("crimson")
+        || combined.contains("scarlet")
+        || combined.contains("ruby")
     {
         [235, 55, 55]
-    } else if name_lower.contains("inky")
-        || name_lower.contains("plasma")
-        || attr_lower.contains("cyan")
-        || attr_lower.contains("blue")
+    } else if combined.contains("cyan")
+        || combined.contains("azure")
+        || combined.contains("teal")
+        || (combined.contains("blue") && !combined.contains("dark"))
     {
         [70, 215, 255]
-    } else if name_lower.contains("koopa") || attr_lower.contains("gold") || is_target {
+    } else if combined.contains("gold")
+        || combined.contains("golden")
+        || combined.contains("amber")
+        || is_target
+    {
         [245, 190, 50]
-    } else if idx % 2 == 0 {
-        [210, 220, 240]
+    } else if combined.contains("brown")
+        || combined.contains("tan")
+        || combined.contains("orange")
+        || combined.contains("copper")
+        || combined.contains("earth")
+    {
+        [165, 85, 35]
+    } else if combined.contains("green")
+        || combined.contains("emerald")
+        || combined.contains("lime")
+    {
+        [60, 210, 75]
+    } else if combined.contains("dark") || combined.contains("black") || combined.contains("shadow") {
+        [45, 45, 60]
+    } else if combined.contains("white") || combined.contains("bright") || combined.contains("silver") {
+        [240, 240, 250]
     } else {
-        [95, 175, 235]
+        const PALETTE: &[[u8; 3]] = &[
+            [235, 55, 55],
+            [70, 215, 255],
+            [255, 235, 0],
+            [165, 85, 35],
+            [210, 220, 240],
+            [95, 175, 235],
+        ];
+        PALETTE[idx % PALETTE.len()]
     }
 }

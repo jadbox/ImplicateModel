@@ -108,6 +108,8 @@ pub struct ArticulatedFieldHolon {
     pub yield_pressure: f32,
     /// Intrinsic chromatic luminescence emission `(L_r, L_g, L_b)` (e.g., Red Amulet or plasma bolt).
     pub luminescence_emission: [f32; 3],
+    /// Griffith surface cohesion $C \in [0, 1]$ ($C \ge 0.5$ solid matter, $C < 0.5$ field soliton).
+    pub cohesion_c: f32,
     /// Articulated child parts ($P \ge 1$).
     pub parts: Vec<SubHolonLink>,
     /// Most recent GPU reduction record.
@@ -136,6 +138,7 @@ impl ArticulatedFieldHolon {
             bulk_modulus_k: bulk_modulus_k.max(0.05),
             yield_pressure: 1.2,
             luminescence_emission: [0.0; 3],
+            cohesion_c: 1.0,
             parts: Vec::new(),
             last_reduction: GpuHolonReduction::default(),
         }
