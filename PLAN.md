@@ -251,6 +251,12 @@ Interior background pockets enclosed by appendage loops (e.g. arm holding rope) 
 $$\Delta(C_k) = \frac{1}{|C_k|} \sum_{p \in C_k} \left[ d(p, \mathcal{H}) - d(p, \mathcal{V}) \right]$$
 punches out ambient sky pockets ($\Delta > 0$) while preserving solid body mass ($\Delta \le 0$).
 
+### 4. Semantic Entity & Action Grounding via Burned-In Timecode (BITC) Proxy
+When compiling arbitrary video corpora into the Implicate Lexicon, `Qwen3-VL-8B-Instruct` extracts character identities, props, and process verbs. To eliminate temporal attention drift and prevent timestamp hallucination:
+- **Decoupled Semantic Proxy:** Pristine 1080p frames pass untouched to `implicate-lifter`. An in-memory pass burns high-contrast monospace timecodes `[F:000142 | 00:04.733]` into the top-left corner of a proxy video feed passed to `llama-cli`.
+- **2D OCR Time Tracking:** Qwen reads the burned glyphs via high-accuracy 2D OCR rather than guessing time from fuzzy temporal tokens, emitting strict JSON start and end frame indices.
+- **The Neuro-Physical Snap:** `implicate-lexicon`'s `cft_snap.rs` snaps Qwen's coarse frame window to exact physical Bohmian momentum discontinuities $\|\Delta \mathbf{P}_B\| > \tau_{\text{imp}}$ and platform contacts $P \wedge \Pi = 0$.
+
 ---
 
 ## VI. The Concrete Execution Roadmap: Track S
