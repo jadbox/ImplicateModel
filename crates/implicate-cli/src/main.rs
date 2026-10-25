@@ -250,7 +250,7 @@ fn cmd_unfold(args: &[String]) -> Result<(), String> {
         )
     };
 
-    let selected: Vec<UnfoldSceneSpec> = if let Some(prompt_str) = get_arg(args, "--prompt") {
+    let mut selected: Vec<UnfoldSceneSpec> = if let Some(prompt_str) = get_arg(args, "--prompt") {
         vec![UnfoldSceneSpec::parse_prompt(&prompt_str)?]
     } else if let Some(dzog_path) = get_arg(args, "--dzog") {
         let script = fs::read_to_string(&dzog_path)
@@ -270,6 +270,29 @@ fn cmd_unfold(args: &[String]) -> Result<(), String> {
 
     if selected.is_empty() {
         return Err(format!("No scene matched --scene '{scene_filter}'"));
+    }
+
+    if let Some(nf) = get_arg(args, "--frames").and_then(|s| s.parse::<usize>().ok()) {
+        for s in &mut selected {
+            s.num_frames = nf;
+        }
+    }
+    if let Some(name) = get_arg(args, "--name") {
+        for s in &mut selected {
+            s.scene_id = name.clone();
+        }
+    }
+    if let Some(cv_str) = get_arg(args, "--cam-vel") {
+        let parts: Vec<f32> = cv_str
+            .trim_matches(|c| c == '(' || c == ')')
+            .split(',')
+            .filter_map(|p| p.trim().parse::<f32>().ok())
+            .collect();
+        if parts.len() == 2 {
+            for s in &mut selected {
+                s.camera_scroll_vel = [parts[0], parts[1]];
+            }
+        }
     }
 
     let debug_mode = args.iter().any(|a| a == "--debug");

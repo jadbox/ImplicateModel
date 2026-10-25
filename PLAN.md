@@ -447,3 +447,33 @@ When `recon_bg` contains the pure unbaked background plenum, newly exposed backg
 #### D. Visual Presentation Standard
 Enforce integer scale $\ge 2\times$ ($236 \times 360$ canvas) for feature animation benchmarks, guaranteeing crisp visual rendering of cels, eyes, snouts, and ink blades.
 
+---
+
+## X. Track R11: Multi-Actor Model Sheet & Clean Sprite Sheet Export Engine (PLANNED)
+
+### 1. Architectural Motivation
+Before deploying open-ended text-to-video synthesis in Track R12, the underlying algebraic representation (the Clifford Idempotent Soliton) must be visually transparent and exportable. 
+Users and animators must be able to inspect, extract, and reuse every entity discovered within an enfolded video recording as clean, production-ready sprite sheets and model boards.
+
+### 2. Core Functional Requirements
+1. **Universal Actor Coverage:** Automatically extract every character and prop identified by `extract_character_observation_tracks` in an enfolded clip (e.g. Mario, Goombas, Koopas in SMB3; Blinky, Pinky, Inky, Clyde in Pac-Man; Player Jet and Bosses in Raptor; Mrs. Brisby and Jeremy in NIMH).
+2. **True Alpha Transparency ($RGBA$):** Every sprite texel must possess pure physical alpha:
+   - Exterior background completely keyed to $A = 0$ (no black rectangles or background halos).
+   - Semi-transparent motion blur, ink blade margins, and trailing cloaks preserved with smooth physical coverage $A \in (0, 255)$.
+3. **Canonical Posture & Turnaround Grid Alignment:**
+   - Arrange observations along canonical Spin(2) heading rotors and gait phase bins $\phi \in [0, 2\pi)$.
+   - Pack into unified grid sheets (`<actor_name>_sheet.png`) with matching sprite metadata (`<actor_name>_sheet.json`) detailing frame bounding boxes, origin pivots, and PGA Line of Action axes.
+4. **Dual-Layer Contour Separation:** Option to export dual-channel sheets separating interior cel fills ($u \cdot \nabla^2 u$) from exterior ink contour blades ($u \wedge \nabla^2 u$).
+5. **CLI Integration:** Provide direct export commands via `implicate inspect --input <clip.implicate> --sheet <out_dir>` and `implicate export-sheets --video <video.mp4> --out-dir <out_dir>`.
+
+---
+
+## XI. Track R12: Open-Ended Text/DzogLang-to-Video Generative Unfoldment (FUTURE)
+
+### 1. Long-Horizon Multi-Actor Milieu
+Scale single-pass causal unfoldment from short clips to continuous, multi-minute, open-ended videos generated entirely from text prompts and `DzogLang` scripts:
+1. **Dynamic World State & Milieu Synthesis:** Synthesize new parallax backgrounds and terrain dynamically by querying enfolded multi-plane atlases and concept lexicons.
+2. **Complex Choreography & Multi-Actor Relational Verbs:** Support simultaneous multi-holon interactions (e.g., Mario executing `jump_over` while multiple Goombas execute `patrol` and Koopas `pursue`).
+3. **Real-Time $120+\text{ FPS}$ GPU Pipeline:** Single-pass WGSL compute pipeline delivering full-scene generative video at $120+\text{ FPS}$ on RTX 4090 with synchronized $48\text{ kHz}$ stereophonic modal audio.
+
+

@@ -309,3 +309,32 @@
     3. Raptor Jet: [`raptor_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_generative_unfold.mp4) | [`raptor_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_contact_sheet.png)
     4. NIMH Mrs. Brisby: [`nimh_brisby_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_generative_unfold.mp4) | [`nimh_brisby_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_contact_sheet.png)
   - Perform visual inspection of exported frames: verify 0 trapped sunset sky, 0 perimeter specks, crisp $2\times$ rendering, and complete body/limbs.
+
+---
+
+## Track R11 — Multi-Actor Model Sheet & Clean Sprite Sheet Export Engine (PLANNED)
+
+> **Objective:** Export clean, production-ready, alpha-transparent sprite sheets and canonical Don Bluth model boards for *all* characters and entities detected in any enfolded video recording before building high-level text-to-video synthesis.
+
+- [ ] **R11a — Alpha Matting & Pure Background Elimination (`implicate-lifter`)**
+  - Extract pristine RGBA sprite cutouts with physical alpha channel ($A = 0$ exterior background, $A = 255$ solid cel fills, anti-aliased edge ink blades) for every tracked character.
+- [ ] **R11b — Turnaround & Gait Cycle Sheet Packer (`implicate-lifter`, `implicate-unfold`)**
+  - Bin observations into canonical heading orientations ($\theta \in [0, 2\pi)$) and gait cycle phases ($\phi \in [0, 2\pi)$).
+  - Pack observations into clean power-of-two sprite sheets (`<clip>_<actor>_spritesheet.png`) with uniform grid layouts and JSON frame manifests (`<clip>_<actor>_spritesheet.json`).
+- [ ] **R11c — Dual-Layer Ink & Cel Fill Separation Export**
+  - Export dual-layer sheets isolating interior cel fills ($u \cdot \nabla^2 u$) from exterior ink contour blades ($u \wedge \nabla^2 u$) for technical animators.
+- [ ] **R11d — Unified CLI & Multi-Actor Corpus Export (`implicate-cli`)**
+  - Add `implicate export-sheets --input <clip.implicate> --out-dir <dir>` command exporting all detected actors (Mario, Goombas, Koopas; Brisby, Jeremy; Blinky, Inky; Raptor jet).
+- [ ] **R11e — Export All 4 Benchmark Sprite Sheets to `generative_output/sheets/`**
+  - Export and visually verify clean sprite sheets for all benchmark corpus sources into `./generative_output/sheets/`.
+
+---
+
+## Track R12 — Open-Ended Text/DzogLang-to-Video Generative Unfoldment (FUTURE)
+
+> **Objective:** Scale causal unfoldment to continuous, multi-minute, open-ended videos generated entirely from text prompts and `DzogLang` scripts.
+
+- [ ] **R12a — Dynamic Milieu & Background Synthesis from Conceptual Lexicons**
+- [ ] **R12b — Multi-Actor Choreography & Complex Relational Verb Composition**
+- [ ] **R12c — Real-Time 120+ FPS Text-to-Video Compute Shader Pipeline with Synchronized Audio**
+
