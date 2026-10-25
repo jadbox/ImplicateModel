@@ -287,7 +287,12 @@ Track S Milestone Sequence:
      │
      ▼
   [S5] The Generative Storybook Engine (`implicate remix` for Hand-Drawn Feature Animation)
+     │
+     ▼
+  [S6] 3D Projective Sector-Plane Lifter & Inverse-BSP World Compilation (e.g. Doom 320x240)
 ```
+
+> **2D/3D Architectural Univocity Invariant:** Every data structure, Lie motor, boundary plane, and holon model sheet introduced in Milestones S1–S5 MUST operate natively in 3D Projective Geometric Algebra ($\mathbb{G}_{3,0,1}$, 64-byte [`Mv301`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-math/src/g301.rs#L17-L19)). 2D sprite games and 2.5D multi-plane animation are treated strictly as planar sub-algebras ($e_3 = 0$ or $z = z_l$), ensuring zero architectural rework when ramping up to full 3D perspective worlds in Milestone S6.
 
 ### Milestone S1: Universal Spatiotemporal Plenum & Coherent Character Lifting
 - **Objectives:**
@@ -340,6 +345,15 @@ Track S Milestone Sequence:
   - Run: `cargo run -p implicate-cli -- remix --video ./tests/fixtures/nimh_shot14.implicate --prompt "Mrs. Brisby turns to face the stone archway, walks cautiously forward, and raises her glowing red amulet"`
   - Output Proof: [`generative_output/nimh_remix_stone_archway.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_remix_stone_archway.mp4) (1080p, 120 frames @ 24 fps with phase-locked 48 kHz stereo audio). The engine translates prompt verbs into spatial $\mathcal{Q}_{\text{Cl}}$ attractor beacons, rotates Brisby's Line of Action $L_{\text{spine}}$ to transition across turnaround idempotents $\epsilon_{\text{profile}} \to \epsilon_{\text{3/4}} \to \epsilon_{\text{back}}$, and synthesizes a completely new feature animation scene matching the original film's style and audio without diffusion hallucinations.
 
+### Milestone S6: 3D Projective Sector-Plane Lifter & Inverse-BSP World Compilation (e.g. *Doom*)
+- **Objectives:**
+  1. Extend Stage 1 camera odometry (`multiplane_atlas`) from 2D orthographic/parallax translation to full 3D projective Lie motors $M_{\text{cam}}(t) = \exp(-\frac{1}{2}(\theta e_{31} + \phi e_{23} + v_x e_{01} + v_y e_{02} + v_z e_{03})) \in \text{Spin}(3,0,1)$, handling radial perspective divergence ($\propto 1/Z$) and yaw/pitch homographies.
+  2. **Inverse-BSP Plane Lifting & Algebraic Corner Closure:** Fit oriented 3D wall planes $\Pi_w = n_x e_1 + n_z e_3 + d e_0$ and horizontal floor/ceiling planes $\Pi_h = \pm e_2 + h e_0 \in \bigwedge^1 \mathbb{G}_{3,0,1}$ from optical flow depth gradients, unwarping perspective wall trapezoids into canonical periodic CFT texture atlases. Close partially observed room corners analytically via the exterior wedge product ($L_{\text{corner}} = \Pi_1 \wedge \Pi_2$, $P_{\text{vertex}} = \Pi_1 \wedge \Pi_2 \wedge \Pi_{\text{floor}}$).
+  3. **3D Billboard & Polyhedral Actor Lifting:** Subtract the reconstructed 3D sector planes to isolate 3D moving entities (e.g. *Doom* monsters, projectiles, weapons) directly into the existing 8-way turnaround [`HolonModelSheet`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/PLAN.md#L169) and 3D PGA worldlines without changing a single struct in `implicate-math` or `implicate-unfold`.
+- **Showcase Example (Playable 3D Sector World Unfolded from *Doom* Gameplay Footage):**
+  - Run: `cargo run -p implicate-cli -- play --input ./tests/fixtures/doom_e1m1_320x240.implicate`
+  - Interactive Proof: Enfolds $320 \times 240$ *Doom* gameplay into a compact `.implicate` sector-plane manifold and 8-view actor model sheets. Launches a real-time $120\text{ FPS}$ 6-DOF viewport where the user navigates reconstructed 3D corridors with projective wall collision ($P \wedge \Pi_w = 0$), analytically closed corners, and turnaround enemy solitons.
+
 ---
 
 ## VII. Verification & Quality Matrix
@@ -350,3 +364,4 @@ Track S Milestone Sequence:
 | **NIMH** | `nimh_1982_1080p.mp4` | Novel gesture & cape turnaround | Interactive mouse guidance | $\text{IoU} \ge 0.820$, $\text{LPIPS} \le 0.050$, 0 yellow sky |
 | **Pac-Man** | `pacman_240x308.mp4` | Maze patrol prompt | Arrow key arcade navigation | 4 discrete turns, $\text{IoU} = 1.000$ |
 | **Raptor** | `raptor_320x240.mp4` | Dogfight banking prompt | Vertical shmup steering | 0 ocean halo, $\text{IoU} \ge 0.950$ |
+| **Doom (S6)** | `doom_320x240.mp4` *(Planned)* | 3D corridor patrol & combat | 6-DOF WASD + mouse turn ($\ge 120\text{ FPS}$) | $\Pi_1 \wedge \Pi_2$ corner closure, 8-view turnarounds |

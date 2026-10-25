@@ -215,3 +215,24 @@ flowchart TD
   - Bind slices to entity behaviors: e.g. `(Mario, Action::Jump) -> "jump.wav"`, `(Mario, Event::PlatformLand) -> "land.wav"`, `(Mario, Event::BlockHit) -> "coin_box.wav"`, `(Brisby, Event::StoneStep) -> "stone_step.wav"`.
   - Trigger sampled playback with sub-sample onset timing ($< 1.0\text{ ms}$) and binaural stereo panning.
   - *(Note: Word-level dialogue segmentation and speech synthesis are explicitly out of scope until a much later milestone).*
+
+---
+
+### Track S6 — 3D Projective Sector-Plane Lifter & Inverse-BSP World Compilation (e.g. *Doom*) (PLANNED)
+
+> **Objective:** Ramp the unified $\mathbb{G}_{3,0,1}$ architecture from 2D/2.5D planar slices ($e_3 = 0$) to full 3D perspective environments ($e_3 \neq 0$), reconstructing navigable 3D sector manifolds and 8-view actor turnarounds from 3D gameplay footage (e.g. $320 \times 240$ *Doom*).
+> **Design Mandate for S1–S5:** All new features across S1–S5 must assume general 2D or 3D environments in $\mathbb{G}_{3,0,1}$ ([`Mv301`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-math/src/g301.rs#L17-L19))—never hardcoding 2D-only coordinate assumptions—so that S1–S5 modules compose directly into Track S6.
+
+#### 🎯 Milestone S6 Showcase Example: Inverse-BSP *Doom* E1M1 Lifting & 6-DOF Playable Unfoldment
+- **Showcase Command:** `cargo run -p implicate-cli -- play --input ./tests/fixtures/doom_e1m1_320x240.implicate`
+- **Output Artifacts & Geometric Proof:**
+  - Enfolds $320 \times 240$ *Doom* gameplay footage into oriented 3D wall planes $\Pi_w = n_x e_1 + n_z e_3 + d e_0$ and floor/ceiling planes $\Pi_h = \pm e_2 + h e_0 \in \bigwedge^1 \mathbb{G}_{3,0,1}$.
+  - Partially observed corridor corners are analytically closed via the exterior wedge product ($L_{\text{corner}} = \Pi_1 \wedge \Pi_2$, $P_{\text{vertex}} = \Pi_1 \wedge \Pi_2 \wedge \Pi_{\text{floor}}$), extrapolating periodic CFT wall textures across unseen corners.
+  - Monsters and projectiles are lifted into the exact same [`HolonModelSheet`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/PLAN.md#L169) 8-view turnaround idempotents $\{\epsilon_v\}$ used in S1–S5, enabling 6-DOF playable navigation with intrinsic wall collision ($P \wedge \Pi_w = 0$).
+
+- [ ] **S6.1 — 6-DOF Projective Camera Motor Odometry (`implicate-lifter`)**
+  - Extend camera trajectory estimation from 2D translation $(t_x, t_y)$ to 3D PGA screw motors $M_{\text{cam}}(t) = \exp(-\frac{1}{2}(\theta e_{31} + \phi e_{23} + \mathbf{v}\cdot\mathbf{e}_{0i})) \in \text{Spin}(3,0,1)$ capturing radial perspective divergence ($\propto 1/Z$) and yaw/pitch homographies.
+- [ ] **S6.2 — Inverse-BSP Plane Fitting & Algebraic Corner Closure (`implicate-lifter`, `implicate-field`)**
+  - Fit Grade-1 planes $\Pi \in \bigwedge^1 \mathbb{G}_{3,0,1}$ to perspective depth/flow partitions, unwarp perspective trapezoids into canonical CFT texture atlases, and close partially observed corners via $\Pi_1 \wedge \Pi_2$.
+- [ ] **S6.3 — 3D Perspective Actor Lifting & 6-DOF Playable Unfoldment (`implicate-unfold`, `implicate-cli`)**
+  - Subtract perspective sector planes to lift 3D billboard/polyhedral actors into [`HolonModelSheet`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/PLAN.md#L169) turnarounds and execute 6-DOF WASD + mouse turn gameplay at $\ge 120\text{ FPS}$.
