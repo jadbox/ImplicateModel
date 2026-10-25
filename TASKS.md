@@ -221,4 +221,33 @@
     4. NIMH Nicodemus/Brisby: [`nimh_brisby_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_generative_unfold.mp4) | [`nimh_brisby_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_contact_sheet.png)
   - Visually verified: Mario's boots, overalls, cap, and limbs are 100% intact; Raptor metallic hull is razor-sharp with zero ocean halo; Blinky the ghost has sharp skirt frills and eye direction; NIMH Nicodemus/Brisby is an intact hand-drawn character with spectacles, ears, snout, cloak, and tail.
   - Verified 100% green test suite: **61/61 workspace tests pass** (`cargo test --workspace --tests` 100% ok).
-- **Track R10 Status:** Track R10 (The Clifford Idempotent Soliton & Don Bluth Model Sheet Engine) is **100% COMPLETE & VERIFIED**.
+- **Track R10.8 Status:** Completed.
+
+---
+
+## Track R10.9 — Authentic Mrs. Brisby Re-Anchoring ($t=480.0\text{s}$) & Single-Character Generative Video Presentation (ACTIVE NEXT)
+
+> **Dialogue & Synthesis: John Carmack & Prof. Basil Hiley**
+>
+> **John Carmack:**
+> *"Two critical presentation and identity bugs to fix before we move past Track R10:*
+> *1. **The 'Twin Sprite' Duplication Glitch:** `render_side_by_side_fixed` was dumping two sprite cutouts side by side onto an unlabeled charcoal box. Without a background or labels, it looked like a rendering bug that spawned two synchronized twin characters! Generative video outputs (`_generative_unfold.mp4`) should feature **the single generative character** centered, cleanly framed, and crisp (optionally integer-scaled for retro pixel art so Mario and Pac-Man aren't microscopic). If a comparison is exported, it must show the full authentic reference frame with background on the left and generative unfold on the right with clear labels.*
+> *2. **NIMH Character Identity:** Sampling at $t=356.0\text{s}$ extracted Mr. Ages (an old male mouse with white beard, spectacles, and ragged robe in a dark cave). He had edge artifacts from glass beakers and cave shadows. Mrs. Brisby herself is at $t=480.0\text{s}$ (meeting Jeremy on the sunlit rock) with her iconic scarlet cloak, warm brown fur, large expressive eyes, and clean sunset sky."*
+>
+> **Prof. Basil Hiley:**
+> *"The implicate holon must faithfully correspond to its explicate semantic descriptor. Mrs. Brisby is the heroic archetype of maternal care and courage; her scarlet mantle is an active topological identifier. Grounding her track at $t=480.0\text{s}$ provides clean, unimpeded phase information free from the environmental decoherence of Mr. Ages' subterranean laboratory."*
+
+- [ ] **R10.9a — Re-anchor NIMH to Canonical Mrs. Brisby ($t=480.0\text{s}$)**
+  - Update `crates/implicate-lifter/tests/r10_model_sheet_gates.rs` and `crates/implicate-unfold/tests/r10_4_wavepacket_unfold_gpu_gate.rs` from $t=356.0\text{s}$ to $t=480.0\text{s}$.
+  - Verify Mrs. Brisby's scarlet cloak, warm brown fur, pink ears, and tail are cleanly extracted with zero cave shadow artifacts.
+- [ ] **R10.9b — Fix Generative Video Presentation (Single Character Framing)**
+  - Refactor video export in `r10_5_generative_video_export_and_user_validation_gate`:
+    - Generative MP4 videos (`_generative_unfold.mp4`) render **one single generative character**, properly framed and centered (with integer nearest-neighbor scaling for pixel art), eliminating duplicate twin sprites.
+    - Contact sheets (`_contact_sheet.png`) provide clearly labeled, distinct panels comparing Ground Truth observation vs. GPU Model Sheet Unfold.
+- [ ] **R10.9c — Re-export & Visually Validate All 4 Generative Videos (`generative_output/`)**
+  - Export:
+    1. `smb3_mario_generative_unfold.mp4` (Single Mario running/jumping)
+    2. `pacman_generative_unfold.mp4` (Single Blinky ghost turning)
+    3. `raptor_generative_unfold.mp4` (Single Raptor jet flying)
+    4. `nimh_brisby_generative_unfold.mp4` (Single authentic Mrs. Brisby with scarlet cloak)
+  - Visually inspect: verify zero twin duplication, zero cave artifacts, and 100% green tests (`cargo test --workspace`).
