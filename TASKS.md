@@ -176,43 +176,42 @@
 
 ---
 
-## Track R10.10 — Universal Morphological Neck Decoupling & Background Sky Invariant (PLANNED)
+## Track R10.10 — Two Universal Abstractions: Dimensional Opening & Chromatic Holon Invariant (PLANNED)
+
+> **Issue Overview (from R10.9e visual inspection of `nimh_brisby_contact_sheet.png` @ $t=480.0\text{s}$):**
+> Mrs. Brisby is recognizable (raised arm, face, ear, whiskers, red cloak, white chest), but three artifacts remain:
+> 1. **Dangling Red String:** Jeremy's thin red string touches her paw; 8-connected flood fill in [`dominant_silhouette`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1199-L1353) crawls across the contact and absorbs the whole cord into her silhouette.
+> 2. **Trapped Sunset Sky Patch:** A yellow sky wedge between cloak, arm, and legs is classified as foreground.
+> 3. **Root Cause — Background Contamination ("Ghost Hole"):** `/tmp/nimh_debug/bg0.png` shows the 24-frame temporal-mode atlas has baked Mrs. Brisby's stationary body into the background. Subtracting her from herself zeroes her torso; when her arm moves, freshly exposed sky differs from the "background" (her fur) and is flagged as foreground.
+>
+> **Rejected path (over-tuned):** neck-width thresholds, corridor widening, reach-distance clamps, sky detectors — each a new magic number that fits one shot.
 
 > **Dialogue & Synthesis: John Carmack & Prof. Basil Hiley**
 >
-> **John Carmack:**
-> *"Look at what the contact sheet `nimh_brisby_contact_sheet.png` revealed:
-> Mrs. Brisby is reaching her arm up and gripping Jeremy's red string. Because her hand touches the string in 2D screen space, naive 8-connected flood fill (`dominant_silhouette`) treats the entire red wire as part of the mouse! 
-> In computer graphics and rasterization, you don't let a flood fill crawl forever down a 1-pixel wire.
-> Mrs. Brisby has an inertia radius of $R \approx 30\text{px}$. The string is a 1-to-2-pixel bottleneck. If we perform a scale-aware morphological opening (erosion followed by dilation scaled to local body radius) or geodesic neck-width gating, that 1-pixel bridge breaks instantly! Her paw and fingers are preserved because they are supported by her forearm ($>6\text{px}$ thick), while the dangling cord is severed at the contact point.
-> Second, look between her arm, cloak, and rock: background sunset lighting bleeds through because the rock background changed lighting or shifted slightly. We need to reject background patches that lack internal cel coherence."*
+> **John Carmack:** *"If the depth buffer is corrupt you fix the clear, you don't write five post-process shaders to guess the geometry. Two passes are enough. (1) A 1D cord and a 2D body are topologically different: one morphological opening $M \circ B = (M \ominus B) \oplus B$ erases anything thinner than the structuring element while 2D mass survives; geodesic reconstruction from the surviving cores then restores paws and fingers exactly, but the string has no core to grow back from. (2) For the sky: does the pixel look like the character or like the vacuum? Compare it to both and take the closer one."*
 >
-> **Prof. Basil Hiley:**
-> *"Precisely, John. In the implicate order, an entity is a compact, oriented 2-blade $\psi \in \mathbb{G}_{3,0,1}$ enclosed by a closed Clifford ink contour:
-> $$\Pi_{\partial \Omega} = \oint_{\partial \Omega} u \wedge \nabla^2 u \ne 0$$
-> A string is an open 1-blade filament with zero interior 2D area and orthogonal principal inertia. It is an independent holon in dynamic interaction with the character, not a piece of her anatomy.
-> 1. **Topological Neck Decoupling:** The neck connecting the hand to the string has negligible transverse thickness compared to the Line of Action support envelope ($\sigma_\parallel, \sigma_\perp$). Severing bridges with transverse width $w_{\text{neck}} < 0.15 \sigma_\perp$ decouples held props universally without movie-specific heuristics.
-> 2. **Cel Paint Phase Coherence:** The Grade 0 inner product $u \cdot \nabla^2 u$ captures uniform cel paint fills. Sunset background bleeding lacks the phase coherence of the character's interior cel paint and fails the contour closure test $\oint_{\partial \Omega} u \wedge \nabla^2 u$."*
+> **Prof. Basil Hiley:** *"A holon is an idempotent process, $\epsilon^2 = \epsilon$. Its colours form a compact self-consistent spectrum — fur, cloak, chest, ears — while the sunset is a separate ambient phase. Classify by which manifold a pixel belongs to, not by arithmetic difference against a background that may itself contain the holon. Membership is self-referential: the character's colour modes are derived from its own eroded core, so no film-specific palette ever enters."*
+>
+> **Synthesis — two universal operations, zero film-specific constants:**
+> - **Dimension filter:** 2D volume vs. 1D filament → morphological opening + geodesic reconstruction.
+> - **State filter:** holon colour manifold vs. ambient vacuum → nearest-manifold likelihood ratio (character core modes vs. local background samples).
 
-- [ ] **R10.10a — Scale-Aware Topological Neck Decoupling (`dominant_silhouette` in `articulated_wavepacket/mod.rs`)**
-  - Implement scale-aware morphological neck analysis / opening in `dominant_silhouette`:
-    - Identify narrow bottlenecks ($w_{\text{neck}} \le 2\text{px}$ relative to body radius $\sigma_\perp \ge 12\text{px}$) connecting large mass clusters to thin elongated filaments.
-    - Sever the bottleneck at the contact boundary, preventing 8-connected flood fills from crawling along held external cords, strings, or wires while preserving hands, paws, and fingers.
+- [ ] **R10.10a — Dimensional Opening with Geodesic Reconstruction (`dominant_silhouette` in `articulated_wavepacket/mod.rs`)**
+  - Erode the residual mask by structuring element $B$ → label connected cores → keep cores per existing Line-of-Action support logic → geodesically dilate kept cores back *within the original mask* (reconstruction by dilation, iterate to convergence).
+  - Structuring-element radius must derive from the shot, not a constant: $r_B = \max(1, \lfloor \tfrac{1}{2} w_{\text{filament}} \rfloor + 1)$ where $w_{\text{filament}}$ is measured from the distance-transform histogram of the residual mask (the low-thickness mode), and must satisfy $r_B < \tfrac{1}{2}\, w_{\text{thinnest limb of primary core}}$ so sprite limbs (Mario 16px, Pac-Man 14px) are never erased.
+  - Degenerate case: if erosion annihilates everything (tiny sprites), fall back to the un-eroded mask (Occam: $r_B = 0$).
 
-- [ ] **R10.10b — Cel Paint Phase Coherence & Background Invariant (`clifford_features.rs`, `multiplane_atlas`)**
-  - Eliminate trapped background sky/rock lighting patches between limbs and cloaks:
-    - Validate candidate foreground regions against Grade 0 cel paint fill coherence ($u \cdot \nabla^2 u$) and Grade 2 contour blade closure ($u \wedge \nabla^2 u$).
-    - Reject background residual regions that lack contour boundary enclosing blades or exhibit background-phase chromatic distribution.
+- [ ] **R10.10b — Chromatic Holon Invariant (nearest-manifold classification)**
+  - Derive the holon's colour modes from the R10.10a eroded core (k-modes / median-cut on core pixels; $k$ chosen by MDL/BIC, not fixed).
+  - Derive vacuum modes from pixels in the dilated actor box *outside* the reconstructed silhouette plus the atlas background.
+  - Keep a silhouette pixel iff $d(\text{pixel}, \text{holon modes}) < d(\text{pixel}, \text{vacuum modes})$ — a parameter-free likelihood-ratio test. No $k\sigma$ cutoffs.
 
-- [ ] **R10.10c — Model Sheet Fitting & Turnaround Validation (`r10_model_sheet_gates.rs`, `r10_4_wavepacket_unfold_gpu_gate.rs`)**
-  - Re-run Mrs. Brisby turnaround extraction at $t=480.0\text{s}$ with neck decoupling and cel coherence enabled:
-    - Verify Mrs. Brisby model sheet kernel is 100% free of string pixels and background rock/sky wash.
-    - Maintain $\text{IoU} \ge 0.82$ and $\text{LPIPS} \le 0.050$ across turnaround gesture frames.
+- [ ] **R10.10c — Turnaround Gate Validation (`r10_model_sheet_gates.rs`, `r10_4_wavepacket_unfold_gpu_gate.rs`)**
+  - Re-run Mrs. Brisby @ $t=480.0\text{s}$: model-sheet kernel free of string pixels and sky wash; target $\text{IoU} \ge 0.82$, $\text{LPIPS} \le 0.050$.
+  - Regression: SMB3, Pac-Man, Raptor gates must stay at current IoU/LPIPS (opening must not erase sprite limbs/boots).
 
-- [ ] **R10.10d — Re-export and Visual Validation Across All 4 Benchmarks (`generative_output/`)**
-  - Re-export all 4 generative MP4s and PNG contact sheets:
-    1. `smb3_mario_generative_unfold.mp4` & `smb3_mario_contact_sheet.png`
-    2. `pacman_generative_unfold.mp4` & `pacman_contact_sheet.png`
-    3. `raptor_generative_unfold.mp4` & `raptor_contact_sheet.png`
-    4. `nimh_brisby_generative_unfold.mp4` & `nimh_brisby_contact_sheet.png`
-  - Visually inspect with `read_file` to confirm Mrs. Brisby's body and limbs are pristine, string is cleanly severed, and all 61+ tests remain 100% green.
+- [ ] **R10.10d — Re-export & Visual Validation (`generative_output/`)**
+  - Re-export all 4 `_generative_unfold.mp4` + `_contact_sheet.png`; inspect via `read_file` (body/limbs present, cleanliness, technical description of any glitches).
+  - Keep all 61+ workspace tests green (`cargo test --workspace --tests`).
+
+> [!WARNING] **Open risk (deferred, not solved by R10.10):** The root cause #3 (holon baked into the temporal-mode background atlas during speaking holds) remains. R10.10b mitigates its symptom by not trusting the atlas alone. If artifacts persist, the next track should address the atlas directly (e.g. exclude pixels inside persistent actor boxes from the mode, or extend the temporal window so time-translation symmetry is broken).

@@ -352,3 +352,36 @@ Track R10 Milestone Timeline:
 ### 5. Self-Contained Training Corpus (`generative_output/sources/`)
 - All benchmark video assets ($>10\text{ min}$ full gameplay and $1\text{h }22\text{m}$ feature film) are consolidated in `./generative_output/sources/`, ensuring hermetic reproducibility while keeping original source files untouched.
 
+
+---
+
+## VIII. Track R10.10 Proposal: Two Universal Abstractions (Less Is More)
+
+### 1. Problem Statement
+At NIMH $t=480.0\text{s}$ the extracted Mrs. Brisby silhouette carries (a) Jeremy's thin red string, absorbed through 8-connected flood fill at her paw, and (b) a trapped sunset-sky wedge. Both trace to one root: the 24-frame temporal-mode atlas contains her stationary body (`/tmp/nimh_debug/bg0.png`), so pointwise background subtraction both erases her torso and flags newly exposed sky as foreground.
+
+### 2. Rejected Approach
+Neck-width thresholds, corridor widening, reach clamps, and sky detectors. Each adds a constant tuned to one shot and violates Directive 1 (Zero Magic Numbers).
+
+### 3. Adopted Approach
+| Abstraction | Physical distinction | Operation | Parameter source |
+| :--- | :--- | :--- | :--- |
+| **Dimension filter** | 2D volume vs. 1D filament | Morphological opening $M \circ B$, then geodesic reconstruction of surviving cores inside the original mask | $r_B$ from the shot's distance-transform thickness histogram; bounded below the primary core's thinnest limb; $r_B=0$ fallback for tiny sprites |
+| **State filter** | Holon colour manifold vs. ambient vacuum | Nearest-manifold likelihood ratio: keep pixel iff closer to holon core modes than to vacuum modes | Holon modes from the eroded core; vacuum modes from box exterior + atlas; $k$ via MDL/BIC |
+
+```mermaid
+flowchart LR
+    A["Residual mask"] --> B["Erode by r_B"]
+    B --> C["Label cores + LoA support"]
+    C --> D["Geodesic reconstruction within original mask"]
+    D --> E["Holon vs vacuum colour modes"]
+    E --> F["Clean silhouette"]
+```
+
+### 4. Acceptance
+- NIMH Brisby @ $t=480.0\text{s}$: no string or sky pixels in the kernel; $\text{IoU} \ge 0.82$, $\text{LPIPS} \le 0.050$.
+- SMB3 / Pac-Man / Raptor: no regression in current IoU/LPIPS; boots and limbs retained.
+- All workspace tests green; all 4 artifacts re-exported to `./generative_output/` and visually inspected.
+
+### 5. Known Limitation
+The atlas contamination (holon baked into the background during speaking holds) is mitigated, not cured. If artifacts persist after R10.10, a follow-up track should fix the atlas itself: exclude persistent actor-box pixels from the temporal mode, or widen the window until time-translation symmetry breaks.
