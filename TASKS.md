@@ -152,5 +152,8 @@
   - Implement `implicate remix --video <corpus.implicate> --prompt "<prompt>"` generating novel scene animations.
 - [ ] **S5.2 — Continuous Turnaround & Aerodynamic Cape Unfolding**
   - Blend smoothly between discrete view-aspect idempotents $\{\epsilon_v\}$ and continuous Clifford Fourier cape wavepackets based on prompted actions.
-- [ ] **S5.3 — Synchronized 48 kHz Stereo Audio Synthesis**
-  - Synthesize material-tuned modal audio impulses at character contact events.
+- [ ] **S5.3 — Event-Sampled Foley Soundboard & Sub-Sample Triggering**
+  - Extract transient audio slices ($50\text{--}500\text{ ms}$) from source audio at empirical impulse and contact events ($\|\Delta \mathbf{P}_B\| > \tau_{\text{imp}}$, $P \wedge \Pi = 0$).
+  - Bind slices to entity behaviors: e.g. `(Mario, Action::Jump) -> "jump.wav"`, `(Mario, Event::PlatformLand) -> "land.wav"`, `(Mario, Event::BlockHit) -> "coin_box.wav"`, `(Brisby, Event::StoneStep) -> "stone_step.wav"`.
+  - Trigger sampled playback with sub-sample onset timing ($< 1.0\text{ ms}$) and binaural stereo panning.
+  - *(Note: Word-level dialogue segmentation and speech synthesis are explicitly out of scope until a much later milestone).*

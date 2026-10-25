@@ -257,6 +257,17 @@ When compiling arbitrary video corpora into the Implicate Lexicon, `Qwen3-VL-8B-
 - **2D OCR Time Tracking:** Qwen reads the burned glyphs via high-accuracy 2D OCR rather than guessing time from fuzzy temporal tokens, emitting strict JSON start and end frame indices.
 - **The Neuro-Physical Snap:** `implicate-lexicon`'s `cft_snap.rs` snaps Qwen's coarse frame window to exact physical Bohmian momentum discontinuities $\|\Delta \mathbf{P}_B\| > \tau_{\text{imp}}$ and platform contacts $P \wedge \Pi = 0$.
 
+### 5. Event-Sampled Foley Soundboard (Audio Scope Reduction)
+To eliminate the immense engineering risk and synthetic artifacts of general continuous speech, music, or physical PDE acoustic synthesis, audio is strictly scoped to **Event-Triggered Sampled Foley**:
+- **Enfoldment Slicing:** Whenever a kinematic impulse ($\|\Delta \mathbf{P}_B\| > \tau_{\text{imp}}$), jump launch, or projective platform contact ($P \wedge \Pi = 0$) occurs, the pipeline slices a short transient PCM audio sample ($50\text{--}500\text{ ms}$) from the source soundtrack.
+- **Entity Soundboard Binding:** Slices are cataloged into an invariant soundboard:
+  - `(Mario, Action::Jump) -> "mario_jump.wav"`
+  - `(Mario, Event::PlatformLand) -> "mario_land.wav"`
+  - `(Mario, Event::BlockHit) -> "coin_box.wav"`
+  - `(Brisby, Event::StoneStep) -> "stone_step.wav"`
+- **Sub-Sample Playback:** During real-time play or storybook unfoldment, triggering events play the authentic sampled audio with sub-frame timing ($< 1.0\text{ ms}$) and binaural camera panning.
+- **Explicit Scope Boundary:** Word-level dialogue segmentation and phonemic speech synthesis are deferred to a future milestone.
+
 ---
 
 ## VI. The Concrete Execution Roadmap: Track S
@@ -324,6 +335,7 @@ Track S Milestone Sequence:
 - **Objectives:**
   1. Build `implicate remix --video nimh_corpus.implicate --prompt "@scene: Brisby explores the stone corridor"` in `crates/implicate-cli`.
   2. Unfold a novel hand-drawn animated sequence using the induced Don Bluth character model sheet, blending between turnaround idempotents $\{\epsilon_v\}$ and continuous cape wavepackets.
+  3. Trigger event-sampled Foley audio at kinematic impulse and contact events with sub-sample onset timing and binaural stereo panning (dialogue and word-level speech synthesis explicitly deferred to future milestones).
 - **Showcase Example (Autonomous Animated Feature Scene Remix):**
   - Run: `cargo run -p implicate-cli -- remix --video ./tests/fixtures/nimh_shot14.implicate --prompt "Mrs. Brisby turns to face the stone archway, walks cautiously forward, and raises her glowing red amulet"`
   - Output Proof: [`generative_output/nimh_remix_stone_archway.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_remix_stone_archway.mp4) (1080p, 120 frames @ 24 fps with phase-locked 48 kHz stereo audio). The engine translates prompt verbs into spatial $\mathcal{Q}_{\text{Cl}}$ attractor beacons, rotates Brisby's Line of Action $L_{\text{spine}}$ to transition across turnaround idempotents $\epsilon_{\text{profile}} \to \epsilon_{\text{3/4}} \to \epsilon_{\text{back}}$, and synthesizes a completely new Don Bluth feature animation scene matching the original film's style and audio without diffusion hallucinations.
