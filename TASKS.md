@@ -172,4 +172,47 @@
     - Raptor Jet: Sharp shaded hull, wings, and thrusters. Upper-right stray projectile noise successfully removed by consensus filter.
     - NIMH Brisby: Mrs. Brisby with raised arm, paw grasping string, pink ear, snout, whiskers, blue eye, red cloak, white chest. Zero twin duplication.
   - Verified 100% green test suite: **61/61 workspace tests pass** (`cargo test --workspace --tests` ok).
-- **Track R10.9 Status:** Track R10.9 completed. Active next focus: Track R10.10 (General Invariant Holon Segmentation across Moving/Lit Backgrounds & String Separation).
+- **Track R10.9 Status:** Track R10.9 completed.
+
+---
+
+## Track R10.10 — Universal Morphological Neck Decoupling & Background Sky Invariant (PLANNED)
+
+> **Dialogue & Synthesis: John Carmack & Prof. Basil Hiley**
+>
+> **John Carmack:**
+> *"Look at what the contact sheet `nimh_brisby_contact_sheet.png` revealed:
+> Mrs. Brisby is reaching her arm up and gripping Jeremy's red string. Because her hand touches the string in 2D screen space, naive 8-connected flood fill (`dominant_silhouette`) treats the entire red wire as part of the mouse! 
+> In computer graphics and rasterization, you don't let a flood fill crawl forever down a 1-pixel wire.
+> Mrs. Brisby has an inertia radius of $R \approx 30\text{px}$. The string is a 1-to-2-pixel bottleneck. If we perform a scale-aware morphological opening (erosion followed by dilation scaled to local body radius) or geodesic neck-width gating, that 1-pixel bridge breaks instantly! Her paw and fingers are preserved because they are supported by her forearm ($>6\text{px}$ thick), while the dangling cord is severed at the contact point.
+> Second, look between her arm, cloak, and rock: background sunset lighting bleeds through because the rock background changed lighting or shifted slightly. We need to reject background patches that lack internal cel coherence."*
+>
+> **Prof. Basil Hiley:**
+> *"Precisely, John. In the implicate order, an entity is a compact, oriented 2-blade $\psi \in \mathbb{G}_{3,0,1}$ enclosed by a closed Clifford ink contour:
+> $$\Pi_{\partial \Omega} = \oint_{\partial \Omega} u \wedge \nabla^2 u \ne 0$$
+> A string is an open 1-blade filament with zero interior 2D area and orthogonal principal inertia. It is an independent holon in dynamic interaction with the character, not a piece of her anatomy.
+> 1. **Topological Neck Decoupling:** The neck connecting the hand to the string has negligible transverse thickness compared to the Line of Action support envelope ($\sigma_\parallel, \sigma_\perp$). Severing bridges with transverse width $w_{\text{neck}} < 0.15 \sigma_\perp$ decouples held props universally without movie-specific heuristics.
+> 2. **Cel Paint Phase Coherence:** The Grade 0 inner product $u \cdot \nabla^2 u$ captures uniform cel paint fills. Sunset background bleeding lacks the phase coherence of the character's interior cel paint and fails the contour closure test $\oint_{\partial \Omega} u \wedge \nabla^2 u$."*
+
+- [ ] **R10.10a — Scale-Aware Topological Neck Decoupling (`dominant_silhouette` in `articulated_wavepacket/mod.rs`)**
+  - Implement scale-aware morphological neck analysis / opening in `dominant_silhouette`:
+    - Identify narrow bottlenecks ($w_{\text{neck}} \le 2\text{px}$ relative to body radius $\sigma_\perp \ge 12\text{px}$) connecting large mass clusters to thin elongated filaments.
+    - Sever the bottleneck at the contact boundary, preventing 8-connected flood fills from crawling along held external cords, strings, or wires while preserving hands, paws, and fingers.
+
+- [ ] **R10.10b — Cel Paint Phase Coherence & Background Invariant (`clifford_features.rs`, `multiplane_atlas`)**
+  - Eliminate trapped background sky/rock lighting patches between limbs and cloaks:
+    - Validate candidate foreground regions against Grade 0 cel paint fill coherence ($u \cdot \nabla^2 u$) and Grade 2 contour blade closure ($u \wedge \nabla^2 u$).
+    - Reject background residual regions that lack contour boundary enclosing blades or exhibit background-phase chromatic distribution.
+
+- [ ] **R10.10c — Model Sheet Fitting & Turnaround Validation (`r10_model_sheet_gates.rs`, `r10_4_wavepacket_unfold_gpu_gate.rs`)**
+  - Re-run Mrs. Brisby turnaround extraction at $t=480.0\text{s}$ with neck decoupling and cel coherence enabled:
+    - Verify Mrs. Brisby model sheet kernel is 100% free of string pixels and background rock/sky wash.
+    - Maintain $\text{IoU} \ge 0.82$ and $\text{LPIPS} \le 0.050$ across turnaround gesture frames.
+
+- [ ] **R10.10d — Re-export and Visual Validation Across All 4 Benchmarks (`generative_output/`)**
+  - Re-export all 4 generative MP4s and PNG contact sheets:
+    1. `smb3_mario_generative_unfold.mp4` & `smb3_mario_contact_sheet.png`
+    2. `pacman_generative_unfold.mp4` & `pacman_contact_sheet.png`
+    3. `raptor_generative_unfold.mp4` & `raptor_contact_sheet.png`
+    4. `nimh_brisby_generative_unfold.mp4` & `nimh_brisby_contact_sheet.png`
+  - Visually inspect with `read_file` to confirm Mrs. Brisby's body and limbs are pristine, string is cleanly severed, and all 61+ tests remain 100% green.
