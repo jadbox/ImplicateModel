@@ -66,51 +66,30 @@ flowchart TD
 
 ### Phase I: Enfoldment (Explicate Video → Implicate Lexicon)
 
-* **Input:** Raw video and audio streams (*The Secret of NIMH*, *SMB3*, *Pac-Man*, *Raptor*, 3D captures).
-  * ↓
-* **0. Streaming Shot & Camera Regime Discovery (`implicate-lifter`):**
-  * Evaluates 2D CFT cross-power spectrum and luminance-chroma histogram divergence.
-  * Classifies camera motor $M_{\text{cam}}(t) \in \text{Spin}(3,0,1)$ (`Ortho2DStatic`, `Ortho2DScroll`, `MultiPlane25D`, `Perspective3D`).
-  * ↓
-* **1A. Semantic Stream (`implicate-lexicon`):**
-  * Local `llama.cpp` `Qwen2.5-VL-7B` with strict GBNF grammar.
-  * Extracts Milieu, Holon Nouns $\psi_{\text{noun}} \in (\mathbb{G}_{2,0}^+)^{16}$, and Process Verbs $\psi_{\text{verb}}$.
-  * Online open-ended vocabulary expansion via Gram-matrix Jacobi SVD.
-* **1B. Clifford Idempotent Soliton (CIS) Lifter (`implicate-lifter`):**
-  * **Spatiotemporal Actor Tube Masking & Background Inpainting:** Tracks actor union support across all frames and solves $\nabla^2 I = 0$ over occluded corridors, eliminating background bake-in during stationary holds.
-  * **Active Information Residual Field:** Computes $\Delta \Psi$ with statistical noise floor $\tau = \text{median}(\mathcal{I}) + 3.0 \times 1.4826 \times \text{MAD}(\mathcal{I})$.
-  * **Topological Cavity Disocclusion & Dual Geometric Projection:** Purges enclosed vacuum cavities without eroding thin anatomical features; isolates ink contour blades ($u \wedge \nabla^2 u$) and cel paint fills ($u \cdot \nabla^2 u$).
-  * Extracts 3D PGA Line of Action bivector $L_{\text{spine}} \in \mathbb{G}_{3,0,1}$ from spatial mass inertia.
-  * Discovers Don Bluth Model Sheets: primitive turnaround idempotents $\{\epsilon_v\}$ via spectral decomposition $\Gamma = \sum \sigma_k \epsilon_k$.
-  * Extracts synchronized acoustic pressure envelopes $E_{\text{audio}}(t, \omega)$ at impulse loci.
-  * ↓
-* **2. The Implicate Lexicon & World Store (`.implicate`):**
-  * Compact binary container storing Don Bluth Model Sheets, $\text{Spin}(3,0,1)$ PGA trajectories, and 64-byte aligned [`Mv301`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-math/src/g301.rs#L17-L19) monad arrays.
+The Enfoldment phase compiles raw, unstructured video and audio streams (*The Secret of NIMH*, *Super Mario Bros 3*, *Pac-Man*, *Raptor*, or 3D camera tracks) into a structured, zero-copy binary representation: the **Implicate World Model and Lexicon** (`.implicate`). This ingestion executes across four hardware-aligned stages:
+
+1. **Continuous Camera Odometry & Regime Discovery (`implicate-lifter`):** Rather than computing expensive feature-point matching across thousands of keypoints, the lifter streams frames through a lightweight 2D Continuous Fourier Transform (CFT) cross-power spectrum. By evaluating spectral shifts against frame-to-frame luminance-chroma divergence, the camera's projective motion $M_{\text{cam}}(t) \in \text{Spin}(3,0,1)$ is classified in real time at $>1,350\text{ FPS}$ into static viewports, smooth orthographic scrolling, multi-plane parallax layers, or 3D perspective.
+2. **The Decoupled Semantic Proxy Stream (`implicate-lexicon`):** In parallel with the geometric pipeline, an in-memory pass burns high-contrast monospace timecodes into the corner pixels of a proxy video feed sent to a local VLM (`Qwen3-VL-8B` / `Qwen2.5-VL-7B` via `llama.cpp`). Leveraging the VLM's razor-sharp 2D OCR rather than fuzzy temporal attention, the model extracts entity nouns, process verbs, and scene milieu clauses with frame-accurate brackets. These semantic symbols are embedded into fixed 16-channel wording-space spinors $(\mathbb{G}_{2,0}^+)^{16}$ via thin Jacobi SVD on the clause Gram matrix, allowing prompt matching to reduce to a coordinate-free bilinear inner product.
+3. **The Clifford Soliton Lifter (`implicate-lifter`):** Pristine 1080p frames pass untouched to the geometric lifter, which isolates actors from the environment using three self-consistent principles:
+   * *Spatiotemporal Actor Tube Masking:* Tracks actor union footprints across all frames and solves the discrete harmonic Dirichlet problem ($\nabla^2 I = 0$) over occluded regions, guaranteeing an actor-free background atlas plenum without baking character fur into the scenery during stationary holds.
+   * *Active Information Residuals:* Foreground presence is defined by the wavefield's departure from equilibrium ($\Delta \Psi = \Psi_{\text{frame}} - \Psi_{\text{bg}}$) thresholded by the frame's statistical noise floor ($\tau = \text{median} + 3.0 \times \text{MAD}$), adapting automatically across 8-bit sprites and 35mm film grain.
+   * *Dual Geometric Projection & Cavity Disocclusion:* The Clifford geometric product splits characters into invariant exterior ink contour blades ($u \wedge \nabla^2 u$) and flat cel paint fills ($u \cdot \nabla^2 u$). Enclosed background cavities (such as sky trapped between an arm and cloak) are purged algebraically, while the principal Line of Action $L_{\text{spine}} \in \mathbb{G}_{3,0,1}$ and canonical turnaround idempotents $\{\epsilon_v\}$ are extracted via spectral decomposition.
+4. **Event-Sampled Foley Extraction:** Whenever kinematic momentum jumps ($\|\Delta \mathbf{P}_B\| > \tau_{\text{imp}}$) or projective contacts ($P \wedge \Pi = 0$) occur, short $50\text{--}500\text{ ms}$ transient PCM audio slices are cut from the soundtrack and bound to the entity's behavior catalog (`(Mario, Jump) -> "jump.wav"`).
+5. **The Implicate Binary Container (`.implicate`):** All character model sheets, Lie trajectories, multi-plane atlases, and audio soundboards are packed into 64-byte aligned [`Mv301`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-math/src/g301.rs#L17-L19) monad arrays, formatted for direct zero-copy GPU mapping.
 
 ---
 
 ### Phase II: Unfoldment (Dual Causal Modes: Storybook & Playable Reality)
 
-* **Mode A (Generative Storybook Input):** Natural language prompt, DzogLang narrative script, or seed frame.
-* **Mode B (Playable Game Input):** Real-time gamepad or keyboard velocity impulses $(v_x, v_y, \text{jump})$ streamed into the actor's root motor at $60\text{ Hz}$.
-  * ↓
-* **3A / 3B. Scene & Agency Compiler (`implicate-unfold`):**
-  * Seeds ground manifold ($Gzhi$) with multi-plane boundaries $B_k$, platform planes $\Pi_k$, and lattice constitutive parameters $(\rho, K, \gamma, C, L_0)$.
-  * Injects Holon Model Sheets: instantiates articulated Clifford Density Elements $\Phi_{L,i,p} = R U \epsilon_v$.
-  * In Mode A, maps active narrative verbs to scale-invariant $\mathcal{Q}_{\text{Cl}}$ guidance beacons and PGA motor impulses.
-  * In Mode B, directly injects player controller steering operators $M_{\text{ctrl}} \in \text{Spin}(3,0,1)$ into root motors.
-  * ↓
-* **3C. Single-Pass Causal Lattice Runtime (`implicate-field` + `implicate-math`, 60–1000+ Hz):**
-  * Steps Yee-staggered wave-matter PDEs ($p, \mathbf{v}, \mathcal{Q}_{\text{Cl}}, \mathbf{L}, C$).
-  * Integrates articulated Holon motors $M_{i,p}(t)$ under Bohmian guidance $-\nabla \langle \mathcal{Q}_{\text{Cl}} \rangle_0$ and spin-torque $\langle \mathcal{Q}_{\text{Cl}} \rangle_2$.
-  * Evaluates exact PGA incidence predicates ($P \wedge \Pi = 0$) and executes Fresnel momentum reflections ($v' = \Pi v \widetilde{\Pi}$) without any external collision mesh.
-  * Resolves algebraic aspect transitions $T_{u \to v} = \epsilon_v M \epsilon_u$.
-  * ↓
-* **4. `@rolpa` Shadow-Manifold Projector (`implicate-rolpa`):**
-  * **Visual Lens:** Single-pass WGSL compute shader evaluating 64-byte `Mv301` monads into 1080p frames ($O(1)$ constant time per pixel, zero temporal flicker).
-  * **Acoustic Lens:** Binaural camera pickups + sub-sample Doppler shift + material-tuned modal synthesis (48 kHz).
-  * ↓
-* **Output:** 1080p @ 60–120+ FPS flicker-free video with phase-locked stereo audio.
+During Unfoldment, `ImplicateModel` executes no iterative diffusion loops and maintains no $O(N^2)$ attention matrices. Generation is a single, deterministic causal wave simulation coupled to articulated rigid-body kinematics, running on GPU compute shaders at $60\text{--}120+\text{ FPS}$. The engine supports two unified operational modes:
+
+* **Mode A — Generative Storybook Engine:** Driven by natural language prompts or DzogLang narrative scripts (e.g. `"Mrs. Brisby walks cautiously toward the glowing hearth"`), the scene compiler translates semantic verbs into scale-invariant Bohmian active information beacons ($\mathcal{Q}_{\text{Cl}}$). These beacons deform the wave-matter lattice, guiding characters smoothly along corridors, steering Line of Action attitudes ($L_{\text{spine}}$), and triggering algebraic transitions between turnaround aspects ($T_{u \to v} = \epsilon_v M \epsilon_u$) with zero temporal flicker.
+* **Mode B — Playable Real-Time Game Engine:** Hooked directly into player gamepad or keyboard inputs ($v_x, v_y, \text{jump}$), the compiler injects real-time Lie motor generators ($\Omega_{\text{ctrl}} = v_x e_{01} + v_y e_{02}$) into the actor's root multivector at $60\text{--}120+\text{ Hz}$. Platforms and obstacles are represented as invariant planes $\Pi \in \mathbb{G}_{3,0,1}$. When Mario lands, projective incidence ($P \wedge \Pi = 0$) and closed-form Fresnel rotor reflection ($v' = \Pi v \widetilde{\Pi}$) arrest vertical fall and reflect velocity without any third-party physics engine (PhysX/Box2D).
+
+The causal simulation advances through three unified runtime stages:
+1. **The Causal Wave-Matter Lattice (`implicate-field`):** A staggered Yee GPU lattice updates cell pressure $p$, face velocities $\mathbf{v}$, Bohmian potential $\mathcal{Q}_{\text{Cl}}$, and luminescence $\mathbf{L}$ via hyperbolic PDEs at $60\text{--}1,000+\text{ Hz}$.
+2. **Articulated Holon Integration (`implicate-math`):** Zero-readback GPU reductions evaluate net radiation pressure and Bohmian guidance over each character's bounding blade, advancing root motors $M_{i,\text{root}}(t)$ and coupling compliant appendages (billowing capes, hair, tails) directly to lattice flow.
+3. **The `@rolpa` Shadow Projector (`implicate-rolpa`):** A single-pass WGSL compute shader projects multi-plane background atlases and character wavepackets into full 1080p video ($0.46\text{ ms/frame}$ on RTX 4090) with volume conservation ($\det S = 1$), while sample-accurate Foley soundboards trigger transient audio effects with sub-millisecond synchronization.
 
 ---
 
@@ -118,15 +97,17 @@ flowchart TD
 
 ### 2.1 The Algebraic Tower: $\mathcal{C}\ell_{0,1} \to \mathbb{G}_{2,0} \to \mathbb{G}_{3,0,1}$
 
-`ImplicateModel` represents all spatial geometry, kinematic transformations, internal states, and semantic identities within a unified tower of Clifford algebras:
+In traditional 3D graphics and physics engines, geometry is represented through an awkward patchwork of incompatible mathematical types: positions are 3D Cartesian vectors, orientations are unit quaternions, platform surfaces are four-component plane equations, camera rays are parametric line equations, and kinematic motions are $4 \times 4$ homogeneous transformation matrices. Multiplying a surface normal by an inverted transformation matrix destroys geometric meaning, and intersecting a line with a plane requires specialized branching code.
 
-1. **Temporal / Phase Harmonics ($\mathcal{C}\ell_{0,1} \cong \mathbb{C}$):**
-   Governs Continuous Fourier Transform (CFT) vitality kernels $\hat{K}(\mathbf{k}, \omega)$ and de Broglie phase-harmony locking $\exp(i\phi(t))$.
+`ImplicateModel` replaces this fragmented taxonomy with a unified **Tower of Clifford Algebras**. In 3D Projective Geometric Algebra ($\mathbb{G}_{3,0,1}$), points, lines, planes, and rigid screw motions inhabit the same 16-dimensional vector space. Geometry and kinematics become coordinate-free, dual, and closed under algebraic multiplication:
+
+1. **Temporal & Phase Harmonics ($\mathcal{C}\ell_{0,1} \cong \mathbb{C}$):**
+   Governs Continuous Fourier Transform (CFT) vitality kernels $\hat{K}(\mathbf{k}, \omega)$ and de Broglie phase-harmony locking $\exp(i\phi(t))$, synchronizing internal cyclic motion (e.g. running strides or wing beats) with global time.
 2. **Chromatic & Semantic Spinor Space ($(\mathbb{G}_{2,0}^+)^K$):**
    With basis $e_1^2 = e_2^2 = 1$ and bivector $e_{12} = e_1 e_2$ ($e_{12}^2 = -1$), a $K$-channel even multivector $\psi = (R_1 e^{\theta_1 e_{12}}, \dots, R_K e^{\theta_K e_{12}})$ encodes visual appearance and wording-space semantics. Similarity between any two signatures is evaluated via the coordinate-free bilinear scalar inner product:
    $$\mathcal{S}(\psi_A, \psi_B) = \frac{\langle \psi_A \widetilde{\psi}_B \rangle_0}{\|\psi_A\|\,\|\psi_B\|} \in [-1, 1]$$
 3. **3D Projective Geometric Algebra ($\mathbb{G}_{3,0,1}$):**
-   Uses basis $(e_0, e_1, e_2, e_3)$ with metric $e_0^2 = 0$ and $e_1^2 = e_2^2 = e_3^2 = 1$ ($2^4 = 16$ components). Following plane-based PGA duality (Dorst 2020; Brehmer et al. 2023), geometric primitives and $E(3)$ operators inhabit grades $0 \dots 4$:
+   Uses basis $(e_0, e_1, e_2, e_3)$ with degenerate metric $e_0^2 = 0$ and Euclidean metrics $e_1^2 = e_2^2 = e_3^2 = 1$ ($2^4 = 16$ components). Following plane-based PGA duality (Dorst 2020; Brehmer et al. 2023), geometric primitives and $E(3)$ operators inhabit grades $0 \dots 4$:
 
 | Grade | Basis Elements | Geometric Primitive | Transformation Operator ($\text{Pin}(3,0,1)$) |
 | :--- | :--- | :--- | :--- |
@@ -136,12 +117,15 @@ flowchart TD
 | **3 (Trivector)** | $e_{123};\; e_{023}, e_{031}, e_{012}$ | Euclidean Point $P = x e_{032} + y e_{013} + z e_{021} + e_{123}$ | Point reflection (inversion) through $P$ |
 | **4 (Pseudoscalar)** | $I = e_{0123}$ | Oriented Volume / Chirality reference | Dualization / Chirality sign stabilizer |
 
-Any rigid motion $M \in \text{Spin}(3,0,1)$ (combining 3D rotation around an arbitrary axis and 3D translation) acts universally on points, lines, and planes via the grade-preserving **sandwich product**:
+Any rigid motion $M \in \text{Spin}(3,0,1)$ (combining 3D rotation around an arbitrary spatial axis and 3D translation) acts universally on points, lines, and planes via the grade-preserving **sandwich product**:
 $$X' = M\,X\,\widetilde{M}$$
+This eliminates separate transformation routines: whether transforming a vertex point, rotating a line of action, or reflecting across a floor plane, the same closed-form rotor multiplication applies identically.
 
 ### 2.2 The 64-Byte Clifford Monad (`Mv301`) & The Don Bluth Model Sheet
 
-To eliminate memory fragmentation and achieve mechanical sympathy with CPU L1/L2 caches and GPU SIMD warps, every spatial point, kinematic joint, and field sample is packed into a 64-byte cache-aligned struct `Mv301` (`[f32; 16]`, `crates/implicate-math/src/g301.rs`):
+High-performance real-time graphics demands **mechanical sympathy**: designing data structures that map directly to the underlying silicon. Modern CPU cores load data in 64-byte L1/L2 cache lines, and modern GPUs process data in SIMD warps.
+
+To eliminate memory fragmentation and pointer chasing, every spatial point, kinematic joint, and field sample in `ImplicateModel` is packed into a single 64-byte, cache-aligned struct [`Mv301`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-math/src/g301.rs#L17-L19) (`[f32; 16]`, `crates/implicate-math/src/g301.rs`):
 
 ```rust
 #[repr(C, align(64))]
@@ -154,39 +138,45 @@ Drawing from the classical feature animation mastery of **Don Bluth**, an entity
 
 $$\mathcal{H}_i = \Big(L_{\text{spine}} \in \bigwedge\nolimits^2 \mathbb{G}_{3,0,1},\; \{\epsilon_{i,v}\}_{v=1}^V,\; \{\mathcal{H}_{i,p},\; \text{parent}(p),\; B_{\text{joint},p}\}_{p=1}^{P_i},\; \rho_{c,i}\Big)$$
 
-1. **The Line of Action ($L_{\text{spine}}$):** A primary 3D PGA screw axis blade directing dynamic attitude, spinal curvature, and momentum flux.
+1. **The Line of Action ($L_{\text{spine}}$):** The primary 3D PGA screw axis blade directing dynamic attitude, spinal curvature, and momentum flux. Like the master gesture line drawn by a classical animator before adding body mass, $L_{\text{spine}}$ defines the character's posture and direction of intent.
 2. **Canonical Turnaround Idempotents ($\{\epsilon_{i,v}\}$):** Discrete view aspects (Front, 3/4 Front, Profile, 3/4 Back, Back) discovered algebraically as primitive orthogonal idempotents:
    $$\epsilon_{i,v}^2 = \epsilon_{i,v}, \qquad \epsilon_{i,u} \epsilon_{i,v} = 0 \; (u \ne v), \qquad \sum_{v=1}^V \epsilon_{i,v} = I$$
-   Transitions between aspects follow the exact boundary projector $T_{u \to v} = \epsilon_{i,v} M \epsilon_{i,u}$.
+   In quantum logic, an idempotent operator projects a state onto an observable subspace without losing identity. In animation, transitioning between view aspects is an algebraic projection $T_{u \to v} = \epsilon_{i,v} M \epsilon_{i,u}$, preserving character identity and proportions without neural hallucinations.
 3. **The Minimal Left Ideal ($\Phi_{L,i,p}$):** Each sub-holon $p$ carries a Clifford Density Element (CDE):
    $$\Phi_{L,i,p}(\mathbf{x}, t) = R_{i,p}(\mathbf{x}, t)\, M_{i,p}(t)\, \epsilon_{i,v}, \qquad \rho_{c,i,p}(t) = \Phi_{L,i,p}\,\widetilde{\Phi}_{L,i,p} = \rho_{i,p}\, M_{i,p}\,\epsilon_{i,v}\,\widetilde{M}_{i,p}$$
    where $\rho_{i,p} = \text{tr}(\rho_{c,i,p}) = R_{i,p}^2$ measures intrinsic process vitality, and $M_{i,p}(t) \in \text{Spin}(3,0,1)$ is the closed-form PGA motor.
 
 ### 2.3 Dual Clifford Wavepackets: Ink Contour Blades vs. Cel Paint Fills
 
-To capture the visual purity of Don Bluth feature animation alongside 8-bit sprites, each sub-holon's appearance decomposes via the Clifford geometric product duality ($uv = u \cdot v + u \wedge v$) over the discrete Laplacian $\nabla^2 u$:
+In traditional hand-drawn feature animation, a character cel consists of two physically distinct layers: the sharp black **ink contour lines** drawn on the front of the transparent acetate by the master inker, and the smooth, opaque **cel vinyl paint** brushed onto the back. Conventional computer vision algorithms blur these layers together into amorphous RGB gradients, producing blurry outlines and fuzzy limb edges.
+
+`ImplicateModel` achieves visual purity by decomposing appearance through the **Clifford Geometric Product Duality** ($uv = u \cdot v + u \wedge v$) over the discrete Laplacian context $\nabla^2 u$:
 
 $$\mathcal{W}_{i,p}(\mathbf{x}, t) = \underbrace{B_{i,p}(\mathbf{x}_{\text{loc}}, \phi_t)}_{\text{Ink Contour Blade } \langle u \wedge \nabla^2 u \rangle_2} + \underbrace{C_{i,p}(\mathbf{x}_{\text{loc}}, \phi_t)}_{\text{Cel Paint Fill } \langle u \cdot \nabla^2 u \rangle_0}$$
 
 where:
-* $\mathbf{x}_{\text{loc}} = \widetilde{M}_{i,p}(t)\,\mathbf{x}\,M_{i,p}(t)$ transforms world coordinates into the canonical rest frame of part $p$,
-* **Ink Contour Blade ($B_{i,p}$):** Extracted from the zero-crossings of the exterior wedge product vorticity $u \wedge \nabla^2 u$, defining invariant, scale-free ink lines without arbitrary gradient thresholds. Detached items (Mrs. Brisby's amulet, Jeremy's string, trailing tails) form closed boundary loops and are preserved with 100% permanence.
+* $\mathbf{x}_{\text{loc}} = \widetilde{M}_{i,p}(t)\,\mathbf{x}\,M_{i,p}(t)$ transforms world coordinates into the canonical rest frame of part $p$.
+* **Ink Contour Blade ($B_{i,p}$):** Extracted from the zero-crossings of the exterior wedge product vorticity $u \wedge \nabla^2 u$. The wedge product naturally isolates sharp gradient curl, defining invariant, scale-free ink lines without arbitrary heuristic thresholds. Detached items (Mrs. Brisby's amulet, trailing cape hems, whisker filaments) form distinct closed loops and are preserved with 100% permanence.
 * **Cel Paint Fill ($C_{i,p}$):** Governed by the inner product coherence $u \cdot \nabla^2 u$ and parameterized along the continuous gait phase $\phi \in S^1$ via volume-conserving 5-mode Clifford Fourier series ($\det S = 1$), eliminating Gibbs color ringing and blurry outline mush.
+
+Because the inner and outer products are mathematically orthogonal, the ink contours and cel fills partition the image with **zero pixel overlap**, reproducing the exact look of hand-drawn animation cels.
 
 ### 2.4 Active Information & The Clifford Quantum Potential ($\mathcal{Q}_{\text{Cl}}$)
 
-Given the medium's multivector wavefield $\Psi(\mathbf{x}, t) = R(\mathbf{x}, t)\,\mathcal{U}(\mathbf{x}, t)$ (where $R = \sqrt{p^2 + \epsilon_0^2}$ is the regularized wave envelope and $\mathcal{U} \in \text{Spin}(3,0,1)$ is the local field rotor), the **Clifford Quantum Potential** (Hiley & Callaghan 2010) decomposes into a Grade-0 scalar potential and a Grade-2 bivector spin-torque:
+In classical game engineering, directing autonomous characters requires complex navigation meshes, pathfinding search trees (A*), and hardcoded behavioral state machines. In Bohmian mechanics, guidance is an emergent physical property of **Active Information**.
+
+Given the medium's multivector wavefield $\Psi(\mathbf{x}, t) = R(\mathbf{x}, t)\,\mathcal{U}(\mathbf{x}, t)$ (where $R = \sqrt{p^2 + \epsilon_0^2}$ is the regularized wave envelope and $\mathcal{U} \in \text{Spin}(3,0,1)$ is the local field rotor), the **Clifford Quantum Potential** (Hiley & Callaghan 2010) decomposes into a Grade-0 scalar guidance potential and a Grade-2 bivector spin-torque:
 
 $$\mathcal{Q}_{\text{Cl}}(\mathbf{x}, t) = -\left(\nabla^2 \Psi\right)\Psi^{-1} = \underbrace{-\frac{\nabla^2 R}{R}}_{\text{Scalar Guidance } \langle \mathcal{Q}_{\text{Cl}} \rangle_0} - \underbrace{\left(2(\nabla \ln R)\,\mathcal{U}\nabla\widetilde{\mathcal{U}} + (\nabla^2 \mathcal{U})\widetilde{\mathcal{U}}\right)}_{\text{Bivector Spin-Torque } \langle \mathcal{Q}_{\text{Cl}} \rangle_2}$$
 
 Every holon responds to $\mathcal{Q}_{\text{Cl}}$ through two coupled bilinear equations of motion:
 1. **Linear Bohmian Guidance Force:**
    $$\mathbf{F}_{Q,i} = -\kappa_Q \nabla \langle \mathcal{Q}_{\text{Cl}}(\mathbf{x}_i, t) \rangle_0$$
-   Because $R$ cancels in $\nabla^2 R / R$, $\langle \mathcal{Q}_{\text{Cl}} \rangle_0$ is **scale-invariant**: a subtle goal beacon carves a guidance valley across the scene without requiring high-energy pressure shockwaves.
+   Because wave amplitude $R$ cancels in $\nabla^2 R / R$, $\langle \mathcal{Q}_{\text{Cl}} \rangle_0$ is **scale-invariant**: a subtle goal beacon carves a gentle guidance valley across the scene without requiring explosive pressure shockwaves.
 2. **Rotational Bivector Spin-Torque:**
    $$\Omega_{Q,i} = \mathbf{s}_i \wedge \left(-\nabla \langle \mathcal{Q}_{\text{Cl}}(\mathbf{x}_i, t) \rangle_0\right) + \eta_{\text{spin}}\langle \mathcal{Q}_{\text{Cl}}(\mathbf{x}_i, t) \rangle_2$$
    $$M_{i,\text{root}}(t + \Delta t) = M_{i,\text{root}}(t)\,\exp\!\left(-\frac{1}{2}\gamma_Q\,\Omega_{Q,i}\,\Delta t\right)$$
-   This single algebraic law aligns an actor's heading $\mathbf{s}_i = M_{i,\text{root}} e_1 \widetilde{M}_{i,\text{root}}$ along open corridors, curves trajectories smoothly around high-impedance obstacles, and imparts rotational posture without A* search trees or hardcoded splines.
+   Like water flowing naturally through a carved riverbed, this single algebraic law aligns an actor's heading $\mathbf{s}_i$ along open corridors, curves trajectories smoothly around high-impedance obstacles, and imparts rotational posture without A* search trees or hardcoded splines.
 
 ---
 
@@ -220,11 +210,8 @@ Whenever the engine reasons over character identities and articulated kinematics
 * **Closed-Form Lie Automorphisms:** Articulated motion, squash-and-stretch ($\det S = 1$), and Line of Action spinal curves ($L_{\text{spine}} \in \mathbb{G}_{3,0,1}$) are evaluated via closed-form PGA screw motors $M = \exp(-\frac{\theta}{2} L)$ on $\text{Spin}(3,0,1)$ at **$\le 0.05\text{ ms}$**.
 * **Symbolic Verb Grounding:** Compact $\text{Pin}(3,0,1)$ GATr operators are strictly reserved for mapping high-level natural language verbs (`"Mrs. Brisby approaches the amulet"`) to initial $\mathcal{Q}_{\text{Cl}}$ attractor beacons and motor impulses $\Delta B_i$.
 
-#### Stratum 3: Continuous Spatiotemporal Evolution $\implies$ Closed-Form `Dzog` + `Holon` Lattice
-Time stepping never passes through a neural network. The closed-form GPU wave-matter lattice (`implicate-field`) integrates the de Broglie soliton wave equations and holon kinematics deterministically at $60\text{–}1,000+\text{ Hz}$.
-
-#### Stratum 3: Continuous Spatiotemporal Evolution $\implies$ Closed-Form `Dzog` + `Holon` Lattice
-Time stepping never passes through a neural network. Once `GATr` emits the verb's active-information beacon parameters ($\mathcal{Q}_{\text{Cl}}$ attractors/repellers) and motor impulses ($\Delta B_i$), the closed-form GPU lattice (`implicate-field`) integrates the wave equations and holon kinematics deterministically.
+#### Stratum 3: Continuous Spatiotemporal Evolution $\implies$ Closed-Form GPU Wave-Matter Lattice
+Time-stepping never passes through a neural network. In traditional video generation models, advancing one second of video requires running 20 to 50 iterations of a multi-billion-parameter neural network across multiple transformer layers, consuming hundreds of milliseconds per frame. In `ImplicateModel`, continuous evolution is strictly physical: once GATr or the player controller emits the active-information beacons ($\mathcal{Q}_{\text{Cl}}$ attractors/repellers) and motor impulses ($\Delta B_i$), the closed-form GPU lattice ([`implicate-field`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-field)) integrates the de Broglie soliton wave equations, Bohmian guidance, and PGA rigid body kinematics deterministically at $60\text{--}1,000+\text{ Hz}$. Physics is executed where it belongs: on the GPU compute pipeline, with exact conservation of energy and momentum.
 
 ---
 
@@ -568,71 +555,66 @@ To keep our engineering grounded, we explicitly separate what is **already prove
 
 ---
 
-## 10. Key Systems & Mathematical Insights from Empirical Implementation (`R1`–`R7`)
+## 10. Key Systems & Mathematical Insights from Empirical Implementation (`R1`–`R10`, `Track S`)
 
-Across the 18 milestones and 36 verification gates spanning Tracks `R1`–`R7`, seven non-obvious systems and mathematical principles proved decisive:
+Across the 18 research milestones and empirical verification gates spanning Tracks `R1` through `R10` and the evolution into `Track S`, ten non-obvious systems and mathematical principles proved decisive for real-time throughput, mathematical rigor, and visual fidelity:
 
-### 10.1 Hann-Windowed Dirac-Spinor CFT & Algebraic HUD Holon Separation (`R2.1`–`R2.2`)
-* **Failure Mode of Raw Luminance FFTs:** Standard phase correlation over raw luminance fails simultaneously on scrolling games with uniform sky bands (*SMB3*) and games with stationary HUD borders (*SMB3*, *Pac-Man*): zero-padded image boundaries create false stationary spectral peaks, while uniform sky strips yield degenerate zero-gradient phase.
-* **Clifford Solution:** Lifting each viewport band into a Hann-windowed 2D Dirac-Spinor field $\Psi(x,y) = w_x(x)w_y(y)[0.35(L-\bar{L}) + \partial_x L + \partial_y L\,\mathbf{e}_{12}] \in \mathbb{G}_{2,0}^+$ eliminates boundary cliffs and DC sky bias. Furthermore, rather than cropping HUDs with brittle per-game heuristics, any border band whose CFT trajectory remains stationary in screen space while the interior world translates is algebraically promoted to a **Camera-Locked HUD Holon** ($M_{\text{hud}}(t) = M_{\text{cam}}(t)$, $1/z \to \infty$). During unfoldment, this same HUD holon locks with `0.0000 px` drift while its internal state idempotents (e.g., score counters) update dynamically from Bohmian work and collision events (`R6.1`).
+### 10.1 Hann-Windowed Dirac-Spinor CFT & Algebraic HUD Separation (`R2.1`–`R2.2`)
+Textbook phase correlation over raw luminance assumes periodic boundary conditions—an assumption that collapses immediately when applied to video games or cinematic film pans. Sharp image borders act as infinite-frequency step cliffs, producing spurious stationary spectral peaks. Worse, broad uniform sky bands (such as the open blue sky of *Super Mario Bros 3*) lack gradient energy, yielding degenerate, noisy phase spectra. Meanwhile, static on-screen HUD elements (score counters, life bars, mini-maps) pull the dominant Fourier peak toward zero velocity, blinding camera estimators to actual world motion.
+
+Rather than chasing fragile per-game heuristics, `ImplicateModel` lifts each spatial band into a Hann-windowed 2D Dirac-spinor field:
+$$\Psi(x, y) = w_x(x)w_y(y)\Big[\big(0.35(L - \bar{L}) + \partial_x L\big) + \partial_y L\,\mathbf{e}_{12}\Big] \in \mathbb{G}_{2,0}^+$$
+The Hann envelope smoothly tapers boundaries to zero, erasing artificial border steps, while the Clifford bivector term ($\partial_y L\,\mathbf{e}_{12}$) preserves gradient curl and directional orientation even across faint cloud textures. Furthermore, HUD separation is handled algebraically: any border band whose Continuous Fourier Transform (CFT) trajectory remains stationary in screen space while the interior world translates is promoted to a **Camera-Locked HUD Holon** ($M_{\text{hud}}(t) = M_{\text{cam}}(t)$, $1/z \to \infty$). During unfoldment, this HUD holon locks with `0.0000 px` drift while its internal score counters update dynamically from Bohmian momentum events.
 
 ### 10.2 Gram-Matrix Jacobi SVD for Open-Ended Online Concept Assimilation (`R1.3`, `R6.1`)
-* **The Dynamic Vocabulary Problem:** When `Qwen2.5-VL` inspects a new film or game shot, it discovers previously unseen nouns, visual appearances, and action verbs, expanding the raw feature dimension $D_{\text{dyn}}$.
-* **Clifford Solution:** By computing the thin symmetric Jacobi SVD on the $N \times N$ clause Gram matrix $G_{mn} = \hat{\mathbf{e}}_m^\top \hat{\mathbf{e}}_n$ rather than the $D_{\text{dyn}} \times D_{\text{dyn}}$ feature covariance, `ConceptLexicon::learn_from_shot` assimilates arbitrary new visual concepts online while projecting every concept into a fixed 16-channel wording-space spinor $\psi \in (\mathbb{G}_{2,0}^+)^{16}$. At unfold time, `VerbPotentialLexicon::resolve` matches open-vocabulary prompt verbs to learned $\mathcal{Q}_{\text{Cl},v}$ potentials via the coordinate-free bilinear scalar inner product $\langle \psi_{\text{query}} \widetilde{\psi}_{\text{entry}} \rangle_0$.
+In conventional machine learning, embedding models operate over fixed-dimension feature vocabularies. When an agent encounters novel nouns, dynamic visual appearances, or unfamiliar actions across different games or cinematic shots, standard feature covariance matrices expand with feature dimension ($D_{\text{dyn}} \times D_{\text{dyn}}$), triggering memory reallocations, costly weight retraining, and dimensional drift.
+
+By formulating concept assimilation through the thin symmetric Jacobi SVD on the $N \times N$ clause Gram matrix ($G_{mn} = \hat{\mathbf{e}}_m^\top \hat{\mathbf{e}}_n$) rather than the feature covariance, computational complexity scales strictly with the number of observed semantic clauses $N$, completely independent of the underlying feature dimension. `ConceptLexicon::learn_from_shot` assimilates arbitrary new visual concepts online, projecting every discovered entity into a fixed 16-channel wording-space spinor $\psi \in (\mathbb{G}_{2,0}^+)^{16}$. At unfoldment time, matching prompt verbs to learned physical potentials reduces to a hardware-friendly, coordinate-free bilinear scalar inner product $\langle \psi_{\text{query}} \widetilde{\psi}_{\text{entry}} \rangle_0$, evaluating semantic similarity at tens of thousands of queries per second.
 
 ### 10.3 Projective-Join Orthonormal Triad in $\text{Pin}(3,0,1)$ `GATr` (`R3.2`)
-* **Degeneracy of the Pure Geometric Product in PGA:** Because $e_0^2 = 0$ in $\mathbb{G}_{3,0,1}$, the geometric product $X_A X_B$ of two Euclidean point trivectors discards their translational offset vector.
-* **Clifford Solution:** Constructing an explicit local orthonormal triad $[\mathbf{u}_{\text{rel}}, \mathbf{n}_{\text{up}}, \mathbf{u}_{\text{tang}}]$ from the normalized projective join $P_A \vee P_B = (X_A^* \wedge X_B^*)^*$ inside `GatrVerbBinder` guarantees that predicted relative target offsets and motor generators commute exactly with arbitrary 3D rigid motions $(R, \mathbf{t}) \in E(3)$, achieving `0.00%–0.02%` out-of-distribution trajectory error even from a single training demonstration ($N_{\text{train}} = 1$).
+Projective Geometric Algebra ($\mathbb{G}_{3,0,1}$) unifies translations and rotations under a single Lie motor group, but harbors a subtle trap for neural networks: because the projective origin blade squares to zero ($e_0^2 = 0$), the naive geometric product $X_A X_B$ of two Euclidean point trivectors discards their translational offset vector. Standard geometric neural networks relying on raw multivector products lose track of relative spatial separation between actors.
+
+Inside `GatrVerbBinder`, the network explicitly constructs a local orthonormal triad $[\mathbf{u}_{\text{rel}}, \mathbf{n}_{\text{up}}, \mathbf{u}_{\text{tang}}]$ derived directly from the normalized projective join $P_A \vee P_B = (X_A^* \wedge X_B^*)^*$. By anchoring relational representations to the dual join blade rather than the degenerate geometric product, predicted relative offsets and Lie motor generators commute exactly with arbitrary 3D rigid motions $(R, \mathbf{t}) \in E(3)$. In empirical benchmarks, this formulation achieved `0.00%–0.02%` out-of-distribution trajectory error even when trained on a single demonstration clip ($N_{\text{train}} = 1$), whereas unconstrained MLPs suffered over $100\%$ error.
 
 ### 10.4 Symplectic Canonical-Relative Bohmian Guidance Decoupled from FDTD CFL Substeps (`R4.1`, `R4.3`)
-* **Multi-Rate Stiffness:** The GPU wave-matter lattice requires Courant-Friedrichs-Lewy (CFL) substeps on a $256 \times 256$ staggered Yee grid, whereas learned verb potentials $\mathcal{Q}_{\text{Cl},v}(\mathbf{x}_{\text{rel}}, \tau)$ govern smooth macroscopic trajectories over normalized clip time $\tau \in [0, 1]$. Stepping holons in raw world pixels with first-order Euler integration causes cumulative phase drift when perturbed by wave pressure.
-* **Clifford Solution:** Integrating each active verb binding in the target's canonical relative PGA frame (`CanonicalRelFrame`, normalized by $L_{AB} = \|P_A(t_0) \vee P_B(t_0)\|$) using symplectic **Velocity-Verlet** steps—while applying zero-readback GPU wave-lattice force/flow reductions (`GpuHolonReduction`) as bounded physical perturbations—preserves `< 0.7%` normalized Fréchet verb adherence alongside $100\%$ PGA boundary compliance (`P_i \wedge B_k = 0`) at `127–346+ FPS`.
+Coupling a macroscopic agent trajectory to a microscopic fluid or wave simulation is a classic multi-rate stiffness challenge in physics engines. The GPU wave-matter lattice requires fine Courant-Friedrichs-Lewy (CFL) substeps on a $256 \times 256$ staggered Yee grid to preserve numerical stability, whereas learned verb potentials $\mathcal{Q}_{\text{Cl},v}(\mathbf{x}_{\text{rel}}, \tau)$ govern smooth, macroscopic character motion over normalized clip time $\tau \in [0, 1]$. Stepping holon positions directly in raw screen coordinates using naive first-order Euler integration creates cumulative phase lag, causing characters to drift off course or vibrate when subjected to wave pressure.
+
+The engine integrates active verb bindings inside the target's canonical relative PGA frame (`CanonicalRelFrame`, normalized by the initial characteristic blade span $L_{AB} = \|P_A(t_0) \vee P_B(t_0)\|$). By advancing holon motors using symplectic **Velocity-Verlet** integration while treating zero-readback GPU wave-lattice reductions (`GpuHolonReduction`) as bounded physical perturbations, the system preserves high trajectory fidelity (`< 0.7%` normalized Fréchet error) alongside strict boundary compliance ($P_i \wedge B_k = 0$) at `127–346+ FPS`.
 
 ### 10.5 Fused Workgroup-Tiled No-FFN `CliffordNet-Lite` WGSL Compute Kernel (`R3.3`)
-* **Memory-Bandwidth Bottleneck:** Executing 4 blocks of $3 \times 3$ depthwise Laplacian convolutions and 5-shift geometric products ($D^{(s)} \oplus W^{(s)}$, $\mathcal{S} = \{1, 2, 4, 8, 16\}$) as separate GPU dispatches at $1920 \times 1080$ would require 24 full-frame VRAM read/write passes per frame.
-* **Systems Solution:** Fusing all 4 `CliffordNet-Lite` blocks into a single $18 \times 18$ shared-memory (`var<workgroup>`) WGSL compute shader (`cliffordnet_rolpa.wgsl`, $16 \times 16$ interior + 1-pixel halo) keeps all intermediate multivector activations in fast on-chip SRAM. A full 1080p 4-block refinement pass executes in **`0.4595 ms/frame`** (`2,176.4 FPS`) on the RTX 4090 with **`+5.37 dB`** PSNR gain and zero temporal flicker ($E_{\text{warp}} = 0.000011$).
+The standard deep learning recipe for video generation relies on cascading multi-layer neural networks, repeatedly dispatching kernels that read full-frame feature activations from global VRAM and write them back out. For a 4-block neural refiner evaluating $3 \times 3$ depthwise convolutions and 5-shift geometric products ($D^{(s)} \oplus W^{(s)}$) at $1920 \times 1080$, separate kernel dispatches would demand 24 full-frame VRAM round-trips per frame—instantly choking GPU memory bandwidth.
+
+`ImplicateModel` fuses all four `CliffordNet-Lite` blocks into a single WGSL compute shader ([`cliffordnet_rolpa.wgsl`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-rolpa/src/cliffordnet_rolpa.wgsl)) structured around an $18 \times 18$ threadgroup tile with an on-chip shared-memory cache (`var<workgroup>`, encompassing a $16 \times 16$ active interior plus a 1-pixel halo). Intermediate multivector activations never touch global VRAM; they reside entirely in ultra-fast L1/shared SRAM. This fused architecture executes a full 1080p 4-block refinement pass in just **`0.4595 ms`** (`2,176.4 FPS`) on the RTX 4090, delivering a **`+5.37 dB`** PSNR improvement with an imperceptible temporal warping error ($E_{\text{warp}} = 0.000011$).
 
 ### 10.6 Sub-Sample PGA Incidence Timing for Zero-Drift Modal Audio (`R4.2`)
-* **Frame-Rate Quantization Jitter:** Triggering collision audio only at integer video frame boundaries ($60\text{ Hz} \implies 16.67\text{ ms}$ quantization) produces audible synchronization jitter against visual contact.
-* **Systems Solution:** When a PGA boundary incidence ($P_i \wedge B_k = 0$) produces a Bohmian momentum impulse $\Delta \mathbf{P}_B$, `AcousticRolpaProjector` computes the exact sub-frame sample index (`onset_delay_samples` within the 800-sample $48\text{ kHz}$ frame slice) and excites a 4-partial modal resonator bank tuned to the struck holon's constitutive wave speed $f_0 = 440\sqrt{K/\rho}$, achieving **`0.0000 ms`** audio-visual synchronization error and `0` buffer underruns.
+In conventional game engines, physical collision events are detected and reported at discrete video frame ticks. At $60\text{ Hz}$, this introduces up to $16.67\text{ ms}$ of temporal quantization jitter between visual contact and audio playback. To human perception, audio that lags or jitters by even $10\text{ ms}$ destroys the physical illusion of impact, making collisions feel sluggish or disconnected.
+
+When a PGA boundary incidence ($P_i \wedge B_k = 0$) triggers a Bohmian momentum discontinuity $\Delta \mathbf{P}_B$, `AcousticRolpaProjector` calculates the exact fractional sub-frame sample index (`onset_delay_samples` within the 800-sample $48\text{ kHz}$ frame buffer). The engine immediately triggers the stored transient Foley sample at that exact sub-frame offset, exciting the struck holon's constitutive modal resonance ($f_0 = 440\sqrt{K/\rho}$). This achieves **`0.0000 ms`** audio-visual synchronization error with zero buffer underruns, locking sound and sight into an unbroken causal unity.
 
 ### 10.7 Multi-Actor Pairwise PGA Assimilation & $\text{Spin}(2) \times S^1$ View-Idempotent Selection (`R7.1`)
-* **Beyond Single-Actor Templates:** Extracting multiple persistent foreground tracks (`extract_character_observation_tracks`) and snapping verb windows to bottom-up Bohmian momentum discontinuities (`detect_cft_kinematic_impulses`) enables `assimilate_clip_into_manifest` to learn true two-body pairwise relative PGA potentials ($M_{\text{rel}}(t) = \widetilde{M}_B(t) M_A(t)$, `enfolded_pair_<clip_id>`) directly from ingested video. During unfoldment, indexing each sub-holon's 5-mode CFT wavepacket bank by geodesic rotor and gait-phase coherence on $\text{Spin}(2) \times S^1$ (`select_view_idempotent_observation_index`) smoothly transitions across discrete posture idempotents $\epsilon_{s,\text{view}}$ without requiring a 3D mesh prior.
+Video generation models often treat characters as isolated bounding boxes or ungrounded pixel clusters. When multiple actors interact—such as a character leaping over an obstacle or an enemy pursuing a hero—single-actor templates fail to capture the shared relational dynamics. Furthermore, hand-drawn characters rotate and turn without conforming to a single rigid 3D mesh.
+
+The geometric lifter extracts persistent foreground tracks across multiple concurrent actors and automatically segments relational interaction windows at Bohmian momentum discontinuities. By computing relative Lie motors $M_{\text{rel}}(t) = \widetilde{M}_B(t) M_A(t)$, the engine assimilates genuine pairwise geometric potentials directly from unannotated video. During unfoldment, sub-holon wavepacket banks are indexed through geodesic rotor distance and gait-phase coherence on $\text{Spin}(2) \times S^1$ (`select_view_idempotent_observation_index`), enabling characters to transition cleanly across discrete viewing idempotents $\epsilon_{s,\text{view}}$ without requiring artificial 3D mesh approximations.
 
 ### 10.8 The Hiley–Carmack Clifford Idempotent Soliton & Don Bluth Model Sheet Synthesis (`R10`)
-* **The Pipeline Fallacy & Mechanical Sympathy:** Cascading 5-pass computer vision pipelines (background $\to$ edge $\to$ tracking $\to$ SVD $\to$ wavepackets) create cumulative phase errors and memory churn. Furthermore, deep transformer networks (GATr with 20 layers, CliffordNet with multi-layer tokenization) approximate 3D kinematics at high latency when PGA screw motors ($M = \exp(-\frac{\theta}{2} L)$ on $\text{Spin}(3,0,1)$) evaluate exact rigid and articulated motion in 4 SIMD multiply-adds.
-* **Unified CIS Solution:**
-  1. **64-Byte Cache Alignment:** Every holon node is packed into [`Mv301`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-math/src/g301.rs#L17-L19) (`[f32; 16]`), matching an exact AVX-512 register and GPU cache line.
-  2. **Dual Geometric Product Duality ($uv = u \cdot v + u \wedge v$):** Exterior wedge vorticity $u \wedge \nabla^2 u = 0$ isolates animated film ink lines without gradient thresholds, preserving 100% of detached props, capes, and trailing tails. Inner product $u \cdot \nabla^2 u$ isolates cel paint fills and process density $\rho = \text{tr}(\rho_c)$.
-  3. **Zero Magic Constants:** Statistical lattice noise floors ($\tau = \text{median} + 3.0 \times \text{MAD}$) and Hiley CDE bilinear geodesic affinity $\mathcal{A}(\rho_1, \rho_2)$ eliminate all arbitrary integer cutoffs (`FOREGROUND_RESIDUAL = 26`, `MIN_COMPONENT_FRACTION = 4`, `MAX_EXTENT_RATIO = 1.6`, `spread <= 0.5 * mean_extent`).
-  4. **Closed-Form Don Bluth Model Sheet Induction:** Canonical turnaround aspects are discovered algebraically as the primitive orthogonal idempotents $\{\epsilon_v\}$ of the temporal covariance operator $\Gamma = \sum \sigma_k \epsilon_k$, with transitions $T_{u \to v} = \epsilon_v M \epsilon_u$ executed in closed form with zero SGD.
-  5. **Real-Time Single-Pass GPU Compute Unfolding:** Evaluating the wavepacket field directly in a WGSL compute shader delivers $\ge 120\text{ FPS}$ at 1080p on an RTX 4090 with zero temporal flicker.
+In computer graphics and vision, complexity often masquerades as sophistication. Traditional pipelines chain together background subtraction, edge detection, optical flow, SVD tracking, and neural skinning, creating a fragile cascade where errors compound at every stage. Similarly, large diffusion and transformer models burn gigawatts trying to statistically approximate spatial transformations that are fundamentally algebraic.
+
+Grounded in John Carmack's mechanical sympathy and Basil Hiley's Clifford process physics, the engine unifies representation and computation around three core principles:
+1. Every geometric holon is packed into a 64-byte [`Mv301`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-math/src/g301.rs#L17-L19) struct (`[f32; 16]`), aligning perfectly with CPU AVX-512 vector registers and GPU cache lines.
+2. The Clifford geometric product duality ($uv = u \cdot v + u \wedge v$) splits image structure at the mathematical level: exterior wedge vorticity ($u \wedge \nabla^2 u$) extracts razor-sharp ink contour lines without arbitrary thresholds, while the inner product ($u \cdot \nabla^2 u$) isolates smooth cel paint fills and process vitality $\rho = \text{tr}(\rho_c)$.
+3. Canonical turnaround views are discovered as primitive orthogonal idempotents $\{\epsilon_v\}$ of the temporal covariance operator, allowing view transitions ($T_{u \to v} = \epsilon_v M \epsilon_u$) to execute in closed-form Lie algebra with zero stochastic gradient descent.
 
 ### 10.9 Asymmetric Co-Design, Volume Conservation, & Discrete Aspect Decoupling (`R10.4`)
-* **The Asymmetric Co-Design Architecture:**
-  * **CPU SIMD (Stratum 2 & 3):** Evaluates discrete primitive idempotent aspect selection ($\epsilon_v$) and Lie transition operators ($T_{u \to v} = \epsilon_v M \epsilon_u$) based on velocity vector heading $\mathbf{v} \in \mathbb{R}^2$ on $\text{Spin}(2)$ reference rotors ($R_{\text{ref}, v}$), passing `active_view` in uniform parameters.
-  * **GPU WGSL Compute (Stratum 1):** Single-pass fused `@compute @workgroup_size(16, 16, 1) fn unfold_monads(...)` in `cliffordnet_rolpa.wgsl` evaluating flat 1,216-byte `GpuModelSheetMonad` (19 `Mv301` monads) in $O(1)$ constant time per pixel with strict volume conservation ($\det S = 1$) and animated film ink contour blades ($|u \wedge \nabla^2 u|$) vs cel paint fills ($u \cdot \nabla^2 u$).
-  * **Empirical Throughput:** Benchmarked at **$37,467.7\text{ FPS}$** ($0.0267$ ms/frame) on an NVIDIA GeForce RTX 4090 Laptop GPU ($> 300\times$ faster than the $120\text{ FPS}$ target).
-* **Decoupling Discrete Orthogonal Turns from Continuous Fourier Deformations:**
-  * **The Continuous Fourier Trap:** Forcing discrete orthogonal sprite turns into a continuous Fourier basis ($\phi \in S^1$, $w_0 + w_1 \cos\phi + \dots$) causes multi-harmonic Gibbs ringing and alpha threshold bleed across discrete aspect transitions, dropping reconstruction fidelity to $\text{IoU} \approx 0.75$.
-  * **General Perspective Rotor Alignment:** Evaluating velocity heading unit rotors $\hat{\mathbf{v}} = (\cos\theta_v, \sin\theta_v)$ and projecting onto canonical turnaround aspects via $\text{active\_view} = \arg\max_v \langle \hat{\mathbf{v}}, R_{\text{ref}, v} \rangle$ generalizes to **any camera perspective and heading direction** without forcing orthogonal turns into continuous phase deformation. Achieved **$\text{IoU} = 1.0000$** and **$\text{LPIPS} = 0.0000$** on discrete arcade turns (Pac-Man).
-* **Volume Conservation ($\det S = 1$) Under Continuous Gait Deformations:**
-  * Scaling longitudinal radii by $s(\phi)$ and transverse radii by $1/s(\phi)$ relative to geometric mean reference area $A_{\text{ref}} = \exp\left(\frac{1}{N} \sum \ln(r_u r_v)\right)$ guarantees $\det S = 1$ identically across gait phase $\phi \in S^1$.
-  * Verified continuous gait reconstruction: **$\text{IoU} = 0.9995$**, **$\text{LPIPS} = 0.0001$** on SMB3 Mario walk/jump cycles, and **$\text{IoU} = 0.9964$**, **$\text{LPIPS} = 0.0009$** on Don Bluth's Mrs. Brisby billowing cape turnarounds.
-* **Mutual Exclusivity of Ink Blades and Cel Paint Fills:**
-  * Dual geometric product decomposition ($u \nabla^2 u = u \cdot \nabla^2 u + u \wedge \nabla^2 u$) creates razor-sharp boundary partitions with **zero pixel overlap** (`ink_pixels = 104, cel_pixels = 77, overlap_pixels = 0`).
+Attempting to force discrete character turns into a continuous Fourier series ($\phi \in S^1$, $w_0 + w_1\cos\phi + \dots$) is a classic engineering trap. When a sprite flips from left to right, continuous harmonics produce severe Gibbs ringing, alpha threshold bleed, and visual ghosts (dropping reconstruction fidelity to $\text{IoU} \approx 0.75$). Similarly, unconstrained geometric scaling causes characters to balloon or shrink unnaturally during animation cycles.
+
+The engine divides labor asymmetrically between CPU and GPU. The CPU handles discrete aspect selection ($\epsilon_v$) and Lie transition operators based on velocity heading unit rotors $\hat{\mathbf{v}} \in \text{Spin}(2)$, projecting onto canonical aspects via $\arg\max_v \langle \hat{\mathbf{v}}, R_{\text{ref},v} \rangle$. This decouples discrete orthogonal turns from continuous deformation, achieving perfect reconstruction ($\text{IoU} = 1.0000$, $\text{LPIPS} = 0.0000$) on arcade turns. Meanwhile, continuous squash-and-stretch during walk and jump cycles enforces strict volume conservation ($\det S = 1$) by scaling longitudinal radii by $s(\phi)$ and transverse radii by $1/s(\phi)$ relative to the mean area $A_{\text{ref}}$. The GPU evaluates these flat 1,216-byte monad descriptions in a single fused compute pass at **$37,467.7\text{ FPS}$** ($0.0267\text{ ms/frame}$), proving that rigorous algebra and hardware alignment surpass brute-force computation.
 
 ### 10.10 The Storybook & Playable World Engine Synthesis (Track S Architecture)
-* **The Transition from Track R10 to Track S:**
-  Empirical benchmarking of generative unfolding on *Super Mario Bros 3* (`smb3_mario_generative_unfold.mp4`) and *The Secret of NIMH* (`nimh_brisby_generative_unfold.mp4`) identified two fundamental visual failure modes:
-  1. *Mario Mass Amputation (87.3% Character Mass Missing):* The heuristic `dimensional_opening_radius` evaluated $r_B = 1$ on thin features (`hist[1] > 0`), erasing Mario's boots, overalls, and cap brim as spurious 1D filaments.
-  2. *Brisby Background Inversion (Sky Extracted as Actor):* During stationary camera holds ($t = 0 \dots 7$), temporal mode accumulation baked the character into the background atlas. When the actor moved, the newly revealed vacuum corridor produced a massive residual $\Delta \Psi \gg \tau$, inverting the figure-ground relationship and trapping sunset sky inside the character model.
-* **The Five Track S Milestones:**
-  Track S organizes the Implicate Model into an empirical, zero-magic-number engine supporting both narrative remixing and real-time interactive play:
-  * **Milestone S1 (Zero-Artifact Visual Plenum & Model Sheet Unfoldment):** Eliminates `dimensional_opening_radius` limb erosion by defaulting $r_B = 0$ for thin sprites, extracts silhouette boundaries via the topological Line of Action envelope, disoccludes trapped background cavities $\Delta(C_k)$, and purges perimeter compression noise ($< 4\text{ px}$).
-  * **Milestone S2 (Spatiotemporal Character Tube Inpainting & Multi-Plane Atlases):** Builds global actor tubes $\mathcal{T}_{\text{actor}} = \bigcup_t \operatorname{supp}(\Psi_{\text{actor}}(t))$ across all frames and computes harmonic inpainting ($\nabla^2 I = 0$) across the vacuum corridor, guaranteeing pristine, ghost-free background atlases under stationary camera holds.
-  * **Milestone S3 (Mode A — Generative Storybook Engine):** Evaluates autonomous narrative remixing of feature animation clips (*The Secret of NIMH*) into novel story sequences governed by scale-invariant Bohmian active information $\mathcal{Q}_{\text{Cl}}$ and Don Bluth Character Board Model Sheets.
-  * **Milestone S4 (Mode B — The Playable Game Engine):** Injects real-time player controller inputs ($v_x, v_y, \text{jump}$) directly into the actor's Clifford Lie motor on $\text{Spin}(3,0,1)$ at $\ge 60\text{--}120+\text{ FPS}$, evaluating solid platform support and rebound via projective incidences $P \wedge \Pi = 0$ and Fresnel rotor reflections $v' = \Pi v \widetilde{\Pi}$ without any external Cartesian collision engine.
-  * **Milestone S5 (Universal Empirical Benchmarking & Contact Sheet Validation):** Verifies the unified engine across 2D arcade classics (*Pac-Man*, *SMB3*, *Raptor*), 2.5D multi-plane cinema (*The Secret of NIMH*), and 3D camera-tracked environments with zero per-game heuristic branching.
-* **Mechanical Sympathy & Unified 3D Pregeometry:**
-  By anchoring all spatial calculations in 3D Projective Geometric Algebra ($\mathbb{G}_{3,0,1}$, 16 basis blades, 64-byte [`Mv301`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-math/src/g301.rs#L17-L19) monad), 2D and 2.5D games are exact planar sub-algebras ($z = \text{const}$, $e_3 = 0$) of the same engine. A single hardware-sympathetic SIMD/GPU codebase executes both feature animation remixing and interactive gaming at native frame rates.
+Empirical stress testing on real-world video benchmarks (*Super Mario Bros 3* and *The Secret of NIMH*) revealed two subtle failure modes that arise when textbook image processing meets real animation. First, morphological opening algorithms eroded thin pixel art structures, misclassifying Mario's boots, overalls, and cap brim as 1D noise filaments and deleting 87.3% of the character's mass. Second, when an animated character paused during a hold, temporal mode accumulation baked the character into the background atlas. When the actor subsequently moved, the newly revealed scenery created a massive residual spike that inverted the figure-ground relationship, extracting the sunset sky as if it were the character.
+
+Track S resolves these anomalies by treating the video plenum as an implicate continuum governed by five unified milestones:
+1. *Milestone S1 (Plenum & Model Sheet Integrity):* Eliminates morphological limb erosion by defaulting opening radius $r_B = 0$ on thin features, establishes anatomical envelopes via the Line of Action spine $L_{\text{spine}}$, purges perimeter compression noise ($< 4\text{ px}$), and algebraically disoccludes enclosed background cavities $\Delta(C_k)$.
+2. *Milestone S2 (Spatiotemporal Tube Inpainting):* Tracks the global actor union tube $\mathcal{T}_{\text{actor}}$ across all frames and computes harmonic inpainting ($\nabla^2 I = 0$) across the occluded corridor, guaranteeing pristine, ghost-free background atlases even under sustained camera holds.
+3. *Milestone S3 (Mode A — Generative Storybook Engine):* Empowers creators to remix feature animation into novel narrative chapters governed by scale-invariant Bohmian active information $\mathcal{Q}_{\text{Cl}}$ and Don Bluth model sheets with zero diffusion temporal flicker.
+4. *Milestone S4 (Mode B — The Playable Game Engine):* Directly streams real-time player controller inputs ($v_x, v_y, \text{jump}$) into the actor's Clifford Lie motor on $\text{Spin}(3,0,1)$ at $\ge 60\text{--}120+\text{ FPS}$, evaluating solid platform support and velocity reflection via projective incidences ($P \wedge \Pi = 0$) and Fresnel rotors ($v' = \Pi v \widetilde{\Pi}$) without any external physics or collision engine.
+5. *Milestone S5 (Universal Empirical Benchmarking):* Validates the engine across 2D arcade games, 2.5D multi-plane feature films, and 3D camera-tracked footage using visual contact sheets and strict regression gates. Rooted in 3D Projective Geometric Algebra ($\mathbb{G}_{3,0,1}$), one universal codebase handles flat sprites, multi-plane cel animation, and full 3D environments with zero heuristic branching.
