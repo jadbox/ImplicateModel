@@ -253,10 +253,59 @@
 
 ---
 
-## Future Track: Track R10.11 — Universal Spatiotemporal Atlas Inpainting & Loop Disocclusion (UPCOMING)
+## Track R10.11 — Universal Spatiotemporal Atlas Inpainting & Topological Loop Disocclusion (ACTIVE)
 
-> **The Next Frontier Challenge:**
-> 1. **Temporal Mode Background Contamination:** When an actor holds a pose for $>50\%$ of a temporal window, the body bakes into `recon_bg`. Future atlas construction should exclude pixels within active actor bounding tracks from temporal mode voting.
-> 2. **Topological Loop Disocclusion:** When a limb or prop forms a loop enclosing background (e.g. Brisby's arm and rope), morphological fills can trap background inside. A universal connectivity/convexity decomposition can identify and punch through enclosed background regions using outer vacuum priors.
+> **Critical Frame-Content Inspection Summary (`generative_output/`):**
+> 1. **Trapped Yellow Sunset Sky Cavity ($150\text{--}331\text{ px/frame}$):**
+>    In Mrs. Brisby turnaround frames $8..16$, her arm, paw, rope, and torso form a closed 1-cycle bounding a $20 \times 30\text{ px}$ cavity of yellow sunset sky ($[225, 135, 52]$). In `dominant_silhouette`, 8-connected flood fill absorbs the sky cavity directly into her body mass ($8.6\%\text{--}15.7\%$ of total character pixels), baking yellow sky into the GPU unfold.
+> 2. **Boundary Ringing Specks ($30\text{--}56\text{ isolated specks/frame}$):**
+>    In `envelope_silhouette`, contiguous satellites with $\text{dist} \le 2.5\text{ px}$ had no minimum area check (`comp_sz >= 1`), retaining $1\text{--}2\text{ px}$ compression ringing specks around the perimeter. In frame 09 alone, 51 floating 1-pixel specks were kept.
+> 3. **Bypass of Dimensional Opening:**
+>    `dominant_silhouette` was bypassing `dominant_silhouette_with_core`, leaving the morphological opening filter disconnected.
+> 4. **Temporal Mode Background Contamination:**
+>    During speaking holds ($t=0..7$), Mrs. Brisby's torso was baked into `recon_bg` ($693\text{ fur px}$), causing exposed background to generate massive artificial residual spikes ($\Delta I \approx 134 \gg \tau$).
+> 5. **Undersized Presentation Viewport:**
+>    When frame 16's height reached $160\text{ px}$, scale collapsed to $1\times$, cramming the output into an undersized $118 \times 180$ canvas.
 
-> [!WARNING] **Open risk (deferred, not solved by R10.10):** The root cause #3 (holon baked into the temporal-mode background atlas during speaking holds) remains. R10.10b mitigates its symptom by not trusting the atlas alone. If artifacts persist, the next track should address the atlas directly (e.g. exclude pixels inside persistent actor boxes from the mode, or extend the temporal window so time-translation symmetry is broken).
+> **Dialectical Synthesis: John Carmack & Prof. Basil Hiley**
+>
+> **John Carmack:**
+> *"The frame-by-frame data tells the whole story:
+> 1. Look at line 1606 of `articulated_wavepacket/mod.rs`: `let intimately_contiguous = min_dist_to_primary <= 2.5;`. There is no size gate! A single dither pixel from video compression touching the boundary gets marked as a character limb. Adding `comp_sz >= 4` permanently kills all 50+ noise specks with a single integer check.
+> 2. The sky wedge is a closed loop. In frame 09, her arm and body form a closed loop enclosing 1,420 background pixels. Because the sky is trapped inside the convex hull of her gesture, a simple bounding-box filter can't remove it. But topologically, it's trivial: find connected components of the complement mask that don't touch the canvas boundary. If a cavity's mean color matches the Global Vacuum Plenum $\mathcal{V}$ rather than her Holon Palette $\mathcal{H}$, punch it out!
+> 3. And in `multiplane_atlas`: mask out actor bounding tubes across time. When an actor holds pose, don't let their body bake into the mode. Solve the occluded region with harmonic inpainting $\nabla^2 I = 0$ from the surrounding rock and sky."*
+>
+> **Prof. Basil Hiley:**
+> *"Precisely. In the implicate order, a holon is an intact topological 2-blade $\Sigma \in \mathbb{G}_{3,0,1}$.
+> When a holon flexes an appendage into a closed loop, the enclosed region is not holon mass; it is a disoccluded pocket of the ambient vacuum plenum $\mathcal{V}$.
+> The active information field $\mathcal{Q}$ distinguishes entity from plenum through chromatic likelihood:
+> $$\Delta(C_k) = \frac{1}{|C_k|} \sum_{p \in C_k} \left[ d(p, \mathcal{H}) - d(p, \mathcal{V}) \right]$$
+> When $\Delta(C_k) > 0$, the pocket belongs to the plenum and must be released from the soliton support.
+> Simultaneously, the background atlas $\Psi_{\text{bg}}$ must represent the unbroken vacuum manifold in the absence of excitation. Masking out actor trajectories and solving Laplace's equation ensures the plenum maintains its smooth harmonic ground state."*
+
+- [ ] **R10.11a — Topological Cavity Disocclusion (`morphology.rs`, `articulated_wavepacket/mod.rs`)**
+  - Implement `detect_enclosed_cavities`: flood-fill from raster borders to isolate all interior cavities $\{C_k\}$ enclosed by character silhouette boundaries.
+  - Implement `disocclude_vacuum_cavities`: evaluate chromatic likelihood ratio $\Delta(C_k)$ against Track Holon Palette $\mathcal{H}$ and Global Vacuum Plenum $\mathcal{V}$. If $\Delta(C_k) > 0$, punch out $C_k$ from the silhouette mask.
+  - Add unit tests verifying that closed appendage loops (e.g. Brisby arm holding rope) cleanly disocclude trapped sky cavities while preserving solid interior bodies.
+
+- [ ] **R10.11b — Wire Up Dimensional Opening & Boundary Speckle Filter (`articulated_wavepacket/mod.rs`)**
+  - Wire `dominant_silhouette_with_core` directly into `dominant_silhouette`.
+  - In `envelope_silhouette`, require `comp_sz >= 4` for contiguous satellites (`min_dist <= 2.5`), permanently eliminating the 30–56 isolated single-pixel/two-pixel compression specks per frame.
+
+- [ ] **R10.11c — Spatiotemporal Atlas Inpainting & Bake-In Purge (`multiplane_atlas/mod.rs`, `layer_accum.rs`)**
+  - Mask out active actor bounding tracks from temporal-mode accumulators in `build_multiplane_atlas`.
+  - When actor presence exceeds $50\%$ of temporal frames at a locus, inpaint the occluded background using harmonic minimal-gradient continuation ($\nabla^2 I = 0$) from ambient background boundaries.
+  - Verify that `bg_crop` behind stationary holds contains pure infilled plenum (rock/sky) with 0 fur texels.
+
+- [ ] **R10.11d — Crisp Presentation Scaling & Turnaround Gate Acceptance (`r10_model_sheet_gates.rs`)**
+  - Clamp NIMH presentation scaling to $\ge 2\times$ ($236 \times 360$ canvas), eliminating the cramped $1\times$ fallback.
+  - Verify turnaround gate metrics on real NIMH footage: Mean $\text{IoU} \ge 0.800$, Mean $\text{LPIPS} \le 0.055$.
+  - Run full workspace test suite to verify 0 regressions across all 61 tests (`cargo test --workspace --tests`).
+
+- [ ] **R10.11e — Generative Video Re-Export & Visual Verification (`generative_output/`)**
+  - Re-export all 4 generative comparison MP4s and PNG contact sheets to `./generative_output/`:
+    1. SMB3 Mario: [`smb3_mario_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_generative_unfold.mp4) | [`smb3_mario_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_contact_sheet.png)
+    2. Pac-Man: [`pacman_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_generative_unfold.mp4) | [`pacman_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_contact_sheet.png)
+    3. Raptor Jet: [`raptor_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_generative_unfold.mp4) | [`raptor_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_contact_sheet.png)
+    4. NIMH Mrs. Brisby: [`nimh_brisby_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_generative_unfold.mp4) | [`nimh_brisby_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_contact_sheet.png)
+  - Perform visual inspection of exported frames: verify 0 trapped sunset sky, 0 perimeter specks, crisp $2\times$ rendering, and complete body/limbs.

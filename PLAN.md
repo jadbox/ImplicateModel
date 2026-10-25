@@ -396,5 +396,54 @@ flowchart TD
 - SMB3 / Pac-Man / Raptor: no regression in current IoU/LPIPS; boots, dome frills, and wings retained.
 - All workspace tests green; all 4 artifacts re-exported to `./generative_output/` and visually inspected.
 
-### 5. Known Limitation & Long-Term Atlas Direction
-The atlas contamination (holon baked into the background during speaking holds) is completely rendered harmless by the Global Vacuum Plenum Invariant. A future track may enhance `multiplane_atlas` by excluding persistent actor boxes from the temporal median, but downstream extraction is now mathematically robust against atlas ghost holes without neural networks or magic numbers.
+### 5. Known Limitation & Transition to Track R10.11
+The atlas contamination (holon baked into the background during speaking holds) was mitigated downstream by the Global Vacuum Plenum Invariant, but residual subtraction still leaves artifacts when closed appendages trap exposed vacuum cavities. Track R10.11 addresses this directly with Spatiotemporal Atlas Inpainting and Topological Loop Disocclusion.
+
+---
+
+## IX. Track R10.11: Spatiotemporal Atlas Inpainting & Topological Loop Disocclusion
+
+### 1. The Critical Frame-Content Inspection Findings
+Visual inspection of `./generative_output/nimh_brisby_generative_unfold.mp4` and `nimh_brisby_contact_sheet.png` across turnaround frames $8..16$ revealed:
+1. **Trapped Yellow Sunset Sky Cavity ($150\text{--}331\text{ px/frame}$):**
+   Mrs. Brisby's arm, paw, rope, and torso form a closed 1-cycle bounding a $20 \times 30\text{ px}$ 2D cavity. Because her body was baked into `recon_bg` during static holds ($t=0..7$), newly exposed sunset sky ($[225, 135, 52]$) produces a massive residual ($\Delta I \approx 134 \gg \tau$). 8-connected flood fill absorbs this cavity into her body mass, corrupting the wavepacket kernel with yellow sky.
+2. **Boundary Ringing Specks ($30\text{--}56\text{ isolated specks/frame}$):**
+   In `envelope_silhouette`, contiguous satellites with $\text{dist} \le 2.5\text{ px}$ had no minimum area check, causing $1\text{--}2\text{ px}$ compression dither/ringing specks to be permanently retained around the character perimeter.
+3. **Bypass of Dimensional Opening:**
+   `dominant_silhouette` was bypassing `dominant_silhouette_with_core`, failing to prune 1D filaments and isolate the true 2D core before envelope expansion.
+4. **Undersized Presentation Viewport ($118 \times 180$):**
+   When frame 16 reached height $160\text{ px}$, scale collapsed to $1\times$, cramming the output and exaggerating texel noise.
+
+### 2. Universal Abstractions & Mathematical Formulation
+
+```mermaid
+flowchart TD
+    A["Raw Observation Mask M inside Actor Box"] --> B["1. Boundary Speckle Purge\n(Reject satellites with comp_sz < 4 within 2.5px)"]
+    B --> C["2. Active Dimensional Opening\n(Chessboard distance D(x) + medial ridge histogram r_B = 1)"]
+    C --> D["3. Topological Cavity Decomposition\n(Identify enclosed cavities C_k via border flood-fill)"]
+    D --> E["4. Cavity Manifold Test\nΔ(C_k) = mean[d(p, H) - d(p, V)]"]
+    E -->|Δ > 0: Vacuum Plenum| F["Punch Out Trapped Cavity\nM ← M \\ C_k"]
+    E -->|Δ ≤ 0: Holon Mass| G["Retain Interior Mass"]
+    F --> H["Pristine Holon Silhouette\n(Zero trapped sky, zero boundary noise)"]
+    G --> H
+```
+
+#### A. Topological Loop Disocclusion
+Given character mask $M \subset \Omega$, its complement $\Omega \setminus M$ partitions into exterior vacuum $B_{\text{ext}}$ (connected to raster boundary $\partial \Omega$) and interior cavities $\{C_k\}$.
+For each cavity $C_k$, evaluate the likelihood ratio between the Track Holon Palette $\mathcal{H}$ and the Global Vacuum Plenum $\mathcal{V}$:
+$$\Delta(C_k) = \frac{1}{|C_k|} \sum_{p \in C_k} \left[ d(p, \mathcal{H}) - d(p, \mathcal{V}) \right]$$
+If $\Delta(C_k) > 0$, the enclosed cavity matches the ambient vacuum plenum (e.g. sunset sky) rather than character fur/cloak:
+$$M \leftarrow M \setminus C_k$$
+This parameter-free topological operation releases trapped sky wedges without manual bounding boxes or color threshold tuning.
+
+#### B. Satellite Contiguity Area Floor
+For any candidate component $S$ within intimate contact ($\text{dist}(S, \text{Primary}) \le 2.5\text{ px}$), enforce $|S| \ge 4\text{ px}$. This prunes single-pixel and two-pixel dither artifacts while preserving genuine fingers, whiskers, and prop tips.
+
+#### C. Spatiotemporal Atlas Inpainting (Harmonic Vacuum Plenum)
+In `multiplane_atlas`, actor bounding tubes across time are masked out of temporal median accumulators. Texels occluded across $>50\%$ of the temporal window are solved via minimal-gradient-energy harmonic inpainting:
+$$\nabla^2 \Psi_{\text{bg}}(x, y) = 0 \quad \text{with Dirichlet boundary } \partial \Omega_{\text{actor}}$$
+When `recon_bg` contains the pure unbaked background plenum, newly exposed background in hold-release frames generates $\Delta I \approx 0$, preventing false foreground residual generation at the root.
+
+#### D. Visual Presentation Standard
+Enforce integer scale $\ge 2\times$ ($236 \times 360$ canvas) for feature animation benchmarks, guaranteeing crisp visual rendering of cels, eyes, snouts, and ink blades.
+
