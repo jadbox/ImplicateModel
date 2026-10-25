@@ -1355,6 +1355,74 @@ pub fn extract_holon_palette_modes(
     extract_color_modes_fps(&samples, 8, tau)
 }
 
+/// Extract holon palette modes H from the primary component of an observation mask.
+pub fn extract_mask_holon_modes(rgb: &[u8], mask: &[bool], w: usize, h: usize, tau: f64) -> Vec<[f64; 3]> {
+    if w == 0 || h == 0 || rgb.len() < w * h * 3 || mask.len() < w * h {
+        return Vec::new();
+    }
+    let primary = primary_connected_component(mask, w, h);
+    let samples: Vec<[u8; 3]> = primary
+        .iter()
+        .enumerate()
+        .filter(|&(_, m)| *m)
+        .map(|(i, _)| [rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]])
+        .collect();
+
+    if samples.is_empty() {
+        return Vec::new();
+    }
+    extract_color_modes_fps(&samples, 8, tau)
+}
+
+/// Topological Cavity Disocclusion (Track S1.2):
+/// Evaluates chromatic likelihood ratio Δ(C_k) = 1/|C_k| \sum [d(p, H) - d(p, V)] for each
+/// enclosed cavity C_k isolated by `detect_enclosed_cavities`.
+/// - If Δ(C_k) > 0: cavity is confirmed vacuum/background (e.g. trapped sunset sky in an arm loop),
+///   so punch out C_k from the silhouette mask (`mask[p] = false`).
+/// - If Δ(C_k) <= 0: cavity is solid interior character body (e.g. torso/cloak),
+///   so fill C_k into the silhouette mask (`mask[p] = true`).
+pub fn disocclude_vacuum_cavities(
+    mask: &mut [bool],
+    rgb: &[u8],
+    w: usize,
+    h: usize,
+    holon_modes: &[[f64; 3]],
+    vacuum_modes: &[[f64; 3]],
+) {
+    if holon_modes.is_empty() || vacuum_modes.is_empty() || w == 0 || h == 0 {
+        return;
+    }
+    let cavities = morphology::detect_enclosed_cavities(mask, w, h);
+    for cavity in cavities {
+        if cavity.is_empty() {
+            continue;
+        }
+        let mut sum_diff = 0.0f64;
+        for &p in &cavity {
+            let px = p * 3;
+            if px + 2 >= rgb.len() {
+                continue;
+            }
+            let c = [rgb[px], rgb[px + 1], rgb[px + 2]];
+            let d_holon = min_color_distance(c, holon_modes);
+            let d_vacuum = min_color_distance(c, vacuum_modes);
+            sum_diff += d_holon - d_vacuum;
+        }
+        let delta = sum_diff / cavity.len() as f64;
+        if delta > 0.0 {
+            // Vacuum cavity (e.g. trapped sunset sky): punch out from silhouette mask
+            for &p in &cavity {
+                mask[p] = false;
+            }
+        } else {
+            // Solid interior character body: fill in silhouette mask
+            for &p in &cavity {
+                mask[p] = true;
+            }
+        }
+    }
+}
+
 
 /// Screen pixels whose value never departs from the first frame by more than the noise floor
 /// residual. Such pixels are camera-locked (HUDs, letter/pillar-box bars, masked borders, logos)
@@ -1399,13 +1467,19 @@ fn screen_static_mask(frames: &[crate::video_io::RawFrame], tau: f64) -> Option<
 pub fn dimensional_opening_radius(dist: &[u32], w: usize, h: usize) -> u32 {
     let hist = morphology::ridge_radius_histogram(dist, w, h);
     let d_max = hist.len().saturating_sub(1);
-    if d_max < 2 {
+    // r_B must stay strictly below half of the thickest inscribed radius (d_max / 2 > r_B),
+    // ensuring the holon's 2-blade core always survives with interior substance.
+    // For thin sprite features (d_max <= 4), limbs and features are 1-2px thick,
+    // so morphological opening would amputate limbs. Occam fallback: r_B = 0.
+    if d_max <= 4 {
         return 0;
     }
     // Filament mode: radius 1 represents 1-2px thin filaments and boundary strokes.
-    // To preserve thin character limbs and detached props (4x4, d=2), r_B must be bounded:
-    // r_B = 1 erases all 1D filaments (d=1) while preserving genuine 2D features (d >= 2).
-    if hist.get(1).copied().unwrap_or(0) > 0 {
+    // In feature animation cels (d_max > 4), r_B = 1 erases 1D filaments (d=1) while
+    // preserving genuine 2D features (d >= 2).
+    let r1_count = hist.get(1).copied().unwrap_or(0);
+    let body_count: usize = hist.iter().skip(3).sum();
+    if r1_count > 0 && body_count > 0 {
         1
     } else {
         0
@@ -1601,9 +1675,10 @@ fn envelope_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
         };
 
         // Retain genuine limbs, capes, ears, and boots while rejecting detached debris and sparks:
-        // A character component is either intimately contiguous (min_dist <= 2.5 across ink contours)
+        // A character component is either intimately contiguous (min_dist <= 2.5 across ink contours, comp_sz >= 4)
         // or a significant limb/cape along the kinematic line of action within support reach.
-        let intimately_contiguous = min_dist_to_primary <= 2.5;
+        // Task S1.3: comp_sz >= 4 eliminates 1-2 px compression ringing specks around perimeters.
+        let intimately_contiguous = min_dist_to_primary <= 2.5 && comp_sz >= 4;
         let reach_dist = (support_radius * 0.5).max(12.0);
         let kinematic_limb = (in_distance_envelope || in_corridor) && min_dist_to_primary <= reach_dist && comp_sz >= 8;
         if intimately_contiguous || kinematic_limb {
@@ -1737,6 +1812,7 @@ pub fn extract_character_observation_tracks(
     let tau_i = tau.round() as i32;
     let mut tracks: Vec<Vec<TrackCand>> = Vec::new();
     let screen_static = screen_static_mask(frames, tau);
+    let vacuum_modes = extract_vacuum_plenum_modes(frames, atlas, tau);
 
     for (fi, frame) in frames.iter().enumerate() {
         let Some(boxes) = atlas.actor_boxes_per_frame.get(fi) else {
@@ -1802,6 +1878,12 @@ pub fn extract_character_observation_tracks(
                     rgb[idx * 3..idx * 3 + 3].copy_from_slice(&c);
                     mask[idx] = raw_silhouette[(fy - y0 as usize) * bw0 + (fx - x0 as usize)];
                 }
+            }
+            // Task S1.2: Topological Cavity Disocclusion
+            let holon_modes = extract_mask_holon_modes(&rgb, &mask, bw, bh, tau);
+            disocclude_vacuum_cavities(&mut mask, &rgb, bw, bh, &holon_modes, &vacuum_modes);
+            if !mask.iter().any(|&m| m) {
+                continue;
             }
             let color = chroma_weighted_color(&rgb, &mask);
             let cam = camera(fi);

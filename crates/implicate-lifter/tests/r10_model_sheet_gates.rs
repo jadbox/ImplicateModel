@@ -385,6 +385,26 @@ fn r10_5_pacman_empirical_model_sheet_and_gpu_unfold_gate() {
     assert!(pacman_frames.len() >= 50, "Expected >= 50 frames from Pac-Man");
 
     let atlas = build_multiplane_atlas(&pacman_frames, &MultiPlaneOptions::default());
+    for (fi, f) in pacman_frames.iter().enumerate().take(5) {
+        let mut yellow_count = 0;
+        let mut min_x = usize::MAX;
+        let mut max_x = 0;
+        let mut min_y = usize::MAX;
+        let mut max_y = 0;
+        for y in 0..f.height as usize {
+            for x in 0..f.width as usize {
+                let c = f.pixel(x as u32, y as u32);
+                if c[0] > 200 && c[1] > 200 && c[2] < 50 {
+                    yellow_count += 1;
+                    min_x = min_x.min(x);
+                    max_x = max_x.max(x);
+                    min_y = min_y.min(y);
+                    max_y = max_y.max(y);
+                }
+            }
+        }
+        println!("Frame {fi}: yellow count={yellow_count}, bbox=({min_x}..{max_x}, {min_y}..{max_y})");
+    }
 
     // 1. Zero Magic Number Noise Floor Verification
     let tau = compute_shot_noise_floor(&pacman_frames, &atlas);
@@ -1072,6 +1092,8 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
         let raptor_frames = video_io::read_frames(Path::new(RAPTOR_PATH), Some(1.0), Some(1.5))
             .expect("read raptor frames");
         let atlas = build_multiplane_atlas(&raptor_frames, &MultiPlaneOptions::default());
+    println!("Raptor atlas boxes in frame 0: {:?}", atlas.actor_boxes_per_frame.get(0));
+    println!("Raptor atlas boxes in frame 10: {:?}", atlas.actor_boxes_per_frame.get(10));
         let raptor_obs = extract_dominant_character_observations(&raptor_frames, &atlas);
         let sheet = induce_holon_model_sheet("Raptor_Jet", &raptor_obs, Some(1), None);
         let gpu_monad = sheet.to_gpu_monad();
@@ -1163,7 +1185,14 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
         let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(480.0), Some(1.0), 320, 176)
             .expect("read nimh frames");
         let atlas = build_multiplane_atlas(&nimh_frames, &MultiPlaneOptions::default());
+    for (fi, boxes) in atlas.actor_boxes_per_frame.iter().enumerate() {
+        println!("Frame {fi}: {} boxes: {:?}", boxes.len(), boxes);
+    }
         let tracks = extract_character_observation_tracks(&nimh_frames, &atlas, 2);
+    for (ti, tr) in tracks.iter().enumerate() {
+        let frames: Vec<usize> = tr.iter().map(|o| o.frame_idx).collect();
+        println!("Track {ti}: {} obs, frames: {:?}", tr.len(), frames);
+    }
         let brisby_track = select_character_track(&tracks).expect("Must select Mrs. Brisby track");
         let brisby_obs: Vec<_> = brisby_track.iter().filter(|o| !o.truncated).cloned().collect();
         let sheet = induce_holon_model_sheet("Mrs_Brisby", &brisby_obs, Some(2), None);

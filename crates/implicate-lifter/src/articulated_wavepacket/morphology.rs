@@ -140,6 +140,101 @@ pub fn label_components(mask: &[bool], w: usize, h: usize) -> (Vec<u32>, Vec<usi
     (label, sizes)
 }
 
+/// Topological Cavity Isolation (Track S1.2):
+/// Flood-fill from raster borders to isolate all interior cavities {C_k} enclosed
+/// by foreground silhouette boundaries.
+/// Returns a list of cavities, where each cavity is a Vec<usize> of raster pixel indices.
+pub fn detect_enclosed_cavities(mask: &[bool], w: usize, h: usize) -> Vec<Vec<usize>> {
+    if w == 0 || h == 0 || mask.len() < w * h {
+        return Vec::new();
+    }
+    let mut outside = vec![false; w * h];
+    let mut stack = Vec::new();
+
+    // 1. Seed boundary background pixels (x=0, x=w-1, y=0, y=h-1 where !mask)
+    for x in 0..w {
+        let top = x;
+        if !mask[top] && !outside[top] {
+            outside[top] = true;
+            stack.push(top);
+        }
+        let btm = (h - 1) * w + x;
+        if !mask[btm] && !outside[btm] {
+            outside[btm] = true;
+            stack.push(btm);
+        }
+    }
+    for y in 0..h {
+        let left = y * w;
+        if !mask[left] && !outside[left] {
+            outside[left] = true;
+            stack.push(left);
+        }
+        let right = y * w + (w - 1);
+        if !mask[right] && !outside[right] {
+            outside[right] = true;
+            stack.push(right);
+        }
+    }
+
+    // 2. 4-connected flood-fill of exterior ambient background
+    // (4-connectivity ensures thin 8-connected diagonal foreground boundaries don't leak)
+    while let Some(i) = stack.pop() {
+        let (x, y) = (i % w, i / w);
+        if x > 0 {
+            let j = i - 1;
+            if !mask[j] && !outside[j] {
+                outside[j] = true;
+                stack.push(j);
+            }
+        }
+        if x + 1 < w {
+            let j = i + 1;
+            if !mask[j] && !outside[j] {
+                outside[j] = true;
+                stack.push(j);
+            }
+        }
+        if y > 0 {
+            let j = i - w;
+            if !mask[j] && !outside[j] {
+                outside[j] = true;
+                stack.push(j);
+            }
+        }
+        if y + 1 < h {
+            let j = i + w;
+            if !mask[j] && !outside[j] {
+                outside[j] = true;
+                stack.push(j);
+            }
+        }
+    }
+
+    // 3. Any pixel with !mask[i] && !outside[i] is an enclosed interior cavity.
+    // Label 8-connected components of interior cavities.
+    let mut cavity_mask = vec![false; w * h];
+    for i in 0..w * h {
+        if !mask[i] && !outside[i] {
+            cavity_mask[i] = true;
+        }
+    }
+
+    let (labels, sizes) = label_components(&cavity_mask, w, h);
+    if sizes.len() <= 1 {
+        return Vec::new();
+    }
+
+    let mut cavities = vec![Vec::new(); sizes.len() - 1];
+    for (i, &lbl) in labels.iter().enumerate() {
+        if lbl > 0 {
+            cavities[(lbl - 1) as usize].push(i);
+        }
+    }
+
+    cavities
+}
+
 /// Medial-ridge thickness histogram: `hist[d]` counts ridge pixels (local maxima of the
 /// chessboard distance in their 8-neighbourhood) with inscribed radius `d`. Each stroke of
 /// half-width `d` contributes ridge pixels proportional to its length, so a long filament
@@ -207,5 +302,39 @@ mod tests {
         let hist = ridge_radius_histogram(&d, w, h);
         let mode = (1..hist.len()).max_by_key(|&r| hist[r]).unwrap();
         assert_eq!(mode, 1);
+    }
+
+    #[test]
+    fn test_detect_enclosed_cavities() {
+        // 20x20 box with a 4x4 hole in the center, and a 4x4 open bay at the border
+        let (w, h) = (30usize, 30usize);
+        let mut m = vec![false; w * h];
+        for y in 5..25 {
+            for x in 5..25 {
+                m[y * w + x] = true;
+            }
+        }
+        // Hollow out center 4x4: (13..17, 13..17)
+        for y in 13..17 {
+            for x in 13..17 {
+                m[y * w + x] = false;
+            }
+        }
+        // Create an open inlet / bay connecting to outside at the left edge
+        for y in 10..15 {
+            for x in 5..10 {
+                m[y * w + x] = false;
+            }
+        }
+
+        let cavities = detect_enclosed_cavities(&m, w, h);
+        assert_eq!(cavities.len(), 1, "Only the fully enclosed center cavity should be detected");
+        assert_eq!(cavities[0].len(), 16, "Center cavity must be 4x4 = 16 pixels");
+        for y in 13..17 {
+            for x in 13..17 {
+                let idx = y * w + x;
+                assert!(cavities[0].contains(&idx));
+            }
+        }
     }
 }

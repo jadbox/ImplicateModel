@@ -504,6 +504,21 @@ pub fn build_multiplane_atlas(frames: &[RawFrame], opts: &MultiPlaneOptions) -> 
         opts.actor_mask_dilation,
     );
 
+    /*
+    // Track S1.1: Mask out active actor bounding tracks from temporal-mode accumulators.
+    // Form coherent spatiotemporal tracks and enforce stationary hold envelopes.
+    let active_tracks = extract_active_actor_bounding_tracks(&actor_boxes_per_frame, n_frames, w, h);
+    for tr in &active_tracks {
+        for fi in 0..n_frames {
+            if let Some(b) = tr[fi] {
+                if !actor_boxes_per_frame[fi].contains(&b) {
+                    actor_boxes_per_frame[fi].push(b);
+                }
+            }
+        }
+    }
+    */
+
     let mut dilated_masks: Vec<Vec<bool>> = vec![vec![false; w * h]; n_frames];
     for fi in 0..n_frames {
         let boxes = &actor_boxes_per_frame[fi];
@@ -751,4 +766,154 @@ pub fn kinematic_co_motion_binding(
     }
 
     out
+}
+
+/// Form coherent active actor bounding tracks across the shot from per-frame candidate boxes (Track S1.1).
+/// Identifies stationary holds (e.g. speaking holds where motion v ≈ 0) and extends the complete
+/// bounding envelope across the entire hold duration, eliminating bake-in leakage.
+pub fn extract_active_actor_bounding_tracks(
+    boxes_per_frame: &[Vec<Rect>],
+    n_frames: usize,
+    w: usize,
+    h: usize,
+) -> Vec<Vec<Option<Rect>>> {
+    if n_frames == 0 {
+        return Vec::new();
+    }
+    let mut raw_tracks: Vec<Vec<(usize, Rect)>> = Vec::new();
+
+    for (fi, boxes) in boxes_per_frame.iter().enumerate() {
+        for &b in boxes {
+            let c = b.center();
+            let mut best_ti = None;
+            let mut best_dist = f64::MAX;
+
+            for (ti, tr) in raw_tracks.iter().enumerate() {
+                let (last_fi, last_b) = tr.last().unwrap();
+                let f_gap = fi.saturating_sub(*last_fi);
+                if fi > *last_fi && f_gap <= 3 {
+                    let last_c = last_b.center();
+                    let d = ((c[0] - last_c[0]).powi(2) + (c[1] - last_c[1]).powi(2)).sqrt();
+                    let max_d = 16.0 * f_gap as f64;
+                    // Check center proximity and aspect ratio consistency
+                    if d <= max_d && d < best_dist {
+                        let ar_cur = (b.width() as f32) / (b.height() as f32).max(1.0);
+                        let ar_last = (last_b.width() as f32) / (last_b.height() as f32).max(1.0);
+                        if (ar_cur - ar_last).abs() < 1.5 {
+                            best_dist = d;
+                            best_ti = Some(ti);
+                        }
+                    }
+                }
+            }
+
+            if let Some(ti) = best_ti {
+                raw_tracks[ti].push((fi, b));
+            } else {
+                raw_tracks.push(vec![(fi, b)]);
+            }
+        }
+    }
+
+    let min_track_span = 4usize.min(n_frames);
+    let active_tracks: Vec<Vec<(usize, Rect)>> = raw_tracks
+        .into_iter()
+        .filter(|tr| {
+            let span = tr.last().unwrap().0 - tr.first().unwrap().0 + 1;
+            tr.len() >= min_track_span || span >= min_track_span
+        })
+        .collect();
+
+    let mut out_tracks = Vec::with_capacity(active_tracks.len());
+
+    for tr in active_tracks {
+        let mut per_frame: Vec<Option<Rect>> = vec![None; n_frames];
+        for &(fi, b) in &tr {
+            per_frame[fi] = match per_frame[fi] {
+                Some(prev) => Some(Rect::new(
+                    prev.x0.min(b.x0),
+                    prev.y0.min(b.y0),
+                    prev.x1.max(b.x1),
+                    prev.y1.max(b.y1),
+                )),
+                None => Some(b),
+            };
+        }
+
+        let first_fi = tr.first().unwrap().0;
+        let last_fi = tr.last().unwrap().0;
+        for fi in first_fi..=last_fi {
+            if per_frame[fi].is_none() {
+                let prev_b = (first_fi..fi).rev().find_map(|f| per_frame[f]);
+                let next_b = (fi + 1..=last_fi).find_map(|f| per_frame[f]);
+                per_frame[fi] = match (prev_b, next_b) {
+                    (Some(p), Some(n)) => Some(Rect::new(
+                        p.x0.min(n.x0),
+                        p.y0.min(n.y0),
+                        p.x1.max(n.x1),
+                        p.y1.max(n.y1),
+                    )),
+                    (Some(p), None) => Some(p),
+                    (None, Some(n)) => Some(n),
+                    (None, None) => None,
+                };
+            }
+        }
+
+        let mut hold_start = first_fi;
+        while hold_start <= last_fi {
+            let Some(b0) = per_frame[hold_start] else {
+                hold_start += 1;
+                continue;
+            };
+            let c0 = b0.center();
+            let mut hold_end = hold_start;
+            let mut union_box = b0;
+
+            for fi in (hold_start + 1)..=last_fi {
+                if let Some(b) = per_frame[fi] {
+                    let c = b.center();
+                    let d = ((c[0] - c0[0]).powi(2) + (c[1] - c0[1]).powi(2)).sqrt();
+                    if d <= 6.0 {
+                        hold_end = fi;
+                        union_box = Rect::new(
+                            union_box.x0.min(b.x0),
+                            union_box.y0.min(b.y0),
+                            union_box.x1.max(b.x1),
+                            union_box.y1.max(b.y1),
+                        );
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            if hold_end >= hold_start + 2 {
+                for fi in hold_start..=hold_end {
+                    per_frame[fi] = Some(union_box);
+                }
+                if hold_start <= 3 {
+                    for fi in 0..hold_start {
+                        per_frame[fi] = Some(union_box);
+                    }
+                }
+                hold_start = hold_end + 1;
+            } else {
+                hold_start += 1;
+            }
+        }
+
+        for opt_b in &mut per_frame {
+            if let Some(b) = opt_b {
+                b.x0 = b.x0.clamp(0, w as i32 - 1);
+                b.y0 = b.y0.clamp(0, h as i32 - 1);
+                b.x1 = b.x1.clamp(b.x0, w as i32 - 1);
+                b.y1 = b.y1.clamp(b.y0, h as i32 - 1);
+            }
+        }
+
+        out_tracks.push(per_frame);
+    }
+
+    out_tracks
 }

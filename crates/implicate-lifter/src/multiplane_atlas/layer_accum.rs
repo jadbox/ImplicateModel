@@ -261,7 +261,7 @@ pub fn accumulate_band_atlas_masked(
     let cw = atlas.image.width;
     let ch = atlas.image.height;
 
-    let mut valid = vec![false; cw * ch];
+    let mut valid_count = vec![0u16; cw * ch];
     let mut obs_count = vec![0u16; cw * ch];
     let mut occl_count = vec![0u16; cw * ch];
     let w = frames[0].width as usize;
@@ -284,14 +284,14 @@ pub fn accumulate_band_atlas_masked(
                     if mask.map_or(false, |m| m[y * w + x]) {
                         occl_count[idx] += 1;
                     } else {
-                        valid[idx] = true;
+                        valid_count[idx] += 1;
                     }
                 }
             }
         }
     }
 
-    let has_any_valid = valid.iter().any(|&v| v);
+    let has_any_valid = valid_count.iter().any(|&v| v > 0);
     if !has_any_valid {
         for iy in 0..ch {
             for ix in 0..cw {
@@ -306,13 +306,17 @@ pub fn accumulate_band_atlas_masked(
     }
 
     // Unobserved texels (outside the camera's sweep) take the temporal-median fallback. Texels that
-    // were observed but occluded in every observation are unknown background: fill them with the
-    // harmonic (Laplace, $\nabla^2 I = 0$) continuation of the surrounding observed background.
+    // were observed but occluded in >= 50% of temporal frames (or never validly observed with >= 4 frames)
+    // are unknown or actor-dominated background: fill them with the harmonic (Laplace, $\nabla^2 I = 0$)
+    // continuation of the surrounding observed ambient background plenum (purging stationary character holds).
     let mut hole = vec![false; cw * ch];
     for iy in 0..ch {
         for ix in 0..cw {
             let idx = iy * cw + ix;
-            if valid[idx] {
+            if valid_count[idx] >= 4 {
+                continue;
+            }
+            if valid_count[idx] > 0 && occl_count[idx] * 2 < obs_count[idx] {
                 continue;
             }
             if obs_count[idx] == 0 {
