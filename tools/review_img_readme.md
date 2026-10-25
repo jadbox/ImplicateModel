@@ -1,6 +1,6 @@
 # `review_img.sh` — Visual QA & Defect Inspection CLI
 
-Automated visual review CLI powered by local `llama.cpp` server and the Qwen2.5-VL vision-language model.
+Automated visual review CLI powered by local `llama.cpp` server and the Qwen 3 VL (Q4 KM quants) vision-language model.
 
 ---
 
@@ -24,23 +24,30 @@ Automated visual review CLI powered by local `llama.cpp` server and the Qwen2.5-
 ## Usage
 
 ```bash
-# Review an image
+# Review an image with default 60s timeout
 ./tools/review_img.sh <IMAGE_PATH>
+
+# Review an image with a strict 30s timeout limit
+./tools/review_img.sh --timeout 30 <IMAGE_PATH>
 
 # Run example test on user profile photo
 ./tools/review_img_example.sh
 ```
 
-### Environment Overrides
+### CLI Options & Environment Overrides
 
-| Variable | Default | Purpose |
+| Flag / Variable | Default | Purpose |
 | :--- | :--- | :--- |
+| `--timeout`, `-t <N>` | `60` | CLI argument: Max seconds to wait for inference completion |
+| `LLAMA_TIMEOUT` | `60` | Environment variable: Max seconds for inference request |
+| `LLAMA_STARTUP_TIMEOUT`| `45` | Environment variable: Max seconds to wait for `llama-server` boot |
 | `LLAMA_SERVER_URL` | `http://127.0.0.1:8935` | Target llama.cpp server URL |
 | `LLAMA_PORT` | `8935` | Server port |
 | `LLAMA_PARALLEL` | `4` | Concurrent request slots |
 | `LLAMA_MODEL_PATH` | `/mnt/storage/models/llama.cpp/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf` | GGUF model path |
 | `LLAMA_MMPROJ_PATH` | `/mnt/storage/models/llama.cpp/mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf` | Multimodal projector path |
 | `LLAMA_KEEP_ALIVE` | `0` | Set to `1` to prevent automatic teardown after requests finish |
+
 
 ---
 

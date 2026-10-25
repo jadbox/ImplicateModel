@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # review_img.sh - Detailed visual inspection, trait analysis, and glitch review using local Qwen Vision on llama-server.
 # Supports parallel executions with reference-counted server lifecycle, kernel flock mutex, and stale-lease pruning.
-# Usage: ./tools/review_img.sh <IMAGE_FILE>
+# Usage: ./tools/review_img.sh [--timeout <SECONDS>] <IMAGE_FILE>
 
 set -euo pipefail
 
@@ -11,6 +11,8 @@ SERVER_HOST="${LLAMA_HOST:-127.0.0.1}"
 SERVER_PORT="${LLAMA_PORT:-$DEFAULT_PORT}"
 SERVER_URL="${LLAMA_SERVER_URL:-http://${SERVER_HOST}:${SERVER_PORT}}"
 PARALLEL_SLOTS="${LLAMA_PARALLEL:-4}"
+REQUEST_TIMEOUT="${LLAMA_TIMEOUT:-60}"
+STARTUP_TIMEOUT="${LLAMA_STARTUP_TIMEOUT:-45}"
 
 DEFAULT_MODEL="/mnt/storage/models/llama.cpp/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
 DEFAULT_MMPROJ="/mnt/storage/models/llama.cpp/mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf"
@@ -25,23 +27,49 @@ SERVER_LOCK="${LOCK_DIR}/startup.lock"
 MANAGED_FLAG="${LOCK_DIR}/managed.flag"
 
 usage() {
-    echo "Usage: $0 <IMAGE_FILE>"
-    echo "Example: $0 ./generative_output/nimh_brisby_contact_sheet.png"
+    echo "Usage: $0 [--timeout <SECONDS>] <IMAGE_FILE>"
+    echo "Example: $0 --timeout 30 ./generative_output/nimh_brisby_contact_sheet.png"
+    echo ""
+    echo "Options:"
+    echo "  --timeout, -t <N>  Time limit for inference request in seconds (default: 60)"
     echo ""
     echo "Environment overrides:"
-    echo "  LLAMA_SERVER_URL   URL to llama-server (default: http://127.0.0.1:8935)"
-    echo "  LLAMA_MODEL_PATH   Path to GGUF model"
-    echo "  LLAMA_MMPROJ_PATH  Path to mmproj GGUF file"
-    echo "  LLAMA_PARALLEL     Concurrent slot count (default: 4)"
-    echo "  LLAMA_KEEP_ALIVE   If set to 1, do not shut down server after all jobs finish"
+    echo "  LLAMA_TIMEOUT          Inference timeout in seconds (default: 60)"
+    echo "  LLAMA_STARTUP_TIMEOUT  Server boot timeout in seconds (default: 45)"
+    echo "  LLAMA_SERVER_URL       URL to llama-server (default: http://127.0.0.1:8935)"
+    echo "  LLAMA_MODEL_PATH       Path to GGUF model"
+    echo "  LLAMA_MMPROJ_PATH      Path to mmproj GGUF file"
+    echo "  LLAMA_PARALLEL         Concurrent slot count (default: 4)"
+    echo "  LLAMA_KEEP_ALIVE       If set to 1, do not shut down server after all jobs finish"
     exit 1
 }
 
-if [[ $# -lt 1 ]]; then
+# Parse CLI arguments
+IMAGE_PATH=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --timeout|-t)
+            REQUEST_TIMEOUT="$2"
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            ;;
+        *)
+            if [[ -z "$IMAGE_PATH" ]]; then
+                IMAGE_PATH="$1"
+                shift
+            else
+                echo "Error: Unexpected argument '$1'" >&2
+                usage
+            fi
+            ;;
+    esac
+done
+
+if [[ -z "$IMAGE_PATH" ]]; then
     usage
 fi
-
-IMAGE_PATH="$1"
 
 if [[ ! -f "$IMAGE_PATH" ]]; then
     echo "Error: Image file not found: $IMAGE_PATH" >&2
@@ -76,7 +104,6 @@ cleanup() {
         return 0
     fi
     (
-        # Wait up to 15s for the lock; fail safe if timed out
         if flock -x -w 15 200; then
             local active_count
             active_count=$(get_active_count)
@@ -91,7 +118,6 @@ cleanup() {
                             kill -0 "$spid" 2>/dev/null || break
                             sleep 0.1
                         done
-                        # Force kill if still hanging
                         kill -9 "$spid" 2>/dev/null || true
                     fi
                     rm -f "$SERVER_PID_FILE" "$MANAGED_FLAG" 2>/dev/null || true
@@ -145,9 +171,9 @@ if ! check_server; then
         fi
     ) 200>"${SERVER_LOCK}"
 
-    # Wait for server ready (outside the lock so concurrent workers don't serialize)
-    echo -n "Waiting for model to load" >&2
-    for _ in {1..40}; do
+    # Wait for server ready with configurable timeout
+    echo -n "Waiting for model to load (limit: ${STARTUP_TIMEOUT}s)" >&2
+    for ((i=1; i<=STARTUP_TIMEOUT; i++)); do
         if check_server; then
             echo " Ready!" >&2
             break
@@ -157,7 +183,8 @@ if ! check_server; then
     done
 
     if ! check_server; then
-        echo "Error: Server failed to start within timeout. Check /tmp/llama-server-vision.log" >&2
+        echo "" >&2
+        echo "Error: Server failed to start within ${STARTUP_TIMEOUT}s limit. Check /tmp/llama-server-vision.log" >&2
         exit 1
     fi
 fi
@@ -213,7 +240,7 @@ Provide a thorough, highly specific evaluation covering:
 
 Be precise and observant. Every detected trait and glitch must have a [x1, y1, x2, y2] pixel box."
 
-# Run inference via Python
+# Run inference via Python with explicit timeout
 python3 -c "
 import sys, urllib.request, json, base64
 
@@ -221,6 +248,7 @@ image_path = sys.argv[1]
 server_url = sys.argv[2]
 mime = sys.argv[3]
 prompt = sys.argv[4]
+timeout_sec = int(sys.argv[5])
 
 with open(image_path, 'rb') as f:
     b64 = base64.b64encode(f.read()).decode('utf-8')
@@ -247,10 +275,12 @@ req = urllib.request.Request(
 )
 
 try:
-    with urllib.request.urlopen(req, timeout=180) as resp:
+    with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
         res = json.loads(resp.read().decode('utf-8'))
         content = res['choices'][0]['message']['content']
         print(content)
+except TimeoutError:
+    sys.exit(f'Error: Inference request timed out after {timeout_sec} seconds.')
 except Exception as e:
     sys.exit(f'Inference request failed: {e}')
-" "$IMAGE_PATH" "$SERVER_URL" "$MIME" "$PROMPT_TEXT"
+" "$IMAGE_PATH" "$SERVER_URL" "$MIME" "$PROMPT_TEXT" "$REQUEST_TIMEOUT"
