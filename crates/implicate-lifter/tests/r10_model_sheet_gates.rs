@@ -726,11 +726,9 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
         writer.finish().expect("finish writer");
         assert!(mp4_path.exists());
         if let Some((cs_w, cs_h, cs_data)) = frame_t0 {
-            let png_path = out_dir.join("smb3_mario_contact_sheet.png");
             let t0_path = out_dir.join("smb3_mario_t0s.png");
-            write_png(&png_path, cs_w as u32, cs_h as u32, &cs_data).expect("write png");
             write_png(&t0_path, cs_w as u32, cs_h as u32, &cs_data).expect("write t0 png");
-            assert!(png_path.exists() && t0_path.exists());
+            assert!(t0_path.exists());
         }
         if let Some((cs_w, cs_h, cs_data)) = frame_t1 {
             let t1_path = out_dir.join("smb3_mario_t1s.png");
@@ -819,11 +817,9 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
         writer.finish().expect("finish writer");
         assert!(mp4_path.exists());
         if let Some((cs_w, cs_h, cs_data)) = frame_t0 {
-            let png_path = out_dir.join("pacman_contact_sheet.png");
             let t0_path = out_dir.join("pacman_t0s.png");
-            write_png(&png_path, cs_w as u32, cs_h as u32, &cs_data).expect("write png");
             write_png(&t0_path, cs_w as u32, cs_h as u32, &cs_data).expect("write t0 png");
-            assert!(png_path.exists() && t0_path.exists());
+            assert!(t0_path.exists());
         }
         if let Some((cs_w, cs_h, cs_data)) = frame_t1 {
             let t1_path = out_dir.join("pacman_t1s.png");
@@ -911,11 +907,9 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
         writer.finish().expect("finish writer");
         assert!(mp4_path.exists());
         if let Some((cs_w, cs_h, cs_data)) = frame_t0 {
-            let png_path = out_dir.join("raptor_contact_sheet.png");
             let t0_path = out_dir.join("raptor_t0s.png");
-            write_png(&png_path, cs_w as u32, cs_h as u32, &cs_data).expect("write png");
             write_png(&t0_path, cs_w as u32, cs_h as u32, &cs_data).expect("write t0 png");
-            assert!(png_path.exists() && t0_path.exists());
+            assert!(t0_path.exists());
         }
         if let Some((cs_w, cs_h, cs_data)) = frame_t1 {
             let t1_path = out_dir.join("raptor_t1s.png");
@@ -927,13 +921,10 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
     println!("\n================================================================================");
     println!("GENERATIVE VIDEO & VISUAL INSPECTION ARTIFACTS EXPORTED:");
     println!("  1. SMB3 Mario:      file://{}/smb3_mario_generative_unfold.mp4", out_dir.display());
-    println!("     Contact Sheet:   file://{}/smb3_mario_contact_sheet.png", out_dir.display());
     println!("     1s Pair:         file://{}/smb3_mario_t0s.png | file://{}/smb3_mario_t1s.png", out_dir.display(), out_dir.display());
     println!("  2. Pac-Man:         file://{}/pacman_generative_unfold.mp4", out_dir.display());
-    println!("     Contact Sheet:   file://{}/pacman_contact_sheet.png", out_dir.display());
     println!("     1s Pair:         file://{}/pacman_t0s.png | file://{}/pacman_t1s.png", out_dir.display(), out_dir.display());
     println!("  3. Raptor Jet:      file://{}/raptor_generative_unfold.mp4", out_dir.display());
-    println!("     Contact Sheet:   file://{}/raptor_contact_sheet.png", out_dir.display());
     println!("     1s Pair:         file://{}/raptor_t0s.png | file://{}/raptor_t1s.png", out_dir.display(), out_dir.display());
     println!("================================================================================\n");
 }

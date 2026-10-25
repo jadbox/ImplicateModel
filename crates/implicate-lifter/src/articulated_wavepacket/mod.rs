@@ -2406,8 +2406,6 @@ pub fn enforce_track_comoving_soliton_coherency(
         let (w, h) = (obs.width(), obs.height());
         let [cx, cy] = centers[oi];
         let prim = primary_connected_component(&obs.mask, w, h);
-        let dist = morphology::chessboard_distance(&obs.mask, w, h);
-        let d_max = dist.iter().copied().max().unwrap_or(0) as usize;
         let mut new_mask = obs.mask.clone();
         let mut changed = false;
 
@@ -2420,16 +2418,13 @@ pub fn enforce_track_comoving_soliton_coherency(
                 let gx = (x as i32 - cx + center_off).clamp(0, gw as i32 - 1) as usize;
                 let gy = (y as i32 - cy + center_off).clamp(0, gw as i32 - 1) as usize;
                 let hits = occ_3x3[gy * gw + gx];
-                let exact_hits = occ[gy * gw + gx];
                 let c = [obs.rgb[i * 3], obs.rgb[i * 3 + 1], obs.rgb[i * 3 + 2]];
                 let color_cutoff = if is_monochromatic_core { 6.0 * tau } else { 2.0 * tau };
                 let foreign_color =
                     !core_modes.is_empty() && min_color_distance(c, &core_modes) > color_cutoff;
-                let is_thin_appendage = d_max >= 5 && dist[i] <= 2 && exact_hits * 2 < n;
                 if (is_monochromatic_core && foreign_color)
                     || (!prim[i] && foreign_color)
                     || (foreign_color && hits * 2 < n)
-                    || is_thin_appendage
                     || (hits * CFT_WAVEPACKET_MODES < n && (!prim[i] || foreign_color))
                 {
                     new_mask[i] = false;
