@@ -23,6 +23,7 @@ pub use articulated_wavepacket::{
     decompose_observation_dual_product, dominant_silhouette, evaluate_vs_single_box_baseline,
     evaluate_vs_single_box_baseline_with_parts,
     extract_character_observation_tracks, extract_dominant_character_observations,
+    compute_holon_salience_score, select_character_track,
     extract_line_of_action, extract_line_of_action_weighted,
     factor_temporal_covariance_idempotents, fit_articulated_holon, induce_holon_model_sheet,
     mask_iou, merge_overlapping_boxes, render_articulated_holon_observation,

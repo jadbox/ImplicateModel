@@ -1667,6 +1667,69 @@ pub fn extract_dominant_character_observations(
         .unwrap_or_default()
 }
 
+/// Compute the universal Holon Salience Metric for a candidate track:
+/// Distinguishes dense 2D character holons (with cel fill and ink contour boundary)
+/// from thin 1D filaments (e.g. fluttering strings, wires) and background noise.
+///
+/// Salience S = M_interior * rho_fill * (1.0 - min(1.0, |d · m| / (||d|| ||m|| + eps))) * substantial_weight
+pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
+    if track.is_empty() {
+        return 0.0;
+    }
+    let n = track.len() as f64;
+    let mut total_mass = 0.0f64;
+    let mut total_density = 0.0f64;
+    let mut total_plucker = 0.0f64;
+    let mut substantial_frames = 0.0f64;
+
+    for obs in track {
+        let fg = obs.mask.iter().filter(|&&m| m).count() as f64;
+        total_mass += fg;
+        if fg >= 1500.0 {
+            substantial_frames += 1.0;
+        }
+        let bbox_area = (obs.width() * obs.height()).max(1) as f64;
+        total_density += fg / bbox_area;
+
+        let plucker_factor = if let Some(loa) = obs.line_of_action() {
+            let d = loa.spine_bivector.line_direction();
+            let m = loa.spine_bivector.line_moment();
+            let dot = (d[0] * m[0] + d[1] * m[1] + d[2] * m[2]).abs();
+            let norm_d = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+            let norm_m = (m[0] * m[0] + m[1] * m[1] + m[2] * m[2]).sqrt();
+            1.0 - (dot as f64 / (norm_d as f64 * norm_m as f64 + 1e-6)).min(1.0)
+        } else {
+            0.5
+        };
+        total_plucker += plucker_factor;
+    }
+
+    let mean_density = total_density / n;
+    let mean_plucker = total_plucker / n;
+    let substantial_fraction = substantial_frames / n;
+
+    // Temporal permanence * interior mass * convex density * Plücker consistency * substantial mass fraction
+    total_mass * mean_density * mean_plucker * (0.5 + 0.5 * substantial_fraction)
+}
+
+/// Universally select the genuine character holon track from a list of candidate tracks
+/// using the Holon Salience Metric (ranking by interior 2D mass and convex density).
+pub fn select_character_track<'a>(
+    tracks: &'a [Vec<CharacterObservation>],
+) -> Option<&'a Vec<CharacterObservation>> {
+    if tracks.is_empty() {
+        return None;
+    }
+    if tracks.len() == 1 {
+        return Some(&tracks[0]);
+    }
+    tracks.iter().max_by(|a, b| {
+        let sa = compute_holon_salience_score(a);
+        let sb = compute_holon_salience_score(b);
+        sa.partial_cmp(&sb).unwrap_or(std::cmp::Ordering::Equal)
+    })
+}
+
 pub fn observation_to_rgb_image(obs: &CharacterObservation) -> RgbImage8 {
     RgbImage8::from_raw(obs.width(), obs.height(), obs.rgb.clone())
 }

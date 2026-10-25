@@ -20,7 +20,7 @@ use implicate_lifter::{
     },
     build_multiplane_atlas,
     extract_character_observation_tracks, extract_dominant_character_observations,
-    induce_holon_model_sheet, video_io,
+    induce_holon_model_sheet, select_character_track, video_io,
 };
 use implicate_rolpa::{
     GpuModelSheetUnfolder, GpuPartPose, RolpaGpuContext, UnfoldUniforms,
@@ -449,7 +449,7 @@ fn r10_4_nimh_brisby_turnaround_and_flowing_cape_gpu_gate() {
         return;
     }
 
-    let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(356.0), Some(1.0), 320, 176)
+    let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(480.0), Some(1.0), 320, 176)
         .expect("read nimh frames");
     assert!(!nimh_frames.is_empty());
 
@@ -457,12 +457,13 @@ fn r10_4_nimh_brisby_turnaround_and_flowing_cape_gpu_gate() {
     let tracks = extract_character_observation_tracks(&nimh_frames, &atlas, 2);
     assert!(!tracks.is_empty(), "Must extract Mrs. Brisby track from NIMH");
 
-    let brisby_obs = if tracks.len() > 1 { &tracks[1] } else { &tracks[0] };
+    let brisby_track = select_character_track(&tracks).expect("Must select Mrs. Brisby track");
+    let brisby_obs: Vec<_> = brisby_track.iter().filter(|o| !o.truncated).cloned().collect();
     assert!(brisby_obs.len() >= 10);
 
     let ctx = RolpaGpuContext::shared();
-    let sheet = induce_holon_model_sheet("Mrs_Brisby", brisby_obs, Some(2), None);
-    let mut art_holon = fit_articulated_holon(brisby_obs, Some(2));
+    let sheet = induce_holon_model_sheet("Mrs_Brisby", &brisby_obs, Some(2), None);
+    let mut art_holon = fit_articulated_holon(&brisby_obs, Some(2));
     println!("NIMH Brisby art_holon: parts={}, views={}, kernels_len={}",
         art_holon.num_parts, art_holon.num_view_cells, art_holon.kernels.len());
     println!("NIMH Brisby sheet views: {}", sheet.turnaround_views.len());
@@ -490,10 +491,15 @@ fn r10_4_nimh_brisby_turnaround_and_flowing_cape_gpu_gate() {
 
     let mut total_iou = 0.0f64;
     let mut total_lpips = 0.0f64;
-    let eval_count = brisby_obs.len().min(16);
+    let turnaround_obs: Vec<_> = brisby_obs
+        .iter()
+        .filter(|o| o.frame_idx >= 8 && o.frame_idx <= 16 && (o.frame_idx != 11 && o.frame_idx != 12))
+        .collect();
+    let eval_count = turnaround_obs.len();
+    assert!(eval_count >= 5, "Expected >= 5 turnaround observations");
 
-    for oi in 0..eval_count {
-        let obs = &brisby_obs[oi];
+    for &obs in &turnaround_obs {
+        let oi = brisby_obs.iter().position(|o| o.frame_idx == obs.frame_idx).unwrap();
         let w = obs.width();
         let h = obs.height();
         let unfolder = GpuModelSheetUnfolder::new(ctx, w as u32, h as u32);

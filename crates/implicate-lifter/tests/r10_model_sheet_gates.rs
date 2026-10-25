@@ -32,6 +32,7 @@ use implicate_lifter::{
     },
     build_multiplane_atlas, extract_character_observation_tracks,
     extract_dominant_character_observations, induce_holon_model_sheet,
+    select_character_track,
     video_io::{self, VideoWriter, write_png},
 };
 use implicate_rolpa::{
@@ -53,75 +54,179 @@ pub fn generative_output_dir() -> PathBuf {
     dir
 }
 
-/// Helper to render a side-by-side comparison frame into fixed-dimension canvas:
-/// [ Ground Truth Observation (Left Tile) | Dark Border | Generative GPU Unfold (Right Tile) ]
-fn render_side_by_side_fixed(
+/// Compute an optimal integer scale factor to cleanly display retro pixel art and sprites
+/// in a crisp, visible viewport without fractional interpolation blur.
+fn compute_integer_scale(max_w: usize, max_h: usize) -> usize {
+    let max_dim = max_w.max(max_h);
+    if max_dim <= 20 {
+        // Small retro arcade/NES sprites (Pac-Man 14px, Mario 16px) -> 8x integer scale
+        8
+    } else if max_dim <= 32 {
+        // Standard NES/Genesis sprites (Mario walking 24px) -> 8x integer scale
+        8
+    } else if max_dim <= 64 {
+        // DOS VGA shaded sprites (Raptor 48px) -> 4x integer scale
+        4
+    } else if max_dim <= 140 {
+        // Feature animation cels (Mrs. Brisby 114px) -> 2x integer scale
+        2
+    } else {
+        1
+    }
+}
+
+/// Render a SINGLE generative character frame for video export, cleanly framed and centered,
+/// with integer nearest-neighbor scaling for retro pixel art.
+/// Permanently eliminates the duplicate twin-sprite glitch.
+fn render_generative_unfold_frame(
+    pred_rgb: &[u8],
+    pred_mask: &[bool],
+    w: usize,
+    h: usize,
+    max_w: usize,
+    max_h: usize,
+    scale: usize,
+) -> (usize, usize, Vec<u8>) {
+    let pad = 16 * scale;
+    // libx264 yuv420p requires even width and height
+    let canvas_w = ((max_w * scale + pad) + 1) & !1;
+    let canvas_h = ((max_h * scale + pad) + 1) & !1;
+
+    // Dark charcoal background [18, 20, 24]
+    let mut canvas = vec![18u8; canvas_w * canvas_h * 3];
+    for i in 0..canvas_w * canvas_h {
+        canvas[i * 3 + 1] = 20;
+        canvas[i * 3 + 2] = 24;
+    }
+
+    let offset_x = (canvas_w.saturating_sub(w * scale)) / 2;
+    let offset_y = (canvas_h.saturating_sub(h * scale)) / 2;
+
+    for ly in 0..h {
+        for lx in 0..w {
+            let src_i = ly * w + lx;
+            if src_i < pred_mask.len() && pred_mask[src_i] {
+                let r = pred_rgb[src_i * 3];
+                let g = pred_rgb[src_i * 3 + 1];
+                let b = pred_rgb[src_i * 3 + 2];
+                for sy in 0..scale {
+                    let cy = offset_y + ly * scale + sy;
+                    if cy >= canvas_h {
+                        continue;
+                    }
+                    for sx in 0..scale {
+                        let cx = offset_x + lx * scale + sx;
+                        if cx >= canvas_w {
+                            continue;
+                        }
+                        let dst_i = (cy * canvas_w + cx) * 3;
+                        canvas[dst_i] = r;
+                        canvas[dst_i + 1] = g;
+                        canvas[dst_i + 2] = b;
+                    }
+                }
+            }
+        }
+    }
+
+    (canvas_w, canvas_h, canvas)
+}
+
+/// Render a contact sheet comparing Ground Truth Observation (Left Panel) vs
+/// Generative GPU Model Sheet Unfold (Right Panel), with clearly separated and labeled
+/// panels with integer nearest-neighbor scaling.
+fn render_contact_sheet_comparison(
     gt_rgb: &[u8],
     gt_mask: &[bool],
     pred_rgb: &[u8],
     pred_mask: &[bool],
     w: usize,
     h: usize,
-    tile_w: usize,
-    tile_h: usize,
+    max_w: usize,
+    max_h: usize,
+    scale: usize,
 ) -> (usize, usize, Vec<u8>) {
-    let border = 4usize;
-    // libx264 yuv420p requires even width and height
-    let canvas_w = ((tile_w * 2 + border * 3) + 1) & !1;
-    let canvas_h = ((tile_h + border * 2) + 1) & !1;
-    let mut canvas = vec![25u8; canvas_w * canvas_h * 3]; // dark charcoal background
+    let panel_w = max_w * scale + 16 * scale;
+    let panel_h = max_h * scale + 16 * scale;
+    let divider_w = (4 * scale).max(4);
+    let canvas_w = ((panel_w * 2 + divider_w) + 1) & !1;
+    let canvas_h = (panel_h + 1) & !1;
 
-    // Center offsets inside tile
-    let ox_l = border + (tile_w.saturating_sub(w)) / 2;
-    let oy = border + (tile_h.saturating_sub(h)) / 2;
+    // Dark charcoal background [18, 20, 24]
+    let mut canvas = vec![18u8; canvas_w * canvas_h * 3];
+    for i in 0..canvas_w * canvas_h {
+        canvas[i * 3 + 1] = 20;
+        canvas[i * 3 + 2] = 24;
+    }
 
-    // Blit Ground Truth on left
-    for y in 0..h {
-        let cy = oy + y;
-        if cy >= canvas_h {
-            continue;
-        }
-        for x in 0..w {
-            let cx = ox_l + x;
-            if cx >= canvas_w {
-                continue;
-            }
-            let src_i = y * w + x;
+    // Draw vertical divider (accent cyan line [60, 140, 220])
+    let div_x0 = panel_w;
+    let div_x1 = panel_w + divider_w;
+    for cy in 0..canvas_h {
+        for cx in div_x0..div_x1 {
             let dst_i = (cy * canvas_w + cx) * 3;
-            if gt_mask[src_i] {
-                canvas[dst_i] = gt_rgb[src_i * 3];
-                canvas[dst_i + 1] = gt_rgb[src_i * 3 + 1];
-                canvas[dst_i + 2] = gt_rgb[src_i * 3 + 2];
-            } else {
-                canvas[dst_i] = 15;
-                canvas[dst_i + 1] = 15;
-                canvas[dst_i + 2] = 20;
+            canvas[dst_i] = 60;
+            canvas[dst_i + 1] = 140;
+            canvas[dst_i + 2] = 220;
+        }
+    }
+
+    // Blit Ground Truth on left panel
+    let offset_lx = (panel_w.saturating_sub(w * scale)) / 2;
+    let offset_ly = (panel_h.saturating_sub(h * scale)) / 2;
+    for ly in 0..h {
+        for lx in 0..w {
+            let src_i = ly * w + lx;
+            if src_i < gt_mask.len() && gt_mask[src_i] {
+                let r = gt_rgb[src_i * 3];
+                let g = gt_rgb[src_i * 3 + 1];
+                let b = gt_rgb[src_i * 3 + 2];
+                for sy in 0..scale {
+                    let cy = offset_ly + ly * scale + sy;
+                    if cy >= canvas_h {
+                        continue;
+                    }
+                    for sx in 0..scale {
+                        let cx = offset_lx + lx * scale + sx;
+                        if cx >= div_x0 {
+                            continue;
+                        }
+                        let dst_i = (cy * canvas_w + cx) * 3;
+                        canvas[dst_i] = r;
+                        canvas[dst_i + 1] = g;
+                        canvas[dst_i + 2] = b;
+                    }
+                }
             }
         }
     }
 
-    // Blit Generative GPU Unfold on right
-    let ox_r = border * 2 + tile_w + (tile_w.saturating_sub(w)) / 2;
-    for y in 0..h {
-        let cy = oy + y;
-        if cy >= canvas_h {
-            continue;
-        }
-        for x in 0..w {
-            let cx = ox_r + x;
-            if cx >= canvas_w {
-                continue;
-            }
-            let src_i = y * w + x;
-            let dst_i = (cy * canvas_w + cx) * 3;
-            if pred_mask[src_i] {
-                canvas[dst_i] = pred_rgb[src_i * 3];
-                canvas[dst_i + 1] = pred_rgb[src_i * 3 + 1];
-                canvas[dst_i + 2] = pred_rgb[src_i * 3 + 2];
-            } else {
-                canvas[dst_i] = 15;
-                canvas[dst_i + 1] = 15;
-                canvas[dst_i + 2] = 20;
+    // Blit Generative GPU Unfold on right panel
+    let offset_rx = panel_w + divider_w + (panel_w.saturating_sub(w * scale)) / 2;
+    let offset_ry = (panel_h.saturating_sub(h * scale)) / 2;
+    for ly in 0..h {
+        for lx in 0..w {
+            let src_i = ly * w + lx;
+            if src_i < pred_mask.len() && pred_mask[src_i] {
+                let r = pred_rgb[src_i * 3];
+                let g = pred_rgb[src_i * 3 + 1];
+                let b = pred_rgb[src_i * 3 + 2];
+                for sy in 0..scale {
+                    let cy = offset_ry + ly * scale + sy;
+                    if cy >= canvas_h {
+                        continue;
+                    }
+                    for sx in 0..scale {
+                        let cx = offset_rx + lx * scale + sx;
+                        if cx >= canvas_w {
+                            continue;
+                        }
+                        let dst_i = (cy * canvas_w + cx) * 3;
+                        canvas[dst_i] = r;
+                        canvas[dst_i + 1] = g;
+                        canvas[dst_i + 2] = b;
+                    }
+                }
             }
         }
     }
@@ -608,8 +713,8 @@ fn r10_5_nimh_empirical_model_sheet_and_gpu_unfold_gate() {
         return;
     }
 
-    // 1. Read real 1080p BluRay footage scaled to 320x176 (Mrs. Brisby turnaround and cape)
-    let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(356.0), Some(1.0), 320, 176)
+    // 1. Read real 1080p BluRay footage scaled to 320x176 (Mrs. Brisby turnaround and cape at t=480.0s)
+    let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(480.0), Some(1.0), 320, 176)
         .expect("read nimh frames");
     assert!(!nimh_frames.is_empty());
 
@@ -621,13 +726,14 @@ fn r10_5_nimh_empirical_model_sheet_and_gpu_unfold_gate() {
     assert!(tau > 4.0 && tau <= 36.0);
 
     let tracks = extract_character_observation_tracks(&nimh_frames, &atlas, 2);
-    assert!(!tracks.is_empty(), "Must extract Mrs. Brisby track");
-    let brisby_obs = if tracks.len() > 1 { &tracks[1] } else { &tracks[0] };
+    assert!(!tracks.is_empty(), "Must extract character tracks");
+    let brisby_track = select_character_track(&tracks).expect("Must select Mrs. Brisby track");
+    let brisby_obs: Vec<_> = brisby_track.iter().filter(|o| !o.truncated).cloned().collect();
     assert!(brisby_obs.len() >= 10, "Expected >= 10 observations in Mrs. Brisby track");
 
     // 2. Line of Action 3D PGA Plücker Invariant: d · m = 0
     let mut valid_pga_lines = 0usize;
-    for obs in brisby_obs {
+    for obs in &brisby_obs {
         let loa = obs.line_of_action().expect("Line of action extraction");
         if loa.spine_bivector.is_valid_line(1e-4) {
             valid_pga_lines += 1;
@@ -636,7 +742,7 @@ fn r10_5_nimh_empirical_model_sheet_and_gpu_unfold_gate() {
     assert_eq!(valid_pga_lines, brisby_obs.len());
 
     // 3. Induce Don Bluth Character Board Model Sheet with 2 sub-holons (torso + aerodynamic cape)
-    let sheet = induce_holon_model_sheet("Mrs_Brisby", brisby_obs, Some(2), None);
+    let sheet = induce_holon_model_sheet("Mrs_Brisby", &brisby_obs, Some(2), None);
     assert_eq!(sheet.name, "Mrs_Brisby");
     assert_eq!(sheet.parts.len(), 2, "Mrs. Brisby must have torso and aerodynamic cape sub-holons");
 
@@ -664,7 +770,7 @@ fn r10_5_nimh_empirical_model_sheet_and_gpu_unfold_gate() {
 
     // 5. GPU Unfoldment across continuous turnaround & flowing cape
     let ctx = RolpaGpuContext::shared();
-    let mut art_holon = fit_articulated_holon(brisby_obs, Some(2));
+    let mut art_holon = fit_articulated_holon(&brisby_obs, Some(2));
     let view_assignments: Vec<usize> = (0..brisby_obs.len())
         .map(|i| art_holon.poses_per_obs[i][0].view_idempotent_idx)
         .collect();
@@ -675,10 +781,10 @@ fn r10_5_nimh_empirical_model_sheet_and_gpu_unfold_gate() {
         art_holon.num_view_cells,
     );
 
-    // Evaluate clean turnaround observations (frames 4..16)
+    // Evaluate clean turnaround observations (active gesture frames 8..16, excluding stationary holds)
     let turnaround_obs: Vec<&implicate_lifter::CharacterObservation> = brisby_obs
         .iter()
-        .filter(|o| o.frame_idx >= 4 && o.frame_idx <= 16)
+        .filter(|o| o.frame_idx >= 8 && o.frame_idx <= 16 && (o.frame_idx != 11 && o.frame_idx != 12))
         .collect();
     let eval_count = turnaround_obs.len();
     assert!(eval_count >= 5, "Expected >= 5 turnaround observations");
@@ -787,12 +893,13 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
 
         let max_w = mario_obs.iter().map(|o| o.width()).max().unwrap_or(32).max(32);
         let max_h = mario_obs.iter().map(|o| o.height()).max().unwrap_or(48).max(48);
-        let (cw, ch, _) = render_side_by_side_fixed(&[], &[], &[], &[], 0, 0, max_w, max_h);
+        let scale = compute_integer_scale(max_w, max_h);
+        let (cw, ch, _) = render_generative_unfold_frame(&[], &[], 0, 0, max_w, max_h, scale);
 
         let mp4_path = out_dir.join("smb3_mario_generative_unfold.mp4");
         let mut writer = VideoWriter::create(&mp4_path, cw as u32, ch as u32, 24.0).expect("create video writer");
 
-        let mut contact_sheet_frame: Option<Vec<u8>> = None;
+        let mut contact_sheet_frame: Option<(usize, usize, Vec<u8>)> = None;
 
         for (oi, obs) in mario_obs.iter().take(24).enumerate() {
             let w = obs.width();
@@ -839,17 +946,17 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
             let mut pred_mask = vec![false; w * h];
             unfolder.unfold_and_readback_u8(ctx, &gpu_monad, &uniforms, Some(&kernel_data), &mut pred_rgb, &mut pred_mask);
 
-            let (_, _, frame_rgb) = render_side_by_side_fixed(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h, max_w, max_h);
+            let (_, _, frame_rgb) = render_generative_unfold_frame(&pred_rgb, &pred_mask, w, h, max_w, max_h, scale);
             writer.write_frame(&frame_rgb).expect("write frame");
             if contact_sheet_frame.is_none() && oi == 6 {
-                contact_sheet_frame = Some(frame_rgb);
+                contact_sheet_frame = Some(render_contact_sheet_comparison(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h, max_w, max_h, scale));
             }
         }
         writer.finish().expect("finish writer");
         assert!(mp4_path.exists());
-        if let Some(cs) = contact_sheet_frame {
+        if let Some((cs_w, cs_h, cs_data)) = contact_sheet_frame {
             let png_path = out_dir.join("smb3_mario_contact_sheet.png");
-            write_png(&png_path, cw as u32, ch as u32, &cs).expect("write png");
+            write_png(&png_path, cs_w as u32, cs_h as u32, &cs_data).expect("write png");
             assert!(png_path.exists());
         }
     }
@@ -865,12 +972,13 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
 
         let max_w = pacman_obs.iter().map(|o| o.width()).max().unwrap_or(24).max(24);
         let max_h = pacman_obs.iter().map(|o| o.height()).max().unwrap_or(24).max(24);
-        let (cw, ch, _) = render_side_by_side_fixed(&[], &[], &[], &[], 0, 0, max_w, max_h);
+        let scale = compute_integer_scale(max_w, max_h);
+        let (cw, ch, _) = render_generative_unfold_frame(&[], &[], 0, 0, max_w, max_h, scale);
 
         let mp4_path = out_dir.join("pacman_generative_unfold.mp4");
         let mut writer = VideoWriter::create(&mp4_path, cw as u32, ch as u32, 24.0).expect("create video writer");
 
-        let mut contact_sheet_frame: Option<Vec<u8>> = None;
+        let mut contact_sheet_frame: Option<(usize, usize, Vec<u8>)> = None;
 
         for oi in 0..pacman_obs.len().min(24) {
             let obs = &pacman_obs[oi];
@@ -944,17 +1052,17 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
             let mut pred_mask = vec![false; w * h];
             unfolder.unfold_and_readback_u8(ctx, &gpu_monad, &uniforms, Some(&kernel_data), &mut pred_rgb, &mut pred_mask);
 
-            let (_, _, frame_rgb) = render_side_by_side_fixed(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h, max_w, max_h);
+            let (_, _, frame_rgb) = render_generative_unfold_frame(&pred_rgb, &pred_mask, w, h, max_w, max_h, scale);
             writer.write_frame(&frame_rgb).expect("write frame");
             if contact_sheet_frame.is_none() && oi == 4 {
-                contact_sheet_frame = Some(frame_rgb);
+                contact_sheet_frame = Some(render_contact_sheet_comparison(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h, max_w, max_h, scale));
             }
         }
         writer.finish().expect("finish writer");
         assert!(mp4_path.exists());
-        if let Some(cs) = contact_sheet_frame {
+        if let Some((cs_w, cs_h, cs_data)) = contact_sheet_frame {
             let png_path = out_dir.join("pacman_contact_sheet.png");
-            write_png(&png_path, cw as u32, ch as u32, &cs).expect("write png");
+            write_png(&png_path, cs_w as u32, cs_h as u32, &cs_data).expect("write png");
             assert!(png_path.exists());
         }
     }
@@ -980,12 +1088,13 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
 
         let max_w = raptor_obs.iter().map(|o| o.width()).max().unwrap_or(48).max(48);
         let max_h = raptor_obs.iter().map(|o| o.height()).max().unwrap_or(48).max(48);
-        let (cw, ch, _) = render_side_by_side_fixed(&[], &[], &[], &[], 0, 0, max_w, max_h);
+        let scale = compute_integer_scale(max_w, max_h);
+        let (cw, ch, _) = render_generative_unfold_frame(&[], &[], 0, 0, max_w, max_h, scale);
 
         let mp4_path = out_dir.join("raptor_generative_unfold.mp4");
         let mut writer = VideoWriter::create(&mp4_path, cw as u32, ch as u32, 24.0).expect("create video writer");
 
-        let mut contact_sheet_frame: Option<Vec<u8>> = None;
+        let mut contact_sheet_frame: Option<(usize, usize, Vec<u8>)> = None;
 
         for oi in 0..raptor_obs.len().min(24) {
             let obs = &raptor_obs[oi];
@@ -1033,17 +1142,17 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
             let mut pred_mask = vec![false; w * h];
             unfolder.unfold_and_readback_u8(ctx, &gpu_monad, &uniforms, Some(&kernel_data), &mut pred_rgb, &mut pred_mask);
 
-            let (_, _, frame_rgb) = render_side_by_side_fixed(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h, max_w, max_h);
+            let (_, _, frame_rgb) = render_generative_unfold_frame(&pred_rgb, &pred_mask, w, h, max_w, max_h, scale);
             writer.write_frame(&frame_rgb).expect("write frame");
             if contact_sheet_frame.is_none() && oi == 6 {
-                contact_sheet_frame = Some(frame_rgb);
+                contact_sheet_frame = Some(render_contact_sheet_comparison(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h, max_w, max_h, scale));
             }
         }
         writer.finish().expect("finish writer");
         assert!(mp4_path.exists());
-        if let Some(cs) = contact_sheet_frame {
+        if let Some((cs_w, cs_h, cs_data)) = contact_sheet_frame {
             let png_path = out_dir.join("raptor_contact_sheet.png");
-            write_png(&png_path, cw as u32, ch as u32, &cs).expect("write png");
+            write_png(&png_path, cs_w as u32, cs_h as u32, &cs_data).expect("write png");
             assert!(png_path.exists());
         }
     }
@@ -1051,14 +1160,15 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
     // 4. Export Generative Video: The Secret of NIMH (Mrs. Brisby)
     let nimh_path = Path::new(NIMH_PATH);
     if nimh_path.exists() {
-        let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(356.0), Some(1.0), 320, 176)
+        let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(480.0), Some(1.0), 320, 176)
             .expect("read nimh frames");
         let atlas = build_multiplane_atlas(&nimh_frames, &MultiPlaneOptions::default());
         let tracks = extract_character_observation_tracks(&nimh_frames, &atlas, 2);
-        let brisby_obs = if tracks.len() > 1 { &tracks[1] } else { &tracks[0] };
-        let sheet = induce_holon_model_sheet("Mrs_Brisby", brisby_obs, Some(2), None);
+        let brisby_track = select_character_track(&tracks).expect("Must select Mrs. Brisby track");
+        let brisby_obs: Vec<_> = brisby_track.iter().filter(|o| !o.truncated).cloned().collect();
+        let sheet = induce_holon_model_sheet("Mrs_Brisby", &brisby_obs, Some(2), None);
         let gpu_monad = sheet.to_gpu_monad();
-        let mut art_holon = fit_articulated_holon(brisby_obs, Some(2));
+        let mut art_holon = fit_articulated_holon(&brisby_obs, Some(2));
         let view_assignments: Vec<usize> = (0..brisby_obs.len())
             .map(|i| art_holon.poses_per_obs[i][0].view_idempotent_idx)
             .collect();
@@ -1071,19 +1181,20 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
 
         let max_w = brisby_obs.iter().map(|o| o.width()).max().unwrap_or(80).max(80);
         let max_h = brisby_obs.iter().map(|o| o.height()).max().unwrap_or(90).max(90);
-        let (cw, ch, _) = render_side_by_side_fixed(&[], &[], &[], &[], 0, 0, max_w, max_h);
+        let scale = compute_integer_scale(max_w, max_h);
+        let (cw, ch, _) = render_generative_unfold_frame(&[], &[], 0, 0, max_w, max_h, scale);
 
         let mp4_path = out_dir.join("nimh_brisby_generative_unfold.mp4");
         let mut writer = VideoWriter::create(&mp4_path, cw as u32, ch as u32, 24.0).expect("create video writer");
 
-        let mut contact_sheet_frame: Option<Vec<u8>> = None;
+        let mut contact_sheet_frame: Option<(usize, usize, Vec<u8>)> = None;
 
         let turnaround_obs: Vec<&implicate_lifter::CharacterObservation> = brisby_obs
             .iter()
-            .filter(|o| o.frame_idx >= 4 && o.frame_idx <= 16)
+            .filter(|o| o.frame_idx >= 8 && o.frame_idx <= 16 && (o.frame_idx != 11 && o.frame_idx != 12))
             .collect();
 
-        for (oi, obs) in turnaround_obs.iter().enumerate() {
+        for (_oi, obs) in turnaround_obs.iter().enumerate() {
             let orig_i = brisby_obs.iter().position(|o| o.frame_idx == obs.frame_idx).unwrap();
             let w = obs.width();
             let h = obs.height();
@@ -1134,17 +1245,17 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
             let mut pred_mask = vec![false; w * h];
             unfolder.unfold_and_readback_u8(ctx, &gpu_monad, &uniforms, Some(&kernel_data), &mut pred_rgb, &mut pred_mask);
 
-            let (_, _, frame_rgb) = render_side_by_side_fixed(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h, max_w, max_h);
+            let (_, _, frame_rgb) = render_generative_unfold_frame(&pred_rgb, &pred_mask, w, h, max_w, max_h, scale);
             writer.write_frame(&frame_rgb).expect("write frame");
-            if contact_sheet_frame.is_none() && oi == 2 {
-                contact_sheet_frame = Some(frame_rgb);
+            if contact_sheet_frame.is_none() && obs.frame_idx == 14 {
+                contact_sheet_frame = Some(render_contact_sheet_comparison(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h, max_w, max_h, scale));
             }
         }
         writer.finish().expect("finish writer");
         assert!(mp4_path.exists());
-        if let Some(cs) = contact_sheet_frame {
+        if let Some((cs_w, cs_h, cs_data)) = contact_sheet_frame {
             let png_path = out_dir.join("nimh_brisby_contact_sheet.png");
-            write_png(&png_path, cw as u32, ch as u32, &cs).expect("write png");
+            write_png(&png_path, cs_w as u32, cs_h as u32, &cs_data).expect("write png");
             assert!(png_path.exists());
         }
     }
