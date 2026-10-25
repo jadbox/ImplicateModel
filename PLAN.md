@@ -23,14 +23,14 @@ A forensic inspection of `./generative_output/` reveals the exact failure mode o
    - The exported video contains only **1,621 active pixels** (an effective area of only $\sim 25$ pixels at $1\times$).
    - **Root Cause:** When `dominant_silhouette` and morphological opening were wired with fixed radius heuristics, Mario's swing-phase boots and red cap were misclassified as 1D filaments and amputated. The downstream wavepacket fitting then evaluated an incomplete torso fragment.
 
-2. **`nimh_brisby_generative_unfold.mp4` (Visual glitches, yellow sky ghost, 7 frames):**
-   - The export contains only **7 frames (0.29 seconds)**—an unreadable flash.
-   - In frame 01, Mrs. Brisby is almost entirely replaced by a phantom blob of **yellow sunset sky** ($[213, 192, 93]$), which dominates her top 5 colors.
-   - **Root Cause:** Classic **temporal-mode background inversion**. Because Mrs. Brisby held a stationary speaking pose across frames $0..7$, the temporal-mode background accumulator baked her torso fur into the background atlas. When her arm raised at frame 14, the newly revealed sunset sky produced a massive residual ($\Delta I \approx 134 \gg \tau$), while her actual body had zero residual ($\Delta I \approx 0$). The pipeline subtracted her real body and extracted the sky as the "character."
+2. **`raptor_generative_unfold.mp4` & `pacman_generative_unfold.mp4` (Ocean shadow/wake & corridor pellet artifacts):**
+   - In Raptor, the translucent ocean cast shadow and afterburner wake were fused into the aircraft hull, and a passing yellow fireball at $t \approx 1\text{s}$ biased the reference frame.
+   - In Pac-Man, 4:2:0 chroma subsampling ringing on maze walls and a $3\times 3$ white corridor pellet dot below Pac-Man's mouth contaminated the extracted observation mask.
+   - **Root Cause:** Pointwise $1\times 1$ RGB subtraction and max-area reference selection failed to separate chromatically polarized medium modulations (shadows/wakes) and transient foreign satellites from the persistent co-moving character soliton.
 
 3. **The Core Architectural Flaw:**
-   - Defining foreground as "pixel change in screen space" ($\Delta I(x, y, t) > \tau$) fails on any video where actors idle, speak, turn, or cast soft shadows.
-   - Defining characters by chaining $10+$ ad-hoc morphological and bounding-box thresholds creates a cascading failure loop where tuning for film grain in NIMH breaks sprite boots in Mario.
+   - Defining foreground as naive pixel change in screen space ($\Delta I(x, y, t) > \tau$) fails on any video where actors idle, cast soft shadows on water, or pass over corridor items.
+   - Defining characters by chaining $10+$ ad-hoc morphological and bounding-box thresholds creates a cascading failure loop where tuning for one video breaks sprite boots in Mario.
 
 ---
 
@@ -39,7 +39,7 @@ A forensic inspection of `./generative_output/` reveals the exact failure mode o
 ### 1. Prof. Basil Hiley: Undivided Wholeness & The Process Soliton
 > *"Our mistake was Cartesian reductionism: treating the video frame as a grid of isolated explicate pixels and trying to guess where the entity ends and the vacuum begins.
 >
-> In the Implicate Order, **movement is primary**. A character in a video—whether Mario jumping across bricks, an aircraft banking over the sea, or Mrs. Brisby reaching for an amulet—is an **Idempotent Process Soliton**:
+> In the Implicate Order, **movement is primary**. A character in a video—whether Mario jumping across bricks, Pac-Man navigating a maze, or an aircraft banking over the sea—is an **Idempotent Process Soliton**:
 > $$\Psi(\mathbf{x}, t) = R(\mathbf{x}, t) \, M(t) \, \epsilon$$
 > An entity is not defined by its instantaneous difference from yesterday's background. It is defined by its **invariant spatiotemporal phase coherence** across the holomovement. 
 > 
@@ -62,13 +62,13 @@ A forensic inspection of `./generative_output/` reveals the exact failure mode o
 > - Grade 3: 3D Euclidean Points $P = x e_{032} + y e_{013} + z e_{021} + e_{123}$
 > - Grade 4: Pseudoscalar $I = e_{0123}$ (volume / chirality)
 >
-> In 2D platformers (Mario, Pac-Man) and 2.5D multi-plane animation (The Secret of NIMH), the world is simply a planar slice where $e_3 = 0$ or depth is stratified into discrete planes $z_k$.
+> In 2D platformers and scrolling arcade games (Mario, Pac-Man, Raptor) and 2.5D multi-plane animation, the world is simply a planar slice where $e_3 = 0$ or depth is stratified into discrete planes $z_k$.
 > In 3D games (Quake, Mario 64, Star Fox), the camera is an unconstrained 6-DOF Lie motor $M_{\text{cam}} \in \text{Spin}(3,0,1)$, surfaces are arbitrary 3D planes $\Pi$, and sightlines are Plücker ray bivectors.
 >
 > **The architecture is identical.** We do not need two different engines for 2D and 3D. We build ONE 3D PGA engine. 2D is just a planar subspace!
 >
 > And look at our two operational modes:
-> - **Mode A (Storybook Remix):** Prompt the engine with text or DzogLang scripts (`@scene: Mrs. Brisby walks toward the fireplace`) to generate new narrative sequences in a single causal wave pass.
+> - **Mode A (Storybook Remix):** Prompt the engine with text or DzogLang scripts (`@scene: Mario leaps over the Koopa block`) to generate new narrative sequences in a single causal wave pass.
 > - **Mode B (Playable Game Engine):** Hook a gamepad or keyboard directly into the causal loop! When the player presses 'Jump', we inject a vertical momentum rotor into Mario's Clifford monad:
 >   $$M_{\text{mario}}(t + \Delta t) = M_{\text{mario}}(t) \, \exp\left(-\frac{1}{2} v_y e_{02} \Delta t\right)$$
 >   The GPU wave-matter lattice evaluates the ground plane boundary condition ($P \wedge \Pi_{\text{ground}} = 0$) and steps the frame in $0.5\text{ ms}$ on an RTX 4090.
@@ -124,7 +124,7 @@ To achieve mathematical rigor without burning memory bandwidth on neural network
 
 ### 1. Stratum 1: Pixel Lifting, Duality, & CliffordNet Compute Shader ($O(N)$)
 Over the 2D discrete Laplacian context $\nabla^2 u$, the Clifford geometric product duality ($uv = u \cdot v + u \wedge v$) splits every character into invariant components:
-- **Ink Contour Blades ($u \wedge \nabla^2 u$):** Exterior bivector vorticity blade capturing animated film ink lines, cel borders, and detached props (Mrs. Brisby's amulet, Jeremy's string) with zero pixel overlap.
+- **Ink Contour Blades ($u \wedge \nabla^2 u$):** Exterior bivector vorticity blade capturing ink lines, sprite borders, and detached props with zero pixel overlap.
 - **Cel Paint Fills ($u \cdot \nabla^2 u$):** Grade-0 scalar product capturing flat cel color regions, process density $\rho = \text{tr}(\rho_c)$, and continuous 5-mode Clifford Fourier wavepacket harmonics with volume conservation ($\det S = 1$).
 - **Fused WGSL Compute:** Refined in a single pass (`cliffordnet_rolpa.wgsl`, 2.6M parameters) at **$0.46\text{ ms/frame}$** ($>2,100\text{ FPS}$) on RTX 4090 with zero temporal flicker.
 
@@ -242,7 +242,7 @@ pub struct GpuModelSheetMonad {
 - **Invariant:** $\Psi_{\text{bg}}$ never contains character fur, clothes, or boots. Newly exposed background in hold-release frames generates $\Delta \Psi \approx 0$, stopping false residual generation at the root.
 
 ### 2. Universal Holon Salience Metric ($\mathcal{S}_{\text{holon}}$)
-Deterministically selects 2D character bodies over thin 1D waving filaments (e.g. Mrs. Brisby vs. fluttering red string):
+Deterministically selects 2D character bodies over thin 1D filaments or background terrain islands:
 $$\mathcal{S}_{\text{holon}} = \overline{M}_{\text{interior}} \times \rho_{\text{fill}} \times \left(1.0 - \frac{|\mathbf{d} \cdot \mathbf{m}|}{\|\mathbf{d}\| \|\mathbf{m}\| + \epsilon}\right)$$
 Yields a $100\times$ signal-to-noise ratio without film-specific threshold constants.
 
@@ -264,7 +264,7 @@ To eliminate the immense engineering risk and synthetic artifacts of general con
   - `(Mario, Action::Jump) -> "mario_jump.wav"`
   - `(Mario, Event::PlatformLand) -> "mario_land.wav"`
   - `(Mario, Event::BlockHit) -> "coin_box.wav"`
-  - `(Brisby, Event::StoneStep) -> "stone_step.wav"`
+  - `(Raptor, Action::Fire) -> "plasma_fire.wav"`
 - **Sub-Sample Playback:** During real-time play or storybook unfoldment, triggering events play the authentic sampled audio with sub-frame timing ($< 1.0\text{ ms}$) and binaural camera panning.
 - **Explicit Scope Boundary:** Word-level dialogue segmentation and phonemic speech synthesis are deferred to a future milestone.
 
@@ -297,25 +297,25 @@ Track S Milestone Sequence:
 ### Milestone S1: Universal Spatiotemporal Plenum & Coherent Character Lifting
 - **Objectives:**
   1. Fix the temporal mode contamination in `build_multiplane_atlas` by masking actor bounding tubes across the entire temporal window and inpainting stationary occlusions with harmonic continuation ($\nabla^2 I = 0$).
-  2. Implement `detect_enclosed_cavities` and `disocclude_vacuum_cavities` in `morphology.rs` to purge trapped yellow sky cavities ($[225, 135, 52]$) from Mrs. Brisby turnaround frames $8..16$.
+  2. Implement `detect_enclosed_cavities`, `disocclude_vacuum_cavities`, `is_chromatic_medium_modulation`, and `enforce_track_comoving_soliton_coherency` to purge ocean shadows/wakes in Raptor and detached corridor pellets in Pac-Man.
   3. Enforce satellite contiguity floor `comp_sz >= 4` in `envelope_silhouette` to permanently eliminate perimeter ringing specks.
   4. Ensure Mario maintains 100% of his boots, cap, and overalls across all 23 frames with zero limb amputation.
 - **Showcase Example (The Complete Character & Inpainted Plenum Showcase):**
   - Run: `cargo test -p implicate-lifter --test r10_model_sheet_gates`
   - Visual Proof:
     - In [`generative_output/smb3_mario_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_contact_sheet.png), Mario renders with complete brown boots, blue overalls, mustache, and red cap (>12,000 active pixels at $8\times$ integer scale, $\text{IoU} \ge 0.985$), resolving the 87.3% mass amputation.
-    - In [`generative_output/nimh_brisby_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_contact_sheet.png), the stationary hold locus reveals a clean rock background with 0 fur texels, and the enclosed pocket between her arm and cloak cleanly punches out yellow sunset sky ($[225, 135, 52]$) while preserving her solid torso ($\text{IoU} \ge 0.820$).
+    - In [`generative_output/raptor_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_contact_sheet.png) and [`generative_output/pacman_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_contact_sheet.png), the ocean shadow/wake and corridor pellet dot are cleanly stripped while preserving 100% character hull integrity.
 
 ### Milestone S2: Model Sheet Induction & Crisp Multi-Second Viewports
 - **Objectives:**
-  1. Fix presentation scaling in `r10_model_sheet_gates.rs`: enforce minimum $2\times$ integer scaling for feature animation cels ($236 \times 360$ canvas), eliminating cramped $1\times$ fallbacks.
-  2. Extend generative video export duration from 7 frames ($0.29\text{s}$) to full multi-second turnaround loops ($24\text{--}60\text{ frames}$, $\ge 2.0\text{s}$) with smooth cyclic playback.
-  3. Re-export all 4 generative comparison videos and contact sheets to `./generative_output/`.
+  1. Fix presentation scaling in `r10_model_sheet_gates.rs`: enforce integer nearest-neighbor scaling ($8\times$ NES/arcade, $4\times$ VGA) in crisp centered viewports.
+  2. Extend generative video export duration from 7 frames ($0.29\text{s}$) to full multi-second turnaround loops ($60\text{ frames}$, $2.5\text{s}$) with smooth cyclic playback.
+  3. Re-export all 3 generative comparison videos and contact sheets to `./generative_output/`.
 - **Showcase Example (The 60-Frame Looping Turnaround Showcase):**
   - Run: `cargo test -p implicate-lifter --test r10_model_sheet_gates -- r10_5_generative_video_export_and_user_validation_gate`
   - Visual Proof:
     - [`generative_output/smb3_mario_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_generative_unfold.mp4): A crisp 60-frame ($2.5\text{s}$ at $24\text{ fps}$) looping video at $8\times$ NES scaling ($192 \times 256$) showing Mario cycling seamlessly through walking and jumping gaits with volume conservation ($\det S = 1$).
-    - [`generative_output/nimh_brisby_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_generative_unfold.mp4): A 60-frame ($2.5\text{s}$) video at $2\times$ integer cel scaling ($236 \times 360$) showing Mrs. Brisby performing a smooth, cyclic turnaround with billowing cape dynamics, zero temporal flicker, and zero trapped sky blobs (replacing the previous 7-frame flash).
+    - [`generative_output/raptor_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_generative_unfold.mp4) & [`generative_output/pacman_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_generative_unfold.mp4): Crisp 60-frame ($2.5\text{s}$) looping videos at $4\times$/$8\times$ integer scaling with zero shadow halos or detached corridor pellets.
 
 ### Milestone S3: Intrinsic Clifford Platforming & Player Motor Injection
 - **Objectives:**
@@ -338,12 +338,12 @@ Track S Milestone Sequence:
 
 ### Milestone S5: The Generative Storybook Engine (`implicate-cli remix`)
 - **Objectives:**
-  1. Build `implicate remix --video nimh_corpus.implicate --prompt "@scene: Brisby explores the stone corridor"` in `crates/implicate-cli`.
-  2. Unfold a novel hand-drawn animated sequence using the induced animated film character model sheet, blending between turnaround idempotents $\{\epsilon_v\}$ and continuous cape wavepackets.
+  1. Build `implicate remix --video multi_corpus.implicate --prompt "@scene: Mario leaps over the Koopa block"` in `crates/implicate-cli`.
+  2. Unfold a novel narrative sequence using the induced character model sheets, blending between turnaround idempotents $\{\epsilon_v\}$ and continuous wavepackets.
   3. Trigger event-sampled Foley audio at kinematic impulse and contact events with sub-sample onset timing and binaural stereo panning (dialogue and word-level speech synthesis explicitly deferred to future milestones).
-- **Showcase Example (Autonomous Animated Feature Scene Remix):**
-  - Run: `cargo run -p implicate-cli -- remix --video ./tests/fixtures/nimh_shot14.implicate --prompt "Mrs. Brisby turns to face the stone archway, walks cautiously forward, and raises her glowing red amulet"`
-  - Output Proof: [`generative_output/nimh_remix_stone_archway.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_remix_stone_archway.mp4) (1080p, 120 frames @ 24 fps with phase-locked 48 kHz stereo audio). The engine translates prompt verbs into spatial $\mathcal{Q}_{\text{Cl}}$ attractor beacons, rotates Brisby's Line of Action $L_{\text{spine}}$ to transition across turnaround idempotents $\epsilon_{\text{profile}} \to \epsilon_{\text{3/4}} \to \epsilon_{\text{back}}$, and synthesizes a completely new feature animation scene matching the original film's style and audio without diffusion hallucinations.
+- **Showcase Example (Autonomous Scene Remix):**
+  - Run: `cargo run -p implicate-cli -- remix --video ./tests/fixtures/smb3_world1.implicate --prompt "Mario sprints forward, leaps over the Koopa block, and lands on the brick platform"`
+  - Output Proof: [`generative_output/smb3_remix_koopa_vault.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_remix_koopa_vault.mp4) (120 frames @ 24 fps with phase-locked 48 kHz stereo audio). The engine translates prompt verbs into spatial $\mathcal{Q}_{\text{Cl}}$ attractor beacons, rotates the actor's Line of Action $L_{\text{spine}}$ across turnaround idempotents, and synthesizes a new scene without diffusion hallucinations.
 
 ### Milestone S6: 3D Projective Sector-Plane Lifter & Inverse-BSP World Compilation (e.g. *Doom*)
 - **Objectives:**
@@ -361,7 +361,6 @@ Track S Milestone Sequence:
 | Benchmark | Video Input | Mode A: Storybook Remix Target | Mode B: Playable Target | Acceptance Metric |
 | :--- | :--- | :--- | :--- | :--- |
 | **SMB3** | `smb3_w1_1_256x240.mp4` | Walk/Jump prompt sequence | Real-time keyboard control ($\ge 60\text{ FPS}$) | $\text{IoU} \ge 0.985$, $0$ physics engine deps |
-| **NIMH** | `nimh_1982_1080p.mp4` | Novel gesture & cape turnaround | Interactive mouse guidance | $\text{IoU} \ge 0.820$, $\text{LPIPS} \le 0.050$, 0 yellow sky |
-| **Pac-Man** | `pacman_240x308.mp4` | Maze patrol prompt | Arrow key arcade navigation | 4 discrete turns, $\text{IoU} = 1.000$ |
-| **Raptor** | `raptor_320x240.mp4` | Dogfight banking prompt | Vertical shmup steering | 0 ocean halo, $\text{IoU} \ge 0.950$ |
+| **Pac-Man** | `pacman_240x308.mp4` | Maze patrol prompt | Arrow key arcade navigation | 4 discrete turns, $\text{IoU} \ge 0.990$, 0 corridor dot |
+| **Raptor** | `raptor_320x240.mp4` | Dogfight banking prompt | Vertical shmup steering | 0 ocean halo, $\text{IoU} \ge 0.950$, longitudinal 550s |
 | **Doom (S6)** | `doom_320x240.mp4` *(Planned)* | 3D corridor patrol & combat | 6-DOF WASD + mouse turn ($\ge 120\text{ FPS}$) | $\Pi_1 \wedge \Pi_2$ corner closure, 8-view turnarounds |

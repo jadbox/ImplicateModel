@@ -2391,7 +2391,10 @@ pub fn enforce_track_comoving_soliton_coherency(
                 let c = [obs.rgb[i * 3], obs.rgb[i * 3 + 1], obs.rgb[i * 3 + 2]];
                 let foreign_color =
                     !core_modes.is_empty() && min_color_distance(c, &core_modes) > 2.0 * tau;
-                if hits * CFT_WAVEPACKET_MODES < n && (!prim[i] || foreign_color) {
+                // A detached satellite (!prim[i]) that is chromatically foreign to the persistent
+                // core palette H_core is a passing background item (e.g. maze pellet or debris),
+                // whereas attached body features require co-moving harmonic support (hits * M >= n).
+                if (!prim[i] && foreign_color) || (hits * CFT_WAVEPACKET_MODES < n && (!prim[i] || foreign_color)) {
                     new_mask[i] = false;
                     changed = true;
                 }

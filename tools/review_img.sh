@@ -28,7 +28,7 @@ MANAGED_FLAG="${LOCK_DIR}/managed.flag"
 
 usage() {
     echo "Usage: $0 [--timeout <SECONDS>] <IMAGE_FILE>"
-    echo "Example: $0 --timeout 30 ./generative_output/nimh_brisby_contact_sheet.png"
+    echo "Example: $0 --timeout 30 ./generative_output/smb3_mario_contact_sheet.png"
     echo ""
     echo "Options:"
     echo "  --timeout, -t <N>  Time limit for inference request in seconds (default: 60)"

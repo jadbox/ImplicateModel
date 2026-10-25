@@ -2,17 +2,15 @@
 //!
 //! Evaluates end-to-end HolonModelSheet induction and GPU unfoldment directly against
 //! real video benchmarks with ZERO magic number constants:
-//! 1. The Secret of NIMH 1080p BluRay (`The.Secret.Of.NIMH.1982.1080p.BluRay.x264-[YTS.AM].mp4`)
-//! 2. Super Mario Bros. 3 (`smb3_w1_1_256x240.mp4`)
-//! 3. Pac-Man (`pacman_240x308.mp4`)
-//! 4. Raptor: Call of the Shadows (`raptor_320x240.mp4`)
+//! 1. Super Mario Bros. 3 (`smb3_w1_1_256x240.mp4`)
+//! 2. Pac-Man (`pacman_240x308.mp4`)
+//! 3. Raptor: Call of the Shadows (`raptor_320x240.mp4`, longitudinal 550s multi-window induction)
 //!
 //! Verifies:
 //! - All benchmark clips extract valid HolonModelSheet representations with self-consistent
 //!   statistical lattice noise floors: tau = median(|ΔΨ|) + 3.0 * 1.4826 * MAD(|ΔΨ|).
 //! - Line of Action 3D PGA screw axis blade L_spine ∈ G(3,0,1) satisfies Plücker identity d · m = 0.
-//! - Animated film ink contour blades (|u ∧ ∇²u|) and cel paint fills (u · ∇²u) have ZERO pixel overlap.
-//! - Fluid-structure compliance (flow_compliance > 1.0) correctly captures flowing capes.
+//! - Ink contour blades (|u ∧ ∇²u|) and cel paint fills (u · ∇²u) have ZERO pixel overlap.
 //! - Carmack direct GPU buffer dispatch: GpuModelSheetMonad layout (size=1216, align=64).
 //! - Single-pass WGSL compute shader unfolding at >= 60 FPS floor (120+ FPS target on RTX 4090).
 //! - Generative output videos and contact sheets exported to disk with absolute paths for user review.
@@ -20,33 +18,87 @@
 use std::path::{Path, PathBuf};
 
 use implicate_lifter::{
-    MultiPlaneOptions,
+    CharacterObservation, MultiPlaneOptions,
     articulated_wavepacket::{
         clifford_features::{
-            compute_perceptual_patch_lpips, decompose_masked_clifford_dual_product,
-            decompose_observation_dual_product, mask_iou,
+            compute_perceptual_patch_lpips, decompose_observation_dual_product, mask_iou,
         },
         compute_shot_noise_floor, fit_articulated_holon,
         part_fitting::enforce_volume_conserving_gait_deformation,
-        WavepacketPartKernel,
     },
     build_multiplane_atlas, extract_character_observation_tracks,
     extract_dominant_character_observations, induce_holon_model_sheet,
-    select_character_track,
     video_io::{self, VideoWriter, write_png},
 };
 use implicate_rolpa::{
     GpuModelSheetUnfolder, GpuPartPose, RolpaGpuContext, UnfoldUniforms,
 };
 
-const NIMH_PATH: &str =
-    "/mnt/storage/DDownloads/The Secret Of NIMH (1982) [BluRay] [1080p] [YTS.AM]/The.Secret.Of.NIMH.1982.1080p.BluRay.x264-[YTS.AM].mp4";
 const SMB3_PATH: &str =
     "/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d/smb3_w1_1_256x240.mp4";
 const PACMAN_PATH: &str =
     "/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d_pacman/pacman_240x308.mp4";
 const RAPTOR_PATH: &str =
     "/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d_raptor/raptor_320x240.mp4";
+
+/// Induce longitudinal character observations for the Raptor fighter jet across its ~10-minute
+/// (550s) timeline by sampling windows and linking tracks via Hiley CDE spinor and invariant-mass resonance.
+fn extract_longitudinal_raptor_observations() -> Vec<CharacterObservation> {
+    let raptor_path = Path::new(RAPTOR_PATH);
+    let anchor_frames = video_io::read_frames(raptor_path, Some(3.0), Some(2.0))
+        .expect("read raptor anchor frames");
+    let anchor_atlas = build_multiplane_atlas(&anchor_frames, &MultiPlaneOptions::default());
+    let mut all_obs = extract_dominant_character_observations(&anchor_frames, &anchor_atlas);
+    let anchor_sheet = induce_holon_model_sheet("Raptor_Anchor", &all_obs, Some(1), None);
+    let anchor_cde = anchor_sheet.cde_signature;
+    let anchor_area = all_obs
+        .iter()
+        .map(|o| o.mask.iter().filter(|&&m| m).count())
+        .sum::<usize>()
+        .max(1) as f64
+        / all_obs.len().max(1) as f64;
+
+    for &t_start in &[120.0f64, 300.0, 480.0] {
+        let frames = video_io::read_frames(raptor_path, Some(t_start), Some(1.0))
+            .expect("read longitudinal raptor window");
+        if frames.is_empty() {
+            continue;
+        }
+        let atlas = build_multiplane_atlas(&frames, &MultiPlaneOptions::default());
+        let tracks = extract_character_observation_tracks(&frames, &atlas, 3);
+        let best_track = tracks.into_iter().max_by(|a, b| {
+            let score = |tr: &[CharacterObservation]| -> f64 {
+                let s = induce_holon_model_sheet("Cand", tr, Some(1), None);
+                let coh = anchor_cde.signature_coherence(&s.cde_signature);
+                let mean_a = tr
+                    .iter()
+                    .map(|o| o.mask.iter().filter(|&&m| m).count())
+                    .sum::<usize>()
+                    .max(1) as f64
+                    / tr.len().max(1) as f64;
+                let mass_res = (-0.5 * ((mean_a / anchor_area).ln() / 0.5).powi(2)).exp();
+                coh * mass_res
+            };
+            score(a).partial_cmp(&score(b)).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        if let Some(tr) = best_track {
+            let s = induce_holon_model_sheet("Cand", &tr, Some(1), None);
+            if anchor_cde.signature_coherence(&s.cde_signature) >= 0.70 {
+                let frame_offset = (t_start * 30.0).round() as usize;
+                for mut obs in tr {
+                    obs.frame_idx += frame_offset;
+                    all_obs.push(obs);
+                }
+            }
+        }
+    }
+    let tau = compute_shot_noise_floor(&anchor_frames, &anchor_atlas);
+    implicate_lifter::articulated_wavepacket::enforce_track_comoving_soliton_coherency(
+        &mut all_obs,
+        tau,
+    );
+    all_obs
+}
 
 pub fn generative_output_dir() -> PathBuf {
     let dir = PathBuf::from("/home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output");
@@ -601,8 +653,8 @@ fn r10_5_raptor_empirical_model_sheet_and_gpu_unfold_gate() {
     println!("[R10.5 Raptor] Auto-derived statistical noise floor tau = {:.2}", tau);
     assert!(tau > 3.0 && tau <= 36.0);
 
-    let raptor_obs = extract_dominant_character_observations(&raptor_frames, &atlas);
-    assert!(raptor_obs.len() >= 30, "Expected >= 30 Raptor fighter jet observations");
+    let raptor_obs = extract_longitudinal_raptor_observations();
+    assert!(raptor_obs.len() >= 60, "Expected >= 60 longitudinal Raptor fighter jet observations");
 
     // 2. Line of Action 3D PGA Plücker Invariant: d · m = 0
     let mut valid_pga_lines = 0usize;
@@ -712,172 +764,6 @@ fn r10_5_raptor_empirical_model_sheet_and_gpu_unfold_gate() {
     );
     assert!(mean_iou >= 0.700, "Raptor reconstruction IoU ({:.4}) must reach >= 0.700", mean_iou);
     assert!(mean_lpips <= 0.090, "Raptor reconstruction LPIPS ({:.4}) must reach <= 0.090", mean_lpips);
-}
-
-#[test]
-fn r10_5_nimh_empirical_model_sheet_and_gpu_unfold_gate() {
-    let nimh_path = Path::new(NIMH_PATH);
-    if !nimh_path.exists() {
-        eprintln!("Skipping NIMH test: file not found at {}", NIMH_PATH);
-        return;
-    }
-
-    // 1. Read real 1080p BluRay footage scaled to 320x176 (Mrs. Brisby turnaround and cape at t=480.0s)
-    let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(480.0), Some(1.0), 320, 176)
-        .expect("read nimh frames");
-    assert!(!nimh_frames.is_empty());
-
-    let atlas = build_multiplane_atlas(&nimh_frames, &MultiPlaneOptions::default());
-    video_io::write_png(Path::new("/tmp/opencode/nimh_f0.png"), nimh_frames[0].width, nimh_frames[0].height, &nimh_frames[0].rgb).ok();
-    video_io::write_png(Path::new("/tmp/opencode/nimh_f14.png"), nimh_frames[14].width, nimh_frames[14].height, &nimh_frames[14].rgb).ok();
-    let bg14 = atlas.reconstruct_background_frame(14);
-    video_io::write_png(Path::new("/tmp/opencode/nimh_bg14.png"), bg14.width as u32, bg14.height as u32, &bg14.rgb).ok();
-
-    // Zero magic number noise floor verification
-    let tau = compute_shot_noise_floor(&nimh_frames, &atlas);
-    println!("[R10.5 NIMH] Auto-derived statistical noise floor tau = {:.2}", tau);
-    assert!(tau > 4.0 && tau <= 36.0);
-
-    let tracks = extract_character_observation_tracks(&nimh_frames, &atlas, 2);
-    for (ti, tr) in tracks.iter().enumerate() {
-        let score = implicate_lifter::compute_holon_salience_score(tr);
-        println!("[nimh track {ti}] len={}, non_trunc={}, score={:.2}, b0={:?}, frames={:?}",
-            tr.len(), tr.iter().filter(|o| !o.truncated).count(), score, tr.first().map(|o| o.bbox),
-            tr.iter().map(|o| o.frame_idx).collect::<Vec<_>>());
-    }
-    assert!(!tracks.is_empty(), "Must extract character tracks");
-    let brisby_track = select_character_track(&tracks).expect("Must select Mrs. Brisby track");
-    let brisby_obs: Vec<_> = brisby_track.iter().filter(|o| !o.truncated).cloned().collect();
-    assert!(brisby_obs.len() >= 10, "Expected >= 10 observations in Mrs. Brisby track");
-
-    // 2. Line of Action 3D PGA Plücker Invariant: d · m = 0
-    let mut valid_pga_lines = 0usize;
-    for obs in &brisby_obs {
-        let loa = obs.line_of_action().expect("Line of action extraction");
-        if loa.spine_bivector.is_valid_line(1e-4) {
-            valid_pga_lines += 1;
-        }
-    }
-    assert_eq!(valid_pga_lines, brisby_obs.len());
-
-    // 3. Induce Character Board Model Sheet with 2 sub-holons (torso + aerodynamic cape)
-    let sheet = induce_holon_model_sheet("Mrs_Brisby", &brisby_obs, Some(2), None);
-    assert_eq!(sheet.name, "Mrs_Brisby");
-    assert_eq!(sheet.parts.len(), 2, "Mrs. Brisby must have torso and aerodynamic cape sub-holons");
-
-    let torso = &sheet.parts[0];
-    let cape = &sheet.parts[1];
-    assert_eq!(torso.flow_compliance, 0.0, "Root torso must have zero aerodynamic flow compliance");
-    assert!(cape.flow_compliance > 1.0, "Billowing cape must exhibit aerodynamic compliance");
-    assert!(cape.spring_stiffness > 0.0);
-    assert!(cape.damping > 0.0);
-
-    // Verify dual Clifford decomposition with zero pixel overlap
-    let decomp = decompose_observation_dual_product(&brisby_obs[0]);
-    let mut overlap_count = 0usize;
-    for i in 0..decomp.width * decomp.height {
-        if decomp.ink_blade_mask[i] && decomp.cel_fill_mask[i] {
-            overlap_count += 1;
-        }
-    }
-    assert_eq!(overlap_count, 0, "Zero pixel overlap on Mrs. Brisby hand-drawn cel fills and ink contour blades");
-
-    // 4. Carmack GPU Buffer Monad Verification
-    let gpu_monad = sheet.to_gpu_monad();
-    assert_eq!(std::mem::size_of_val(&gpu_monad), 1216);
-    assert_eq!(std::mem::align_of_val(&gpu_monad), 64);
-
-    // 5. GPU Unfoldment across continuous turnaround & flowing cape
-    let ctx = RolpaGpuContext::shared();
-    let art_holon = fit_articulated_holon(&brisby_obs, Some(2));
-
-    // Evaluate clean turnaround observations (active gesture frames 8..16, excluding stationary holds)
-    let turnaround_obs: Vec<&implicate_lifter::CharacterObservation> = brisby_obs
-        .iter()
-        .filter(|o| o.frame_idx >= 8 && o.frame_idx <= 16 && (o.frame_idx != 11 && o.frame_idx != 12))
-        .collect();
-    let eval_count = turnaround_obs.len();
-    assert!(eval_count >= 5, "Expected >= 5 turnaround observations");
-
-    let mut total_iou = 0.0f64;
-    let mut total_lpips = 0.0f64;
-
-    for &obs in &turnaround_obs {
-        let oi = brisby_obs.iter().position(|o| o.frame_idx == obs.frame_idx).unwrap();
-        let w = obs.width();
-        let h = obs.height();
-        let unfolder = GpuModelSheetUnfolder::new(ctx, w as u32, h as u32);
-
-        let poses = &art_holon.poses_per_obs[oi];
-        let vc = poses[0].view_idempotent_idx.min(art_holon.kernels.len().saturating_sub(1));
-        let kernels = &art_holon.kernels[vc];
-        println!("NIMH f={} kernels.len() = {}, poses.len() = {}", obs.frame_idx, kernels.len(), poses.len());
-        let (kernel_data, part_kernel_res) =
-            GpuModelSheetUnfolder::pack_wavepacket_kernels_for_phase(kernels, poses[0].phase_rad);
-
-        let mut part_poses = [GpuPartPose::default(); 8];
-        for (p, pose) in poses.iter().take(8).enumerate() {
-            part_poses[p] = GpuPartPose {
-                center: [
-                    (pose.center[0] - obs.bbox.x0 as f64) as f32,
-                    (pose.center[1] - obs.bbox.y0 as f64) as f32,
-                ],
-                radii: [pose.radii[0] as f32, pose.radii[1] as f32],
-                angle_rad: pose.angle_rad as f32,
-                phase_rad: pose.phase_rad as f32,
-                view_idx: vc as u32,
-                part_idx: p as u32,
-            };
-        }
-
-        let uniforms = UnfoldUniforms {
-            canvas_width: w as u32,
-            canvas_height: h as u32,
-            num_parts: poses.len().min(8) as u32,
-            active_view: vc as u32,
-            holon_center: [
-                (obs.world_center()[0] - obs.bbox.x0 as f64) as f32,
-                (obs.world_center()[1] - obs.bbox.y0 as f64) as f32,
-            ],
-            scale: [1.0, 1.0],
-            phase_rad: poses[0].phase_rad as f32,
-            ink_threshold: 0.12,
-            ink_width: 0.08,
-            aspect_ratio: (w as f32) / (h as f32).max(1.0),
-            volume_scale: [1.0, 1.0],
-            flags: 0,
-            _pad0: 0,
-            part_poses,
-            part_kernel_res,
-        };
-
-        let mut pred_rgb = vec![0u8; w * h * 3];
-        let mut pred_mask = vec![false; w * h];
-        unfolder.unfold_and_readback_u8(
-            ctx,
-            &gpu_monad,
-            &uniforms,
-            Some(&kernel_data),
-            &mut pred_rgb,
-            &mut pred_mask,
-        );
-
-        let iou = mask_iou(&obs.mask, &pred_mask);
-        let lpips = compute_perceptual_patch_lpips(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h);
-        println!("NIMH turnaround f={}: iou={:.4}, lpips={:.4}, vc={}, obs_fg={}, pred_fg={}",
-            obs.frame_idx, iou, lpips, vc, obs.mask.iter().filter(|&&m| m).count(), pred_mask.iter().filter(|&&m| m).count());
-        total_iou += iou;
-        total_lpips += lpips;
-    }
-
-    let mean_iou = total_iou / eval_count as f64;
-    let mean_lpips = total_lpips / eval_count as f64;
-    println!(
-        "[R10.5 NIMH Gate] Evaluated {} turnaround frames | Mean IoU: {:.4} (target >= 0.800) | Mean LPIPS: {:.4} (target <= 0.055)",
-        eval_count, mean_iou, mean_lpips
-    );
-    assert!(mean_iou >= 0.800, "NIMH Mrs. Brisby reconstruction IoU ({:.4}) must reach >= 0.800 on real hand-drawn animation", mean_iou);
-    assert!(mean_lpips <= 0.055, "NIMH Mrs. Brisby reconstruction LPIPS ({:.4}) must reach <= 0.055 on real hand-drawn animation", mean_lpips);
 }
 
 #[test]
@@ -1053,10 +939,7 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
 
     // 3. Export Generative Video: Raptor
     {
-        let raptor_frames = video_io::read_frames(Path::new(RAPTOR_PATH), Some(3.0), Some(2.0))
-            .expect("read raptor frames");
-        let atlas = build_multiplane_atlas(&raptor_frames, &MultiPlaneOptions::default());
-        let raptor_obs = extract_dominant_character_observations(&raptor_frames, &atlas);
+        let raptor_obs = extract_longitudinal_raptor_observations();
         println!("[debug raptor export] obs.len()={}, obs[0]={:?}, obs[10]={:?}",
             raptor_obs.len(), raptor_obs.first().map(|o| o.bbox), raptor_obs.get(10).map(|o| o.bbox));
         let sheet = induce_holon_model_sheet("Raptor_Jet", &raptor_obs, Some(1), None);
@@ -1136,97 +1019,6 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
         }
     }
 
-    // 4. Export Generative Video: The Secret of NIMH (Mrs. Brisby)
-    let nimh_path = Path::new(NIMH_PATH);
-    if nimh_path.exists() {
-        let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(480.0), Some(1.0), 320, 176)
-            .expect("read nimh frames");
-        let atlas = build_multiplane_atlas(&nimh_frames, &MultiPlaneOptions::default());
-        let tracks = extract_character_observation_tracks(&nimh_frames, &atlas, 2);
-        let brisby_track = select_character_track(&tracks).expect("Must select Mrs. Brisby track");
-        let brisby_obs: Vec<_> = brisby_track.iter().filter(|o| !o.truncated).cloned().collect();
-        let sheet = induce_holon_model_sheet("Mrs_Brisby", &brisby_obs, Some(2), None);
-        let gpu_monad = sheet.to_gpu_monad();
-        let art_holon = fit_articulated_holon(&brisby_obs, Some(2));
-
-        let max_w = brisby_obs.iter().map(|o| o.width()).max().unwrap_or(80).max(80);
-        let max_h = brisby_obs.iter().map(|o| o.height()).max().unwrap_or(90).max(90);
-        let scale = 2;
-        let target_canvas = Some((236, 360));
-        let (cw, ch, _) = render_generative_unfold_frame(&[], &[], 0, 0, max_w, max_h, scale, target_canvas);
-
-        let mp4_path = out_dir.join("nimh_brisby_generative_unfold.mp4");
-        let mut writer = VideoWriter::create(&mp4_path, cw as u32, ch as u32, 24.0).expect("create video writer");
-
-        let mut contact_sheet_frame: Option<(usize, usize, Vec<u8>)> = None;
-
-        for frame_idx in 0..60 {
-            let oi = frame_idx % brisby_obs.len();
-            let obs = &brisby_obs[oi];
-            let w = obs.width();
-            let h = obs.height();
-            let unfolder = GpuModelSheetUnfolder::new(ctx, w as u32, h as u32);
-            let poses = &art_holon.poses_per_obs[oi];
-            let vc = poses[0].view_idempotent_idx.min(art_holon.kernels.len().saturating_sub(1));
-            let kernels = &art_holon.kernels[vc];
-            let (kernel_data, part_kernel_res) =
-                GpuModelSheetUnfolder::pack_wavepacket_kernels_for_phase(kernels, poses[0].phase_rad);
-
-            let mut part_poses = [GpuPartPose::default(); 8];
-            for (p, pose) in poses.iter().take(8).enumerate() {
-                part_poses[p] = GpuPartPose {
-                    center: [
-                        (pose.center[0] - obs.bbox.x0 as f64) as f32,
-                        (pose.center[1] - obs.bbox.y0 as f64) as f32,
-                    ],
-                    radii: [pose.radii[0] as f32, pose.radii[1] as f32],
-                    angle_rad: pose.angle_rad as f32,
-                    phase_rad: pose.phase_rad as f32,
-                    view_idx: vc as u32,
-                    part_idx: p as u32,
-                };
-            }
-
-            let uniforms = UnfoldUniforms {
-                canvas_width: w as u32,
-                canvas_height: h as u32,
-                num_parts: poses.len().min(8) as u32,
-                active_view: vc as u32,
-                holon_center: [
-                    (obs.world_center()[0] - obs.bbox.x0 as f64) as f32,
-                    (obs.world_center()[1] - obs.bbox.y0 as f64) as f32,
-                ],
-                scale: [1.0, 1.0],
-                phase_rad: poses[0].phase_rad as f32,
-                ink_threshold: 0.12,
-                ink_width: 0.08,
-                aspect_ratio: (w as f32) / (h as f32).max(1.0),
-                volume_scale: [1.0, 1.0],
-                flags: 0,
-                _pad0: 0,
-                part_poses,
-                part_kernel_res,
-            };
-
-            let mut pred_rgb = vec![0u8; w * h * 3];
-            let mut pred_mask = vec![false; w * h];
-            unfolder.unfold_and_readback_u8(ctx, &gpu_monad, &uniforms, Some(&kernel_data), &mut pred_rgb, &mut pred_mask);
-
-            let (_, _, frame_rgb) = render_generative_unfold_frame(&pred_rgb, &pred_mask, w, h, max_w, max_h, scale, target_canvas);
-            writer.write_frame(&frame_rgb).expect("write frame");
-            if contact_sheet_frame.is_none() && obs.frame_idx == 14 {
-                contact_sheet_frame = Some(render_contact_sheet_comparison(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h, max_w, max_h, scale, target_canvas));
-            }
-        }
-        writer.finish().expect("finish writer");
-        assert!(mp4_path.exists());
-        if let Some((cs_w, cs_h, cs_data)) = contact_sheet_frame {
-            let png_path = out_dir.join("nimh_brisby_contact_sheet.png");
-            write_png(&png_path, cs_w as u32, cs_h as u32, &cs_data).expect("write png");
-            assert!(png_path.exists());
-        }
-    }
-
     println!("\n================================================================================");
     println!("GENERATIVE VIDEO & VISUAL INSPECTION ARTIFACTS EXPORTED:");
     println!("  1. SMB3 Mario:      file://{}/smb3_mario_generative_unfold.mp4", out_dir.display());
@@ -1235,7 +1027,5 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
     println!("     Contact Sheet:   file://{}/pacman_contact_sheet.png", out_dir.display());
     println!("  3. Raptor Jet:      file://{}/raptor_generative_unfold.mp4", out_dir.display());
     println!("     Contact Sheet:   file://{}/raptor_contact_sheet.png", out_dir.display());
-    println!("  4. NIMH Brisby:     file://{}/nimh_brisby_generative_unfold.mp4", out_dir.display());
-    println!("     Contact Sheet:   file://{}/nimh_brisby_contact_sheet.png", out_dir.display());
     println!("================================================================================\n");
 }

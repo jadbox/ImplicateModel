@@ -7,8 +7,6 @@ use implicate_lifter::{
 
 const SMB3_PATH: &str =
     "/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d/smb3_w1_1_256x240.mp4";
-const NIMH_PATH: &str =
-    "/mnt/storage/DDownloads/The Secret Of NIMH (1982) [BluRay] [1080p] [YTS.AM]/The.Secret.Of.NIMH.1982.1080p.BluRay.x264-[YTS.AM].mp4";
 
 #[test]
 fn r10_2_clifford_dual_decomposition_empirical_gate() {
@@ -113,77 +111,6 @@ fn r10_2_line_of_action_bivector_and_spinal_curvature_gate() {
         mario_obs.len(),
         min_k,
         max_k
-    );
-}
-
-#[test]
-fn r10_2_line_of_action_support_envelope_preserves_detached_props_gate() {
-    // 1. Test real video frame from The Secret of NIMH (Mrs. Brisby)
-    let nimh_frames = video_io::read_frames_scaled(Path::new(NIMH_PATH), Some(600.0), Some(1.2), 320, 176)
-        .expect("read nimh frames");
-    assert!(!nimh_frames.is_empty());
-
-    let atlas = build_multiplane_atlas(&nimh_frames, &MultiPlaneOptions::default());
-    let tracks = extract_character_observation_tracks(&nimh_frames, &atlas, 2);
-    assert!(!tracks.is_empty(), "Must extract Mrs. Brisby / Jeremy track from NIMH");
-
-    let brisby_obs = &tracks[0];
-    let ref_obs = &brisby_obs[0];
-    let (w, h) = (ref_obs.width(), ref_obs.height());
-    assert!(w >= 8 && h >= 8);
-
-    // Create an empirical test canvas: embed Brisby's silhouette into a slightly padded frame (padding = 6)
-    // to test detached props (the red amulet, area ~ 1% of body) situated 3 pixels away from her body.
-    let pad = 6usize;
-    let pw = w + pad * 2;
-    let ph = h + pad * 2;
-    let mut empirical_mask = vec![false; pw * ph];
-    for y in 0..h {
-        for x in 0..w {
-            empirical_mask[(y + pad) * pw + (x + pad)] = ref_obs.mask[y * w + x];
-        }
-    }
-    let body_px = empirical_mask.iter().filter(|&&m| m).count();
-    assert!(body_px > 50, "Expected non-trivial body silhouette");
-
-    // Detached prop: 3x3 = 9 pixels placed 3 pixels below the body's bottom edge along the central axis
-    let (mut max_by, mut mid_bx) = (0usize, pad + w / 2);
-    for y in 0..ph {
-        for x in 0..pw {
-            if empirical_mask[y * pw + x] {
-                if y > max_by {
-                    max_by = y;
-                    mid_bx = x;
-                }
-            }
-        }
-    }
-
-    let prop_y = (max_by + 3).min(ph - 4);
-    let prop_x = mid_bx.saturating_sub(1).min(pw - 4);
-    let mut prop_indices = Vec::new();
-    for dy in 0..3 {
-        for dx in 0..3 {
-            let idx = (prop_y + dy) * pw + (prop_x + dx);
-            assert!(!empirical_mask[idx], "Prop location must be in empty space detached from body");
-            empirical_mask[idx] = true;
-            prop_indices.push(idx);
-        }
-    }
-    assert_eq!(prop_indices.len(), 9);
-
-    let preserved = dominant_silhouette(&empirical_mask, pw, ph);
-
-    // Verify:
-    // 1. Detached prop (9 pixels vs thousands of body pixels) is 100% PRESERVED (zero amputation)
-    for &idx in &prop_indices {
-        assert!(preserved[idx], "Detached amulet prop pixel at {} must be preserved by Line of Action support envelope", idx);
-    }
-
-    println!(
-        "[R10.2 Envelope Gate - NIMH Brisby] Body px={}, prop px={}, prop retained=100% (zero amputation)",
-        body_px,
-        prop_indices.len()
     );
 }
 

@@ -97,24 +97,24 @@ cargo run -p implicate-cli -- unfold \
   --lexicon /tmp/opencode/multi_corpus.implicate \
   --out-dir /tmp/opencode/unfold_out
 
-# Unfold all 4 canonical R4.3 cross-corpus novel scenes (Pac-Man, SMB3, Raptor, NIMH)
+# Unfold all canonical R4.3 cross-corpus novel scenes (Pac-Man, SMB3, Raptor)
 cargo run -p implicate-cli -- unfold --scene all --out-dir /tmp/opencode/unfold_out
 ```
 
 ### 5. Unfold from a Declarative `DzogLang` Scene Script (`.dzog`)
 ```bash
-cat << 'EOF' > /tmp/opencode/nimh_sanctuary.dzog
-@scene nimh_custom_sanctuary 320x180 frames=60 cam_vel=(1.0, 0.0) refiner=true
-@holon Mrs_Brisby pos=(76.0, 108.0) parts=4 color=(188, 128, 86)
-@holon Jeremy_Crow pos=(118.0, 62.0) parts=6 color=(66, 92, 168)
-@holon Red_Amulet pos=(172.0, 92.0) parts=1 color=(255, 215, 64)
-@verb Mrs_Brisby pursue Red_Amulet
-@verb Jeremy_Crow orbit Red_Amulet
-@hud Amulet_Aura_HUD
+cat << 'EOF' > /tmp/opencode/raptor_patrol.dzog
+@scene raptor_custom_patrol 320x240 frames=60 cam_vel=(0.0, 2.0) refiner=false
+@holon Raptor_Jet pos=(160.0, 180.0) parts=1 color=(210, 220, 235)
+@holon Plasma_Drone pos=(120.0, 120.0) parts=1 color=(90, 220, 255)
+@holon Command_Carrier pos=(160.0, 80.0) parts=1 color=(140, 160, 180)
+@verb Raptor_Jet pursue Command_Carrier
+@verb Plasma_Drone orbit Command_Carrier
+@hud Score_HUD
 EOF
 
 cargo run -p implicate-cli -- unfold \
-  --dzog /tmp/opencode/nimh_sanctuary.dzog \
+  --dzog /tmp/opencode/raptor_patrol.dzog \
   --lexicon /tmp/opencode/multi_corpus.implicate \
   --out-dir /tmp/opencode/unfold_out
 ```
@@ -148,8 +148,6 @@ let (wav_path, mp4_path) = report.export_wav_and_mp4(Path::new("/tmp/opencode/ou
   - *Pac-Man* (`240x308`): `/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d_pacman/pacman_240x308.mp4`
   - *Super Mario Bros. 3* (`256x240` / `320x240`): `/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d/smb3_w1_1_256x240.mp4`
   - *Raptor: Call of the Shadows* (`320x240`): `/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d_raptor/raptor_320x240.mp4`
-- **Tier-2 (Full-Length Multi-Plane Feature Animation):**
-  - *The Secret of NIMH* (`1920x1040`, `23.976 fps`): `/mnt/storage/DDownloads/The Secret Of NIMH (1982) [BluRay] [1080p] [YTS.AM]/The.Secret.Of.NIMH.1982.1080p.BluRay.x264-[YTS.AM].mp4`
 - **Local VLM Weights (`llama.cpp`):** [^review-tool]
   - `/mnt/storage/models/llama.cpp/Qwen3VL-8B-Instruct-Q4_K_M.gguf`
   - `/mnt/storage/models/llama.cpp/mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf`

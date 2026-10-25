@@ -28,7 +28,7 @@ MANAGED_FLAG="${LOCK_DIR}/managed.flag"
 
 usage() {
     echo "Usage: $0 [--timeout <SECONDS>] <IMAGE_FILE> <OUTPUT_CSV_FILE>"
-    echo "Example: $0 ./generative_output/nimh_brisby_contact_sheet.png ./labels.csv"
+    echo "Example: $0 ./generative_output/smb3_mario_contact_sheet.png ./labels.csv"
     echo ""
     echo "Output CSV format: object_names,behavior,x,y,x1,y1"
     echo "  e.g.: man|speaker|person,gesturing,60,7,1080,650"

@@ -12,7 +12,7 @@ Each line of the output CSV contains exactly 6 comma-separated fields:
 object_names,behavior,x,y,x1,y1
 ```
 
-- **`object_names`**: Pipe-delimited (`|`) aliases/synonyms for the detected object or character (e.g. `man|speaker|person`, `mouse|mrs_brisby`, `suit|garment`, `piano`).
+- **`object_names`**: Pipe-delimited (`|`) aliases/synonyms for the detected object or character (e.g. `man|speaker|person`, `mario|plumber`, `suit|garment`, `piano`).
 - **`behavior`**: Active verb, posture, or state (e.g. `speaking`, `gesturing`, `wearing`, `holding`, `standing`, `falling`, `running`).
 - **`x,y`**: Top-left pixel coordinates (`x_min`, `y_min`).
 - **`x1,y1`**: Bottom-right pixel coordinates (`x_max`, `y_max`), where `0 <= x < x1 <= width` and `0 <= y < y1 <= height`.
@@ -64,21 +64,19 @@ microphone|accessory,attached,920,344,960,361
 curtain|scene_object,stationary,0,0,1200,722
 ```
 
-### Example 2: Animation Frame (`generative_output/nimh_brisby_contact_sheet.png`)
+### Example 2: Sprite Contact Sheet (`generative_output/smb3_mario_contact_sheet.png`)
 
 ```bash
-./tools/label_img.sh ./generative_output/nimh_brisby_contact_sheet.png ./output/nimh_labels.csv
+./tools/label_img.sh ./generative_output/smb3_mario_contact_sheet.png ./output/mario_labels.csv
 ```
 
-**Output CSV (`./output/nimh_labels.csv`):**
+**Output CSV (`./output/mario_labels.csv`):**
 ```csv
-mouse|mrs_brisby,standing,72,43,192,108
-mouse|mrs_brisby,standing,72,216,192,288
-hat|accessory,draped,72,65,120,101
-shirt|garment,draped,120,54,192,108
-pants|garment,draped,144,65,192,101
-shoes|garment,draped,192,65,240,101
-held_item|tool,holding,72,54,144,90
+mario|character,standing,32,24,160,232
+mario|character,standing,232,24,360,232
+cap|accessory,draped,48,24,144,64
+overalls|garment,draped,48,112,144,192
+boots|garment,draped,48,192,144,232
 ```
 
 ---

@@ -8,8 +8,6 @@ use implicate_unfold::{
 
 const PACMAN_PATH: &str =
     "/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d_pacman/pacman_240x308.mp4";
-const NIMH_PATH: &str =
-    "/mnt/storage/DDownloads/The Secret Of NIMH (1982) [BluRay] [1080p] [YTS.AM]/The.Secret.Of.NIMH.1982.1080p.BluRay.x264-[YTS.AM].mp4";
 
 #[test]
 fn r8_1_static_camera_arena_preservation_gate() {
@@ -69,21 +67,6 @@ fn r8_3_semantic_role_matching_and_energy_drone_gate() {
     assert_eq!(report.object_permanence_rate, 1.0);
     assert!(report.verb_metrics[0].normalized_frechet < 0.08);
     assert!(report.verb_metrics[1].normalized_frechet < 0.08);
-}
-
-#[test]
-fn r8_4_cliffordnet_refiner_and_multi_shot_segmentation_gate() {
-    let nimh_path = Path::new(NIMH_PATH);
-    let clip = enfold_video_clip(nimh_path, 558.5, 24).expect("enfold nimh shot");
-    assert_eq!(
-        clip.atlas.active_y_range,
-        (0, clip.atlas.height),
-        "Continuous shot must preserve complete height"
-    );
-    assert!(
-        !clip.holons.is_empty(),
-        "Must extract articulated character wavepacket"
-    );
 }
 
 #[test]

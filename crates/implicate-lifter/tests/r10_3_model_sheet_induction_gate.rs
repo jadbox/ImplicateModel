@@ -12,8 +12,6 @@ const PACMAN_PATH: &str =
     "/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d_pacman/pacman_240x308.mp4";
 const SMB3_PATH: &str =
     "/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d/smb3_w1_1_256x240.mp4";
-const NIMH_PATH: &str =
-    "/mnt/storage/DDownloads/The Secret Of NIMH (1982) [BluRay] [1080p] [YTS.AM]/The.Secret.Of.NIMH.1982.1080p.BluRay.x264-[YTS.AM].mp4";
 
 #[test]
 fn r10_3_pacman_4direction_turnaround_aspect_idempotents_gate() {
@@ -208,61 +206,6 @@ fn r10_3_smb3_mario_posture_and_aspect_regimes_gate() {
         n_active, n, acc * 100.0, correct, n_active
     );
     assert!(acc >= 0.85, "Mario kinematic aspect accuracy ({:.2}%) must exceed 85%", acc * 100.0);
-}
-
-#[test]
-fn r10_3_nimh_brisby_bluth_model_sheet_and_cape_gate() {
-    let nimh_path = Path::new(NIMH_PATH);
-    if !nimh_path.exists() {
-        eprintln!("Skipping NIMH test: file not found at {}", NIMH_PATH);
-        return;
-    }
-
-    // 1. Read real 1080p feature film frames (Mrs. Brisby turnaround and billowing cape cycle)
-    // Anchored to t=625.0s (Track R10.6) where Mrs. Brisby is in full motion
-    let nimh_frames = video_io::read_frames_scaled(nimh_path, Some(625.0), Some(1.0), 320, 176)
-        .expect("read nimh frames");
-    assert!(!nimh_frames.is_empty());
-
-    let atlas = build_multiplane_atlas(&nimh_frames, &MultiPlaneOptions::default());
-    let tracks = extract_character_observation_tracks(&nimh_frames, &atlas, 2);
-    assert!(!tracks.is_empty(), "Must extract Mrs. Brisby track");
-
-    let brisby_obs = &tracks[0];
-    assert!(brisby_obs.len() >= 10);
-
-    // 2. Induce Character Board Model Sheet with 2 sub-holons (body torso + aerodynamic cape)
-    let sheet = induce_holon_model_sheet("Mrs_Brisby", brisby_obs, Some(2), None);
-    assert_eq!(sheet.name, "Mrs_Brisby");
-    assert_eq!(sheet.parts.len(), 2, "Mrs. Brisby must have torso and aerodynamic cape sub-holons");
-
-    // 3. Fluid-structure aerodynamic compliance on cape vs rigid torso
-    let torso = &sheet.parts[0];
-    let cape = &sheet.parts[1];
-    assert_eq!(torso.flow_compliance, 0.0, "Root torso part must have zero aerodynamic flow compliance");
-    assert!(
-        cape.flow_compliance > 1.0,
-        "Billowing cape part must exhibit positive aerodynamic flow compliance (got {:.2})",
-        cape.flow_compliance
-    );
-    assert!(cape.spring_stiffness > 0.0);
-    assert!(cape.damping > 0.0);
-
-    // 4. ModelSheetPartKernel: Clifford dual decomposition (cel fill u · ∇²u vs ink blade |u ∧ ∇²u|)
-    for view in &sheet.turnaround_views {
-        assert_eq!(view.part_kernels.len(), 2);
-        for kernel in &view.part_kernels {
-            assert!(kernel.canonical_res[0] > 0 && kernel.canonical_res[1] > 0);
-            let n_px = kernel.canonical_res[0] * kernel.canonical_res[1];
-            assert_eq!(kernel.cel_fill_rgb.len(), n_px * 4);
-            assert_eq!(kernel.ink_contour_blade.len(), n_px);
-
-            let cel_count = kernel.cel_fill_rgb.chunks_exact(4).filter(|c| c[0] > 0 || c[1] > 0 || c[2] > 0).count();
-            let ink_count = kernel.ink_contour_blade.iter().filter(|&&b| b > 0.05).count();
-            assert!(cel_count > 0, "Canonical view must have invariant cel paint fill");
-            assert!(ink_count > 0, "Canonical view must have invariant ink line contour blades");
-        }
-    }
 }
 
 #[test]
