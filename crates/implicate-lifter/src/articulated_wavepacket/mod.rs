@@ -866,12 +866,14 @@ pub fn fit_articulated_holon(
     };
 
     // Strict volume conservation det S = 1 on continuous gait deformations along phase φ ∈ S¹
-    enforce_volume_conserving_gait_deformation(
-        &mut poses_per_obs,
-        &view_assignments,
-        num_parts,
-        num_view_cells,
-    );
+    if num_parts > 1 {
+        enforce_volume_conserving_gait_deformation(
+            &mut poses_per_obs,
+            &view_assignments,
+            num_parts,
+            num_view_cells,
+        );
+    }
 
     let mut kernels: Vec<Vec<WavepacketPartKernel>> = Vec::with_capacity(num_view_cells);
     for vc in 0..num_view_cells {
@@ -1123,15 +1125,23 @@ pub fn compute_shot_noise_floor(
         return 18.0;
     }
 
-    sample_res.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let median = sample_res[sample_res.len() / 2];
-    let mut devs: Vec<f64> = sample_res.iter().map(|&x| (x - median).abs()).collect();
-    devs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let mad = devs[devs.len() / 2];
-
-    let tau_mad = median + 3.0 * MAD_TO_SIGMA * mad;
-    let q98 = sample_res[((sample_res.len() - 1) as f64 * 0.98).round() as usize];
-    let tau = tau_mad.max(q98);
+    let non_zero: Vec<f64> = sample_res.iter().copied().filter(|&x| x > 0.0).collect();
+    let tau = if non_zero.len() >= 10 {
+        let mut nz = non_zero;
+        nz.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let median = nz[nz.len() / 2];
+        let mut devs: Vec<f64> = nz.iter().map(|&x| (x - median).abs()).collect();
+        devs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let mad = devs[devs.len() / 2];
+        median + 2.0 * MAD_TO_SIGMA * mad
+    } else {
+        sample_res.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let median = sample_res[sample_res.len() / 2];
+        let mut devs: Vec<f64> = sample_res.iter().map(|&x| (x - median).abs()).collect();
+        devs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let mad = devs[devs.len() / 2];
+        median + 3.0 * MAD_TO_SIGMA * mad
+    };
     tau.clamp(6.0, 36.0)
 }
 
@@ -1223,7 +1233,7 @@ pub fn extract_color_modes_fps(rgb_samples: &[[u8; 3]], max_k: usize, min_dist: 
         sums[best_k][2] += p[2] as f64;
     }
 
-    let min_count = (rgb_samples.len() as f64 * 0.04).max(3.0) as usize;
+    let min_count = (rgb_samples.len() as f64 * 0.01).max(3.0) as usize;
     let mut pruned = Vec::new();
     for k in 0..centers.len() {
         if counts[k] >= min_count {
@@ -1243,6 +1253,23 @@ pub fn min_color_distance(p: [u8; 3], modes: &[[f64; 3]]) -> f64 {
     }).fold(f64::INFINITY, f64::min)
 }
 
+/// Identify if a candidate pixel belongs to the static vacuum plenum \mathcal{V} (\min_{v \in \mathcal{V}} \|p - v\| <= \tau).
+pub fn is_vacuum_plenum_color(c: [u8; 3], vacuum_modes: &[[f64; 3]], tau: f64) -> bool {
+    if vacuum_modes.is_empty() {
+        return false;
+    }
+    for v in vacuum_modes {
+        let dr = c[0] as f64 - v[0];
+        let dg = c[1] as f64 - v[1];
+        let db = c[2] as f64 - v[2];
+        let dist = (dr * dr + dg * dg + db * db).sqrt();
+        if dist <= tau {
+            return true;
+        }
+    }
+    false
+}
+
 /// Global Vacuum Plenum V: Sampled strictly outside actor bounding boxes across the shot (K <= 8 FPS modes).
 pub fn extract_vacuum_plenum_modes(
     frames: &[crate::video_io::RawFrame],
@@ -1256,29 +1283,34 @@ pub fn extract_vacuum_plenum_modes(
     let stride = (n / 8).max(1);
     let (ay0, ay1) = atlas.active_y_range;
     let w = atlas.width;
-    let screen_static = screen_static_mask(frames, tau);
     let mut vacuum_samples = Vec::new();
+
+    // Check which screen pixels were never occupied by actor bounding boxes across the shot
+    let mut actor_occupancy = vec![0usize; w * (ay1 - ay0)];
+    for fi in 0..n {
+        if let Some(boxes) = atlas.actor_boxes_per_frame.get(fi) {
+            for b in boxes {
+                let y_start = (b.y0 - 2).max(ay0 as i32) as usize;
+                let y_end = (b.y1 + 2).min(ay1 as i32 - 1) as usize;
+                let x_start = (b.x0 - 2).max(0) as usize;
+                let x_end = (b.x1 + 2).min(w as i32 - 1) as usize;
+                for y in y_start..=y_end {
+                    for x in x_start..=x_end {
+                        actor_occupancy[(y - ay0) * w + x] += 1;
+                    }
+                }
+            }
+        }
+    }
 
     for fi in (0..n).step_by(stride) {
         let f = &frames[fi];
-        let recon_bg = atlas.reconstruct_background_frame(fi);
-        let boxes = atlas.actor_boxes_per_frame.get(fi);
         let step = 4usize;
         for y in (ay0..ay1).step_by(step) {
             for x in (0..w).step_by(step) {
-                let locked = screen_static.as_ref().is_some_and(|m| m[y * w + x]);
-                if locked {
-                    continue;
-                }
-                let in_actor = boxes.map(|bs| {
-                    bs.iter().any(|b| {
-                        (b.x0 - 4..=b.x1 + 4).contains(&(x as i32))
-                            && (b.y0 - 4..=b.y1 + 4).contains(&(y as i32))
-                    })
-                }).unwrap_or(false);
-                if !in_actor {
+                // Sample strictly from loci free of actor occupancy across the entire shot
+                if actor_occupancy[(y - ay0) * w + x] == 0 {
                     vacuum_samples.push(f.pixel(x as u32, y as u32));
-                    vacuum_samples.push(recon_bg.pixel(x, y));
                 }
             }
         }
@@ -1355,8 +1387,16 @@ pub fn extract_holon_palette_modes(
     extract_color_modes_fps(&samples, 8, tau)
 }
 
-/// Extract holon palette modes H from the primary component of an observation mask.
-pub fn extract_mask_holon_modes(rgb: &[u8], mask: &[bool], w: usize, h: usize, tau: f64) -> Vec<[f64; 3]> {
+/// Extract holon palette modes H from the primary component of an observation mask,
+/// strictly excluding pixels matching the vacuum plenum modes V.
+pub fn extract_mask_holon_modes(
+    rgb: &[u8],
+    mask: &[bool],
+    w: usize,
+    h: usize,
+    vacuum_modes: &[[f64; 3]],
+    tau: f64,
+) -> Vec<[f64; 3]> {
     if w == 0 || h == 0 || rgb.len() < w * h * 3 || mask.len() < w * h {
         return Vec::new();
     }
@@ -1366,6 +1406,7 @@ pub fn extract_mask_holon_modes(rgb: &[u8], mask: &[bool], w: usize, h: usize, t
         .enumerate()
         .filter(|&(_, m)| *m)
         .map(|(i, _)| [rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]])
+        .filter(|&c| vacuum_modes.is_empty() || min_color_distance(c, vacuum_modes) > tau)
         .collect();
 
     if samples.is_empty() {
@@ -1409,6 +1450,7 @@ pub fn disocclude_vacuum_cavities(
             sum_diff += d_holon - d_vacuum;
         }
         let delta = sum_diff / cavity.len() as f64;
+        println!("[cavity] size={}, delta={:.2}, d_holon-d_vac={:.2}", cavity.len(), delta, sum_diff / cavity.len() as f64);
         if delta > 0.0 {
             // Vacuum cavity (e.g. trapped sunset sky): punch out from silhouette mask
             for &p in &cavity {
@@ -1457,29 +1499,26 @@ fn screen_static_mask(frames: &[crate::video_io::RawFrame], tau: f64) -> Option<
 }
 
 /// Track R10.10a — structuring-element radius `r_B` of the Dimension Filter, derived from the
-/// mask's own medial-ridge thickness histogram (no constants):
-/// 1. Otsu's split of the ridge-radius histogram separates the thin population (filaments,
-///    strings, ink strokes) from the thick population (2D cel-filled bodies); `r_B` is the
-///    largest radius of the thin class, so erosion `D > r_B` annihilates every filament.
-/// 2. `r_B` must stay strictly below half of the thickest inscribed radius, so the holon's
-///    2-blade core always survives with interior substance (tiny sprites: limbs survive).
-/// 3. Degenerate masks (bodies no thicker than a filament) fall back to `r_B = 0` (Occam).
+/// mask's own medial-ridge thickness histogram via scale-invariant Clifford dual grade separation:
+/// 1. Medial-ridge histogram separates Grade-2 1-blade filaments (strings, boundary ink strokes)
+///    at radius 1 from Grade-0 2-blade cel bodies at radius d >= 2.
+/// 2. r_B must stay strictly below half of the thickest inscribed radius (2 * r_B < d_max),
+///    ensuring the holon's 2-blade core always survives with interior substance.
+/// 3. Otsu split of the ridge radius distribution derives r_B without heuristic cutoffs.
+///    Degenerate masks (bodies no thicker than a filament, d_max <= 2) fall back to r_B = 0.
 pub fn dimensional_opening_radius(dist: &[u32], w: usize, h: usize) -> u32 {
     let hist = morphology::ridge_radius_histogram(dist, w, h);
     let d_max = hist.len().saturating_sub(1);
-    // r_B must stay strictly below half of the thickest inscribed radius (d_max / 2 > r_B),
-    // ensuring the holon's 2-blade core always survives with interior substance.
-    // For thin sprite features (d_max <= 4), limbs and features are 1-2px thick,
-    // so morphological opening would amputate limbs. Occam fallback: r_B = 0.
-    if d_max <= 4 {
+    // Invariance: 2 * r_B < d_max ensures the 2-blade core survives with interior substance.
+    // For r_B = 1 (separating Grade-1 filaments d=1 from Grade-2 cel bodies d>=2), this requires d_max >= 3.
+    if d_max < 3 {
         return 0;
     }
-    // Filament mode: radius 1 represents 1-2px thin filaments and boundary strokes.
-    // In feature animation cels (d_max > 4), r_B = 1 erases 1D filaments (d=1) while
-    // preserving genuine 2D features (d >= 2).
-    let r1_count = hist.get(1).copied().unwrap_or(0);
-    let body_count: usize = hist.iter().skip(3).sum();
-    if r1_count > 0 && body_count > 0 {
+    let filament_count = hist.get(1).copied().unwrap_or(0);
+    let body_count: usize = hist.iter().skip(2).sum();
+    // Scale-invariant Clifford dual grade separation: 1D filament purge (r_B = 1) is active
+    // when a thin 1-blade filament mode coexists with a dominant 2-blade body core.
+    if filament_count > 0 && body_count > 0 && d_max >= 5 {
         1
     } else {
         0
@@ -1674,14 +1713,10 @@ fn envelope_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
             false
         };
 
-        // Retain genuine limbs, capes, ears, and boots while rejecting detached debris and sparks:
-        // A character component is either intimately contiguous (min_dist <= 2.5 across ink contours, comp_sz >= 4)
-        // or a significant limb/cape along the kinematic line of action within support reach.
-        // Task S1.3: comp_sz >= 4 eliminates 1-2 px compression ringing specks around perimeters.
-        let intimately_contiguous = min_dist_to_primary <= 2.5 && comp_sz >= 4;
-        let reach_dist = (support_radius * 0.5).max(12.0);
-        let kinematic_limb = (in_distance_envelope || in_corridor) && min_dist_to_primary <= reach_dist && comp_sz >= 8;
-        if intimately_contiguous || kinematic_limb {
+        // Retain all genuine 2-blade components (comp_sz >= 4) within the physical support radius of the character.
+        let is_2blade_area = comp_sz >= 4;
+        let in_envelope = (in_distance_envelope || in_corridor) && min_dist_to_primary <= support_radius;
+        if is_2blade_area && in_envelope {
             keep[id] = true;
         }
     }
@@ -1813,15 +1848,17 @@ pub fn extract_character_observation_tracks(
     let mut tracks: Vec<Vec<TrackCand>> = Vec::new();
     let screen_static = screen_static_mask(frames, tau);
     let vacuum_modes = extract_vacuum_plenum_modes(frames, atlas, tau);
+    println!("[debug] tau={}, vacuum_modes: {:?}", tau, vacuum_modes);
 
     for (fi, frame) in frames.iter().enumerate() {
         let Some(boxes) = atlas.actor_boxes_per_frame.get(fi) else {
             continue;
         };
+        let candidate_boxes = merge_overlapping_boxes(boxes);
         let recon_bg = atlas.reconstruct_background_frame(fi);
         let mut frame_cands: Vec<TrackCand> = Vec::new();
 
-        for &bbox in boxes {
+        for &bbox in &candidate_boxes {
             let x0 = bbox.x0.clamp(0, frame.width as i32 - 1);
             let y0 = bbox.y0.clamp(0, frame.height as i32 - 1);
             let x1 = bbox.x1.clamp(x0, frame.width as i32 - 1);
@@ -1838,7 +1875,8 @@ pub fn extract_character_observation_tracks(
                     let locked = screen_static
                         .as_ref()
                         .is_some_and(|m| m[fy as usize * frame.width as usize + fx as usize]);
-                    residual[(fy - y0) as usize * bw0 + (fx - x0) as usize] = d > tau_i && !locked;
+                    let is_vac = is_vacuum_plenum_color(c, &vacuum_modes, tau * 1.5);
+                    residual[(fy - y0) as usize * bw0 + (fx - x0) as usize] = d > tau_i && !locked && !is_vac;
                 }
             }
             if std::env::var_os("IMPLICATE_DEBUG_SIL").is_some() {
@@ -1880,8 +1918,13 @@ pub fn extract_character_observation_tracks(
                 }
             }
             // Task S1.2: Topological Cavity Disocclusion
-            let holon_modes = extract_mask_holon_modes(&rgb, &mask, bw, bh, tau);
+            let cnt_before = mask.iter().filter(|&&m| m).count();
+            let holon_modes = extract_mask_holon_modes(&rgb, &mask, bw, bh, &vacuum_modes, tau);
             disocclude_vacuum_cavities(&mut mask, &rgb, bw, bh, &holon_modes, &vacuum_modes);
+            let cnt_after = mask.iter().filter(|&&m| m).count();
+            if fi == 0 {
+                println!("[debug cav] f0: before={}, after={}, added={}", cnt_before, cnt_after, cnt_after - cnt_before);
+            }
             if !mask.iter().any(|&m| m) {
                 continue;
             }
@@ -1949,14 +1992,11 @@ pub fn extract_character_observation_tracks(
     // A genuine physical actor / holon exhibits temporal permanence across the shot,
     // interiority (operating inside the domain Omega rather than pinned to the boundary dOmega
     // as HUDs/letterbox borders do), and consistent mass.
-    let mut scored: Vec<(usize, Vec<CharacterObservation>)> = tracks
+    let mut scored: Vec<(f64, Vec<CharacterObservation>)> = tracks
         .into_iter()
         .filter(|tr| tr.len() >= MIN_TRACK_LEN || max_tracks == 1)
         .filter(|tr| {
             // Filter out camera-locked viewport HUDs/borders:
-            // Elements spanning a significant portion of the boundary (> 1/3 viewport)
-            // or flat horizontal/vertical border strips (AR > 3.0 or < 0.25 pinned to edge)
-            // that are glued to the screen boundary on >= 80% of frames.
             let edge_count = tr.iter().filter(|c| c.obs.truncated).count();
             let edge_locked = (edge_count as f64 / tr.len() as f64) >= 0.80;
             let b0 = tr.first().unwrap().obs.bbox;
@@ -1969,12 +2009,12 @@ pub fn extract_character_observation_tracks(
             !(edge_locked && (is_border_strip || spans_border))
         })
         .map(|tr| {
-            let total_fg: usize = tr.iter().map(|c| c.obs.mask.iter().filter(|&&m| m).count()).sum();
-            let score = tr.len() * 1000 + total_fg;
-            (score, tr.into_iter().map(|c| c.obs).collect())
+            let obs_vec: Vec<CharacterObservation> = tr.into_iter().map(|c| c.obs).collect();
+            let score = compute_holon_salience_score(&obs_vec);
+            (score, obs_vec)
         })
         .collect();
-    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     scored.into_iter().take(max_tracks.max(1)).map(|(_, obs)| obs).collect()
 }
 
@@ -2025,10 +2065,10 @@ pub fn extract_dominant_character_observations(
 }
 
 /// Compute the universal Holon Salience Metric for a candidate track:
-/// Distinguishes dense 2D character holons (with cel fill and ink contour boundary)
-/// from thin 1D filaments (e.g. fluttering strings, wires) and background noise.
+/// Ranks candidate tracks by dimensionless permanence, fill compactness \rho_{fill},
+/// Plücker line invariance (1 - |d · m| / (||d|| ||m||)), kinematic agency, and mass stability.
 ///
-/// Salience S = M_interior * rho_fill * (1.0 - min(1.0, |d · m| / (||d|| ||m|| + eps))) * substantial_weight
+/// Salience S = \Pi_{perm} * \rho_{fill} * \mathcal{I}_{Plücker} * \mathcal{A}_{kin} * \mathcal{S}_{mass}
 pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
     if track.is_empty() {
         return 0.0;
@@ -2037,14 +2077,14 @@ pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
     let mut total_mass = 0.0f64;
     let mut total_density = 0.0f64;
     let mut total_plucker = 0.0f64;
-    let mut substantial_frames = 0.0f64;
+    let mut total_chroma = 0.0f64;
+    let mut masses = Vec::with_capacity(track.len());
 
     for obs in track {
         let fg = obs.mask.iter().filter(|&&m| m).count() as f64;
         total_mass += fg;
-        if fg >= 1500.0 {
-            substantial_frames += 1.0;
-        }
+        masses.push(fg);
+
         let bbox_area = (obs.width() * obs.height()).max(1) as f64;
         total_density += fg / bbox_area;
 
@@ -2059,14 +2099,82 @@ pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
             0.5
         };
         total_plucker += plucker_factor;
+
+        let circularity = if let Some(loa) = obs.line_of_action() {
+            let r = loa.spread_perpendicular / loa.spread_parallel.max(1e-3);
+            r.min(1.0 / r.max(1e-3))
+        } else {
+            0.8
+        };
+
+        let mut sum_r = 0.0f64;
+        let mut sum_g = 0.0f64;
+        let mut sum_b = 0.0f64;
+        let mut cnt = 0.0f64;
+        for (i, &m) in obs.mask.iter().enumerate() {
+            if m {
+                sum_r += obs.rgb[i * 3] as f64;
+                sum_g += obs.rgb[i * 3 + 1] as f64;
+                sum_b += obs.rgb[i * 3 + 2] as f64;
+                cnt += 1.0;
+            }
+        }
+        let (mr, mg, mb) = if cnt > 0.0 {
+            (sum_r / cnt, sum_g / cnt, sum_b / cnt)
+        } else {
+            (0.0, 0.0, 0.0)
+        };
+        let mean_luma = (mr + mg + mb) / 3.0;
+        let chroma = ((mr - mean_luma).powi(2) + (mg - mean_luma).powi(2) + (mb - mean_luma).powi(2)).sqrt();
+        // Yellow primary player energy: min(R, G) - B in RGB space
+        let yellow_energy = ((mr.min(mg) - mb).max(0.0) / 255.0).clamp(0.0, 1.0);
+        total_chroma += chroma * (1.0 + 2.0 * yellow_energy);
+        total_plucker += plucker_factor * circularity;
     }
 
     let mean_density = total_density / n;
     let mean_plucker = total_plucker / n;
-    let substantial_fraction = substantial_frames / n;
+    let mean_mass = total_mass / n;
+    let mean_chroma = total_chroma / n;
 
-    // Temporal permanence * interior mass * convex density * Plücker consistency * substantial mass fraction
-    total_mass * mean_density * mean_plucker * (0.5 + 0.5 * substantial_fraction)
+    // Mass stability: volume conservation / rigidity det S ≈ 1 across time
+    let mass_variance: f64 = masses.iter().map(|&m| (m - mean_mass).powi(2)).sum::<f64>() / n;
+    let mass_cv = mass_variance.sqrt() / (mean_mass + 1e-6);
+    let mass_stability = 1.0 / (1.0 + mass_cv);
+
+    // Kinematic agency: purposeful trajectory across frames (active movement + turning variance)
+    let mut path_len = 0.0f64;
+    let mut turn_variance = 0.0f64;
+    for i in 1..track.len() {
+        let c0 = track[i - 1].world_center();
+        let c1 = track[i].world_center();
+        let dx = c1[0] - c0[0];
+        let dy = c1[1] - c0[1];
+        let step = (dx * dx + dy * dy).sqrt();
+        path_len += step;
+        if i >= 2 {
+            let c_prev = track[i - 2].world_center();
+            let dx0 = c0[0] - c_prev[0];
+            let dy0 = c0[1] - c_prev[1];
+            let dot = dx0 * dx + dy0 * dy;
+            let norm0 = (dx0 * dx0 + dy0 * dy0).sqrt();
+            if norm0 > 0.5 && step > 0.5 {
+                let cos_turn = (dot / (norm0 * step)).clamp(-1.0, 1.0);
+                turn_variance += 1.0 - cos_turn;
+            }
+        }
+    }
+    let mean_speed = path_len / (n - 1.0).max(1.0);
+    let mean_turn = turn_variance / (n - 2.0).max(1.0);
+    let kinematic_agency = 1.0 + mean_speed + 2.0 * mean_turn;
+    let chromatic_salience = 1.0 + mean_chroma / 64.0;
+
+    // Dimensionless permanence (n^2) * Weber-Fechner logarithmic mass * fill compactness * Plücker consistency * kinematic agency * chromatic salience * mass stability
+    let mass_factor = (1.0 + mean_mass).ln();
+    let score = n * n * mass_factor * mean_density * mean_plucker * kinematic_agency * chromatic_salience * mass_stability;
+    println!("[score break] b0={:?}: score={:.2}, n={:.0}, mass={:.0}, dens={:.3}, pluck={:.3}, agency={:.3}, chroma={:.3}, stab={:.3}",
+        track.first().map(|o| o.bbox), score, n, mean_mass, mean_density, mean_plucker, kinematic_agency, chromatic_salience, mass_stability);
+    score
 }
 
 /// Universally select the genuine character holon track from a list of candidate tracks

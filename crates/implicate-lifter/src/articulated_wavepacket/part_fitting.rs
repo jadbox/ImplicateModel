@@ -699,6 +699,7 @@ pub fn induce_holon_model_sheet(
         } else {
             0.0
         };
+        println!("[debug flow] p={}, angles.len()={}, var_angle={:.5}", p, angles.len(), var_angle);
         let mean_ox = if !offsets_x.is_empty() {
             offsets_x.iter().sum::<f64>() / offsets_x.len() as f64
         } else {

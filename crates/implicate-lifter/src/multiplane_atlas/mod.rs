@@ -495,7 +495,7 @@ pub fn build_multiplane_atlas(frames: &[RawFrame], opts: &MultiPlaneOptions) -> 
         });
     }
 
-    let actor_boxes_per_frame = kinematic_co_motion_binding(
+    let mut actor_boxes_per_frame = kinematic_co_motion_binding(
         frames,
         &raw_actor_masks,
         w,
@@ -504,20 +504,13 @@ pub fn build_multiplane_atlas(frames: &[RawFrame], opts: &MultiPlaneOptions) -> 
         opts.actor_mask_dilation,
     );
 
-    /*
-    // Track S1.1: Mask out active actor bounding tracks from temporal-mode accumulators.
-    // Form coherent spatiotemporal tracks and enforce stationary hold envelopes.
-    let active_tracks = extract_active_actor_bounding_tracks(&actor_boxes_per_frame, n_frames, w, h);
-    for tr in &active_tracks {
-        for fi in 0..n_frames {
-            if let Some(b) = tr[fi] {
-                if !actor_boxes_per_frame[fi].contains(&b) {
-                    actor_boxes_per_frame[fi].push(b);
-                }
-            }
-        }
-    }
-    */
+    // Track S1.R.1: Mask out active actor silhouettes across stationary holds idempotently.
+    propagate_stationary_hold_silhouettes(
+        &mut raw_actor_masks,
+        &mut actor_boxes_per_frame,
+        w,
+        h,
+    );
 
     let mut dilated_masks: Vec<Vec<bool>> = vec![vec![false; w * h]; n_frames];
     for fi in 0..n_frames {
@@ -768,152 +761,176 @@ pub fn kinematic_co_motion_binding(
     out
 }
 
-/// Form coherent active actor bounding tracks across the shot from per-frame candidate boxes (Track S1.1).
-/// Identifies stationary holds (e.g. speaking holds where motion v ≈ 0) and extends the complete
-/// bounding envelope across the entire hold duration, eliminating bake-in leakage.
-pub fn extract_active_actor_bounding_tracks(
-    boxes_per_frame: &[Vec<Rect>],
-    n_frames: usize,
+/// Propagate character silhouettes idempotently across stationary holds ($v \approx 0$)
+/// without bounding-box union inflation (Track S1.R.1).
+///
+/// When an actor is held stationary across multiple frames (e.g. Mrs. Brisby speaking
+/// in NIMH frames 0..7), individual frames may suffer from subtle contrast dropouts against
+/// the pass-1 temporal median. By tracking co-spatial connected components across frames
+/// with sub-pixel velocity displacement ($|v| \le 3.5$), we identify stationary hold intervals.
+/// Across each hold, the true silhouette is the idempotent union
+/// $S_{\text{hold}}(x, y) = \bigvee_{f} S_f(x, y)$. Propagating this exact silhouette (rather than a rectangular box)
+/// ensures 100% of character fur/cloak is purged from temporal accumulators, while preserving 100% of the
+/// surrounding scenery.
+pub fn propagate_stationary_hold_silhouettes(
+    raw_masks: &mut [Vec<bool>],
+    actor_boxes_per_frame: &mut [Vec<Rect>],
     w: usize,
     h: usize,
-) -> Vec<Vec<Option<Rect>>> {
-    if n_frames == 0 {
-        return Vec::new();
+) {
+    let n_frames = raw_masks.len();
+    if n_frames < 2 || w == 0 || h == 0 {
+        return;
     }
-    let mut raw_tracks: Vec<Vec<(usize, Rect)>> = Vec::new();
 
-    for (fi, boxes) in boxes_per_frame.iter().enumerate() {
-        for &b in boxes {
-            let c = b.center();
-            let mut best_ti = None;
+    struct HoldComp {
+        frame_idx: usize,
+        bbox: Rect,
+        centroid: [f64; 2],
+        size: usize,
+        pixels: Vec<usize>,
+    }
+
+    let mut per_frame_comps: Vec<Vec<HoldComp>> = Vec::with_capacity(n_frames);
+
+    for (fi, mask) in raw_masks.iter().enumerate() {
+        let (labels, sizes) = crate::articulated_wavepacket::morphology::label_components(mask, w, h);
+        let mut comps = Vec::new();
+        if sizes.len() > 1 {
+            let mut comp_pixels = vec![Vec::new(); sizes.len()];
+            for (p, &lbl) in labels.iter().enumerate() {
+                if lbl > 0 {
+                    comp_pixels[lbl as usize].push(p);
+                }
+            }
+            for (lbl, &sz) in sizes.iter().enumerate().skip(1) {
+                // Minimum area to avoid single pixel noise (topological 2-blade floor)
+                if sz < 16 {
+                    continue;
+                }
+                let pixels = &comp_pixels[lbl];
+                let (mut min_x, mut min_y, mut max_x, mut max_y) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+                let mut sum_x = 0.0f64;
+                let mut sum_y = 0.0f64;
+                for &p in pixels {
+                    let px = (p % w) as i32;
+                    let py = (p / w) as i32;
+                    min_x = min_x.min(px);
+                    max_x = max_x.max(px);
+                    min_y = min_y.min(py);
+                    max_y = max_y.max(py);
+                    sum_x += px as f64;
+                    sum_y += py as f64;
+                }
+                comps.push(HoldComp {
+                    frame_idx: fi,
+                    bbox: Rect::new(min_x, min_y, max_x, max_y),
+                    centroid: [sum_x / sz as f64, sum_y / sz as f64],
+                    size: sz,
+                    pixels: comp_pixels[lbl].clone(),
+                });
+            }
+        }
+        per_frame_comps.push(comps);
+    }
+
+    // Form stationary hold chains across consecutive frames
+    // Hold condition: velocity |v| <= 3.5 px/frame (near stationary) and bounding overlap / proximity
+    let mut chains: Vec<Vec<HoldComp>> = Vec::new();
+
+    for comps in per_frame_comps {
+        for c in comps {
+            let mut matched_ci = None;
             let mut best_dist = f64::MAX;
 
-            for (ti, tr) in raw_tracks.iter().enumerate() {
-                let (last_fi, last_b) = tr.last().unwrap();
-                let f_gap = fi.saturating_sub(*last_fi);
-                if fi > *last_fi && f_gap <= 3 {
-                    let last_c = last_b.center();
-                    let d = ((c[0] - last_c[0]).powi(2) + (c[1] - last_c[1]).powi(2)).sqrt();
-                    let max_d = 16.0 * f_gap as f64;
-                    // Check center proximity and aspect ratio consistency
-                    if d <= max_d && d < best_dist {
-                        let ar_cur = (b.width() as f32) / (b.height() as f32).max(1.0);
-                        let ar_last = (last_b.width() as f32) / (last_b.height() as f32).max(1.0);
-                        if (ar_cur - ar_last).abs() < 1.5 {
-                            best_dist = d;
-                            best_ti = Some(ti);
-                        }
+            for (ci, chain) in chains.iter().enumerate() {
+                let last = chain.last().unwrap();
+                if c.frame_idx == last.frame_idx + 1 {
+                    let dx = c.centroid[0] - last.centroid[0];
+                    let dy = c.centroid[1] - last.centroid[1];
+                    let d = (dx * dx + dy * dy).sqrt();
+                    let first = chain.first().unwrap();
+                    let total_dx = c.centroid[0] - first.centroid[0];
+                    let total_dy = c.centroid[1] - first.centroid[1];
+                    let total_d = (total_dx * total_dx + total_dy * total_dy).sqrt();
+                    let overlap = c.bbox.x0 <= last.bbox.x1 + 2 && c.bbox.x1 >= last.bbox.x0 - 2
+                        && c.bbox.y0 <= last.bbox.y1 + 2 && c.bbox.y1 >= last.bbox.y0 - 2;
+                    let size_ratio = (c.size as f64).min(last.size as f64) / (c.size as f64).max(last.size as f64);
+                    // Stationary hold: frame-to-frame displacement <= 1.5 px and total drift from hold origin <= 2.5 px
+                    if d <= 1.5 && total_d <= 2.5 && (overlap || size_ratio >= 0.7) && d < best_dist {
+                        best_dist = d;
+                        matched_ci = Some(ci);
                     }
                 }
             }
 
-            if let Some(ti) = best_ti {
-                raw_tracks[ti].push((fi, b));
+            if let Some(ci) = matched_ci {
+                chains[ci].push(c);
             } else {
-                raw_tracks.push(vec![(fi, b)]);
+                chains.push(vec![c]);
             }
         }
     }
 
-    let min_track_span = 4usize.min(n_frames);
-    let active_tracks: Vec<Vec<(usize, Rect)>> = raw_tracks
-        .into_iter()
-        .filter(|tr| {
-            let span = tr.last().unwrap().0 - tr.first().unwrap().0 + 1;
-            tr.len() >= min_track_span || span >= min_track_span
-        })
-        .collect();
-
-    let mut out_tracks = Vec::with_capacity(active_tracks.len());
-
-    for tr in active_tracks {
-        let mut per_frame: Vec<Option<Rect>> = vec![None; n_frames];
-        for &(fi, b) in &tr {
-            per_frame[fi] = match per_frame[fi] {
-                Some(prev) => Some(Rect::new(
-                    prev.x0.min(b.x0),
-                    prev.y0.min(b.y0),
-                    prev.x1.max(b.x1),
-                    prev.y1.max(b.y1),
-                )),
-                None => Some(b),
-            };
+    // For any chain of length >= 2 (stationary hold), compute the idempotent silhouette union
+    for chain in chains {
+        if chain.len() < 2 {
+            continue;
         }
 
-        let first_fi = tr.first().unwrap().0;
-        let last_fi = tr.last().unwrap().0;
-        for fi in first_fi..=last_fi {
-            if per_frame[fi].is_none() {
-                let prev_b = (first_fi..fi).rev().find_map(|f| per_frame[f]);
-                let next_b = (fi + 1..=last_fi).find_map(|f| per_frame[f]);
-                per_frame[fi] = match (prev_b, next_b) {
-                    (Some(p), Some(n)) => Some(Rect::new(
-                        p.x0.min(n.x0),
-                        p.y0.min(n.y0),
-                        p.x1.max(n.x1),
-                        p.y1.max(n.y1),
-                    )),
-                    (Some(p), None) => Some(p),
-                    (None, Some(n)) => Some(n),
-                    (None, None) => None,
-                };
+        let mut hold_mask = vec![false; w * h];
+        for c in &chain {
+            for &p in &c.pixels {
+                hold_mask[p] = true;
             }
         }
 
-        let mut hold_start = first_fi;
-        while hold_start <= last_fi {
-            let Some(b0) = per_frame[hold_start] else {
-                hold_start += 1;
-                continue;
-            };
-            let c0 = b0.center();
-            let mut hold_end = hold_start;
-            let mut union_box = b0;
+        // Fill solid interior cavities (e.g. Mrs. Brisby torso/cloak) inside the hold silhouette
+        let cavities = crate::articulated_wavepacket::morphology::detect_enclosed_cavities(&hold_mask, w, h);
+        for cav in cavities {
+            for &p in &cav {
+                hold_mask[p] = true;
+            }
+        }
 
-            for fi in (hold_start + 1)..=last_fi {
-                if let Some(b) = per_frame[fi] {
-                    let c = b.center();
-                    let d = ((c[0] - c0[0]).powi(2) + (c[1] - c0[1]).powi(2)).sqrt();
-                    if d <= 6.0 {
-                        hold_end = fi;
-                        union_box = Rect::new(
-                            union_box.x0.min(b.x0),
-                            union_box.y0.min(b.y0),
-                            union_box.x1.max(b.x1),
-                            union_box.y1.max(b.y1),
-                        );
-                    } else {
-                        break;
-                    }
+        let (mut bx0, mut by0, mut bx1, mut by1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+        for p in 0..w * h {
+            if hold_mask[p] {
+                let px = (p % w) as i32;
+                let py = (p / w) as i32;
+                bx0 = bx0.min(px);
+                bx1 = bx1.max(px);
+                by0 = by0.min(py);
+                by1 = by1.max(py);
+            }
+        }
+
+        if bx0 > bx1 || by0 > by1 {
+            continue;
+        }
+        let hold_box = Rect::new(bx0, by0, bx1, by1);
+
+        for c in &chain {
+            let fi = c.frame_idx;
+            for p in 0..w * h {
+                if hold_mask[p] {
+                    raw_masks[fi][p] = true;
                 }
             }
-
-            if hold_end >= hold_start + 2 {
-                for fi in hold_start..=hold_end {
-                    per_frame[fi] = Some(union_box);
+            actor_boxes_per_frame[fi].retain(|b| {
+                let inter_x0 = b.x0.max(hold_box.x0);
+                let inter_y0 = b.y0.max(hold_box.y0);
+                let inter_x1 = b.x1.min(hold_box.x1);
+                let inter_y1 = b.y1.min(hold_box.y1);
+                if inter_x1 >= inter_x0 && inter_y1 >= inter_y0 {
+                    let inter_area = (inter_x1 - inter_x0 + 1) * (inter_y1 - inter_y0 + 1);
+                    let b_area = b.width() * b.height();
+                    (inter_area as f64) / (b_area as f64) < 0.5
+                } else {
+                    true
                 }
-                if hold_start <= 3 {
-                    for fi in 0..hold_start {
-                        per_frame[fi] = Some(union_box);
-                    }
-                }
-                hold_start = hold_end + 1;
-            } else {
-                hold_start += 1;
-            }
+            });
+            actor_boxes_per_frame[fi].push(hold_box);
         }
-
-        for opt_b in &mut per_frame {
-            if let Some(b) = opt_b {
-                b.x0 = b.x0.clamp(0, w as i32 - 1);
-                b.y0 = b.y0.clamp(0, h as i32 - 1);
-                b.x1 = b.x1.clamp(b.x0, w as i32 - 1);
-                b.y1 = b.y1.clamp(b.y0, h as i32 - 1);
-            }
-        }
-
-        out_tracks.push(per_frame);
     }
-
-    out_tracks
 }

@@ -156,5 +156,5 @@ let (wav_path, mp4_path) = report.export_wav_and_mp4(Path::new("/tmp/opencode/ou
 
 ---
 
-[^review-tool]: Visual inspection CLI available at `./tools/review_img.sh <IMAGE_FILE>` (example runner: `./tools/review_img_example.sh`). Analyzes scene/character traits and detects extraction/rendering glitches with pixel bounding boxes via local `llama-server`.
+[^review-tool]: Visual inspection CLI available at `./tools/review_img.sh <IMAGE_FILE>` (example runner: `./tools/review_img_example.sh`). Analyzes scene/character traits and detects extraction/rendering glitches with pixel bounding boxes via local `llama-server`. Can handle 4 calls in parallel.
 

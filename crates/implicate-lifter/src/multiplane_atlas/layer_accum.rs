@@ -313,9 +313,8 @@ pub fn accumulate_band_atlas_masked(
     for iy in 0..ch {
         for ix in 0..cw {
             let idx = iy * cw + ix;
-            if valid_count[idx] >= 4 {
-                continue;
-            }
+            // Dimensionless occlusion ratio: a locus is clean background if it has at least one
+            // valid unoccluded observation and the occlusion fraction is strictly under half (majority unoccluded).
             if valid_count[idx] > 0 && occl_count[idx] * 2 < obs_count[idx] {
                 continue;
             }

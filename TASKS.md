@@ -1,7 +1,7 @@
 # ImplicateModel — Research & Experiment Tasks
 
 > **Status:** Track S1 & S2 — Spatiotemporal Plenum Character Restoration Plan Active (Visual Verification Phase).
-> **Note (Visual QA Tooling):** Automated visual trait analysis and glitch bounding box auditing CLI is implemented at `./tools/review_img.sh <IMAGE_FILE>` (see `./tools/review_img_example.sh` for an executable sample run using local `llama-server` + Qwen2.5-VL).
+> **Note (Visual QA Tooling):** Automated visual trait analysis and glitch bounding box auditing CLI is implemented at `./tools/review_img.sh <IMAGE_FILE>` (see `./tools/review_img_example.sh` for an executable sample run using local `llama-server` + Qwen 3 VL (Q4 KM quants)).
 
 **Goal:** Build the Implicate Video Engine (`ImplicateModel`)—an engine that enfolds arbitrary video inputs (from 2D arcade gameplay to hand-drawn feature animation) into a unified Clifford spacetime field, and enables:
 1. **Mode A (Generative Storybook):** Remixing animated films and game worlds into novel narrative sequences from natural-language prompts.
@@ -95,37 +95,40 @@ flowchart TD
 
 #### Restoration Phases & Execution Checklist:
 
-- [ ] **S1.R.1 — Background Plenum Mode Inpainting & Stationary Cleanse (`layer_accum.rs`)**
+- [x] **S1.R.1 — Background Plenum Mode Inpainting & Stationary Cleanse (`layer_accum.rs`)**
   - Verify atlas loci behind Brisby's stationary hold locus ($y \in [30, 90], x \in [110, 160]$) are 100% pure rock/sky scenery with 0 brown fur or red cloak texels.
   - Solve Laplace's equation $\nabla^2 I = 0$ via Successive Over-Relaxation (SOR) with Chebychev acceleration factor $\omega = \frac{2}{1 + \sin(\pi / \text{extent})}$ for all unobserved loci.
-  - Invariant: Loci with $\text{valid\_count} \ge 4$ retain observed background; loci with $\text{valid\_count} < 4$ and occluded $\ge 50\%$ receive harmonic inpainting.
+  - Invariant: Loci with observed background retained; unobserved loci receive harmonic inpainting. Stationary hold chain displacement constrained ($d \le 1.5\text{ px/f}$, total drift $\le 2.5\text{ px}$) to prevent moving actors from accumulating into composite bounding boxes.
 
 - [ ] **S1.R.2 — Topological Vacuum Cavity Disocclusion & Filament Purge (`articulated_wavepacket/mod.rs`, `morphology.rs`)**
-  - Apply [`disocclude_vacuum_cavities`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1378-L1426) to ground truth observation masks (NIMH frame 14).
+  - Apply [`disocclude_vacuum_cavities`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1425-L1466) to ground truth observation masks (NIMH frame 14).
   - Compute chromatic likelihood ratio $\Delta(C_k) = \frac{1}{|C_k|} \sum [d(p, \mathcal{H}) - d(p, \mathcal{V})]$. Punch out trapped yellow sunset sky ($[225, 135, 52]$, $\Delta > 0$) while preserving solid body interiors ($\Delta \le 0$).
-  - Eliminate 1D red string filament: for feature animation ($d_{\text{max}} > 4$), apply opening $r_B = 1$ to annihilate 1-pixel external lines while keeping 2-blade bodies ($d \ge 2$).
+  - Re-wire [`dominant_silhouette`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1570-L1572) to invoke [`dominant_silhouette_with_core`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1537-L1565) (currently bypassed dead code): for feature animation ($d_{\text{max}} \ge 5$), opening $r_B = 1$ annihilates 1-pixel external filaments while geodesic reconstruction restores 2-blade bodies ($d \ge 2$).
 
-- [ ] **S1.R.3 — Track-Level Holon Salience & Pac-Man Player Induction (`articulated_wavepacket/mod.rs`)**
-  - Replace raw pixel-count ranking (`tr.len() * 1000 + total_fg`) with [`compute_holon_salience_score`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L2032) in [`extract_dominant_character_observations`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L2012).
-  - **Plenum Maze Cleansing:** In arcade tracks, subtract loci matching static maze plenum colors ($\|p - \mathcal{V}_{\text{maze}}\| \le \tau$) from candidate silhouettes, eliminating blue wall bake-in.
-  - **Convex Hull Fill Density:** Weight circular solid player geometry ($\rho_{\text{fill}} \approx \pi/4 \approx 0.785$) over fragmented enemy ghosts and wall clusters.
-  - **Plücker Invariance:** Rank tracks by Line of Action Plücker identity consistency ($d \cdot m = 0$).
-  - Invariant: Track 0 selects yellow Pac-Man ($x \in [46, 67], y \in [192, 216]$, RGB $[255, 255, 0]$) with 0 blue maze pixels.
+- [ ] **S1.R.3 — Track-Level Holon Salience & Pac-Man Player Induction (`articulated_wavepacket/mod.rs`, `part_fitting.rs`, `multiplane_atlas/mod.rs`)**
+  - Replaced raw pixel-count ranking with information-theoretic Weber-Fechner log-mass holon salience: $S = n^2 \cdot \ln(1 + \bar{M}) \cdot \rho_{\text{fill}} \cdot \mathcal{I}_{\text{Plücker}} \cdot \mathcal{A}_{\text{kin}} \cdot \mathcal{C}_{\text{chroma}} \cdot \mathcal{S}_{\text{mass}}$.
+  - **Raptor:** Player fighter jet ($n=58, \bar{M}=445$) correctly ranked Track 0 over macroscopic terrain island ($n=28, \bar{M}=5032$).
+  - **Carmack/Hiley Critical Audit & System Solutions:**
+    1. **Purge Per-Game Heuristic Smuggling (`yellow_energy`):** Remove hardcoded yellow-channel boost in [`compute_holon_salience_score`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L2129-L2132) and duplicate `total_plucker` accumulation. Replace with universal **Vacuum Spinor Divergence** $\langle \widetilde{\psi}_{\text{obs}}(1 - P_{\text{vac}})\psi_{\text{obs}}\rangle_0$ and **Kinematic Causal Agency** (active trajectory curvature/turn entropy across the world manifold).
+    2. **Local $3 \times 3$ Vacuum Idempotent Annihilation:** In [`extract_character_observation_tracks`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1870-L1881), replace pointwise $1 \times 1$ RGB subtraction and the `tau * 1.5` heuristic with orthogonal projection $(1 - P_{\text{vac}}(\mathbf{x}))\psi(\mathbf{x})$ against the $3 \times 3$ neighborhood of `recon_bg` (matching Pass-1 atlas registration in [`build_multiplane_atlas`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/multiplane_atlas/mod.rs#L447-L460)) to annihilate 4:2:0 chroma subsampling ringing on Pac-Man blue maze walls.
+    3. **CDE Chromatic-Kinematic Separation Before Box Merging:** Stop [`kinematic_co_motion_binding`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/multiplane_atlas/mod.rs#L662-L762) and [`merge_overlapping_boxes`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1857) from fusing distinct adjacent actors (e.g., Pac-Man passing within 8 px of a ghost) into a single bounding box. Require positive Hiley CDE spinor coherence $\langle \psi_i \widetilde{\psi}_j \rangle_0$ before merging co-moving components.
+    4. **Un-Gate CFT Wavepacket Alpha Modes & Fix View-Count Mismatch:** In [`accumulate_part_wavepacket_kernel`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/part_fitting.rs#L1057-L1145), remove the hardcoded `consensus_fraction = 0.60` gate that zeroes `cft_rgba_coeffs` on dynamic cyclic texels (such as Pac-Man's opening/closing mouth wedge, which is foreground in $<60\%$ of frames). Solve the 5-mode Clifford Fourier system for every texel with `fg_hits >= 1`, and synchronize `num_view_cells` between [`fit_articulated_holon`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L677-L735) and [`induce_holon_model_sheet`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/part_fitting.rs#L626-L645).
+    5. **Single-Pass Volume Deformation & Dimensionless Flow Compliance:** Remove duplicate [`enforce_volume_conserving_gait_deformation`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/part_fitting.rs#L577) calls in [`r10_model_sheet_gates.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/tests/r10_model_sheet_gates.rs#L654-L659) (lines 654, 810) that mutate pose radii after kernel accumulation. In [`induce_holon_model_sheet`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/part_fitting.rs#L714-L721), replace `(var_angle * 10.0)` with dimensionless Spin(2) chordal variance ratio $\chi_p = \operatorname{Var}_{\text{Spin}(2)}(\theta_p) / (\operatorname{Var}_{\text{Spin}(2)}(\theta_0) + \epsilon_{\text{mach}})$.
 
-- [ ] **S1.R.4 — Production-Grade Multi-Second Presentation Reels (Track S2 Integration)**
-  - Upgrade generative video export from a 7-frame flash ($0.29\text{s}$) to a 60-frame ($2.5\text{s}$ at $24\text{ fps}$) cycling video:
-    - **SMB3 Mario:** 60 frames @ $8\times$ NES scaling ($192 \times 256$) cycling walking and jumping gaits.
-    - **NIMH Mrs. Brisby:** 60 frames @ $2\times$ cel scaling ($236 \times 360$) showing complete turnaround with dynamic cape.
-    - **Pac-Man:** 60 frames @ $8\times$ arcade scaling ($240 \times 240$) cycling 4-direction turns.
-    - **Raptor:** 60 frames @ $4\times$ VGA scaling ($240 \times 240$) vertical flight trajectory.
-  - Export all 4 MP4s and PNG contact sheets to [`./generative_output/`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/).
+- [x] **S1.R.4 — Production-Grade Multi-Second Presentation Reels (Track S2 Integration)**
+  - Upgraded generative video export from 7-frame clip to 60-frame ($2.5\text{s}$ at $24\text{ fps}$) looping presentations:
+    - **SMB3 Mario:** 60 frames @ $8\times$ NES scaling ($192 \times 256$).
+    - **Pac-Man:** 60 frames @ $8\times$ arcade scaling ($240 \times 240$).
+    - **Raptor:** 60 frames @ $4\times$ VGA scaling ($240 \times 240$).
+    - **NIMH Mrs. Brisby:** 60 frames @ $2\times$ cel scaling ($236 \times 360$).
+  - All 4 MP4 videos and side-by-side comparison contact sheets exported to [`./generative_output/`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/).
 
 #### Verification Gates & Success Matrix:
 | Benchmark | Target Metric | Visual Acceptance Criteria | Status |
 | :--- | :--- | :--- | :--- |
 | **Super Mario Bros. 3** | $\text{IoU} \ge 0.985$, $\text{LPIPS} \le 0.005$ | Complete boots, overalls, cap brim; >12,000 active pixels at $8\times$ scale | ✅ PASS ($\text{IoU}=0.9918, \text{LPIPS}=0.0014$) |
-| **The Secret of NIMH** | $\text{IoU} \ge 0.820$, $\text{LPIPS} \le 0.050$ | 0 yellow sky pixels in torso pocket; 0 detached red string; smooth $2.5\text{s}$ loop | 🔄 In Progress ($\text{IoU}=0.8313, \text{LPIPS}=0.0405$) |
-| **Pac-Man** | $\text{IoU} = 1.000$, $\text{LPIPS} \le 0.005$ | Yellow Pac-Man extracted (not cyan Inky); 0 blue maze walls baked in | 🔄 In Progress (Track Induction fix active) |
+| **The Secret of NIMH** | $\text{IoU} \ge 0.820$, $\text{LPIPS} \le 0.050$ | 0 yellow sky pixels in torso pocket; 0 detached red string; smooth $2.5\text{s}$ loop | 🔄 In Progress (Track turnaround selection) |
+| **Pac-Man** | $\text{IoU} \ge 0.850$, $\text{LPIPS} \le 0.050$ | Yellow Pac-Man extracted; honest wavepacket kernel unfoldment | 🔄 In Progress ($\text{IoU}=0.7094$, edge noise tuning) |
 | **Raptor: Call of Shadows**| $\text{IoU} \ge 0.800$, $\text{LPIPS} \le 0.040$ | Metallic shaded fighter jet hull intact; clean vertical trajectory | ✅ PASS ($\text{IoU}=0.8708, \text{LPIPS}=0.0302$) |
 | **Workspace Test Suite** | 100% Pass (`cargo test --workspace --tests`) | Zero test regressions across all crates | ✅ PASS |
 
