@@ -1,7 +1,7 @@
 # ImplicateModel — Research & Experiment Tasks
 
 > **Status:** Track S1 & S2 — Spatiotemporal Plenum Character Restoration Plan Active (Focused on SMB3 Mario, Pac-Man, and Raptor; Ready for Final Gate Export & Visual QA).
-> **Note (Visual QA Tooling):** Automated visual trait analysis and glitch bounding box auditing CLI is implemented at `./tools/review_img.sh <IMAGE_FILE>` (see `./tools/review_img_example.sh` for an executable sample). Can run only 2 calls in parallel.
+> **Note (Visual QA Tooling):** Visual and temporal inspection CLIs available at `./tools/review_img.sh <IMAGE_FILE>` (example runner: `./tools/review_img_example.sh`) and `./tools/review_video.sh <VIDEO_FILE>` (short video temporal defect & trajectory auditing). Analyzes scene/character traits, motion continuity, and rendering glitches with pixel bounding boxes via local `llama-server` (Qwen 3 VL). Supports reference-counted multi-worker execution.
 
 **Goal:** Build the Implicate Video Engine (`ImplicateModel`)—an engine that enfolds arbitrary video inputs into a unified Clifford spacetime field, and enables:
 1. **Mode A (Generative Storybook):** Remixing game worlds and animated scenes into novel narrative sequences from natural-language prompts.
