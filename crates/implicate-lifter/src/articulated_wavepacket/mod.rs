@@ -1337,9 +1337,10 @@ pub fn dominant_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
 
         // Retain genuine limbs, capes, ears, and boots while rejecting detached debris and sparks:
         // A character component is either intimately contiguous (min_dist <= 2.5 across ink contours)
-        // or a significant limb/cape along the kinematic line of action (min_dist <= 5.0).
+        // or a significant limb/cape along the kinematic line of action within support reach.
         let intimately_contiguous = min_dist_to_primary <= 2.5;
-        let kinematic_limb = (in_distance_envelope || in_corridor) && min_dist_to_primary <= 5.0 && comp_sz >= 8;
+        let reach_dist = (support_radius * 0.5).max(12.0);
+        let kinematic_limb = (in_distance_envelope || in_corridor) && min_dist_to_primary <= reach_dist && comp_sz >= 8;
         if intimately_contiguous || kinematic_limb {
             keep[id] = true;
         }
