@@ -407,7 +407,7 @@ fn r10_5_pacman_empirical_model_sheet_and_gpu_unfold_gate() {
             (0.0, 0.0)
         };
 
-        let active_view: u32 = if !sheet.turnaround_views.is_empty() {
+        let _active_view: u32 = if !sheet.turnaround_views.is_empty() {
             let h_len = (dx * dx + dy * dy).sqrt();
             let (heading_c, heading_s) = if h_len > 1e-4 {
                 (dx / h_len, dy / h_len)
@@ -663,10 +663,13 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
         let mp4_path = out_dir.join("smb3_mario_generative_unfold.mp4");
         let mut writer = VideoWriter::create(&mp4_path, cw as u32, ch as u32, 24.0).expect("create video writer");
 
-        let mut contact_sheet_frame: Option<(usize, usize, Vec<u8>)> = None;
+        let mut frame_t0: Option<(usize, usize, Vec<u8>)> = None;
+        let mut frame_t1: Option<(usize, usize, Vec<u8>)> = None;
+        let cycle = (2 * mario_obs.len()).saturating_sub(2).max(1);
 
         for frame_idx in 0..60 {
-            let oi = frame_idx % mario_obs.len();
+            let c = frame_idx % cycle;
+            let oi = if c < mario_obs.len() { c } else { cycle - c };
             let obs = &mario_obs[oi];
             let w = obs.width();
             let h = obs.height();
@@ -712,18 +715,27 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
             let mut pred_mask = vec![false; w * h];
             unfolder.unfold_and_readback_u8(ctx, &gpu_monad, &uniforms, Some(&kernel_data), &mut pred_rgb, &mut pred_mask);
 
-            let (_, _, frame_rgb) = render_generative_unfold_frame(&pred_rgb, &pred_mask, w, h, max_w, max_h, scale, target_canvas);
+            let (fw, fh, frame_rgb) = render_generative_unfold_frame(&pred_rgb, &pred_mask, w, h, max_w, max_h, scale, target_canvas);
             writer.write_frame(&frame_rgb).expect("write frame");
-            if contact_sheet_frame.is_none() && oi == 6 {
-                contact_sheet_frame = Some(render_contact_sheet_comparison(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h, max_w, max_h, scale, target_canvas));
+            if frame_idx == 0 {
+                frame_t0 = Some((fw, fh, frame_rgb.clone()));
+            } else if frame_idx == 24 {
+                frame_t1 = Some((fw, fh, frame_rgb));
             }
         }
         writer.finish().expect("finish writer");
         assert!(mp4_path.exists());
-        if let Some((cs_w, cs_h, cs_data)) = contact_sheet_frame {
+        if let Some((cs_w, cs_h, cs_data)) = frame_t0 {
             let png_path = out_dir.join("smb3_mario_contact_sheet.png");
+            let t0_path = out_dir.join("smb3_mario_t0s.png");
             write_png(&png_path, cs_w as u32, cs_h as u32, &cs_data).expect("write png");
-            assert!(png_path.exists());
+            write_png(&t0_path, cs_w as u32, cs_h as u32, &cs_data).expect("write t0 png");
+            assert!(png_path.exists() && t0_path.exists());
+        }
+        if let Some((cs_w, cs_h, cs_data)) = frame_t1 {
+            let t1_path = out_dir.join("smb3_mario_t1s.png");
+            write_png(&t1_path, cs_w as u32, cs_h as u32, &cs_data).expect("write t1 png");
+            assert!(t1_path.exists());
         }
     }
 
@@ -746,7 +758,8 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
         let mp4_path = out_dir.join("pacman_generative_unfold.mp4");
         let mut writer = VideoWriter::create(&mp4_path, cw as u32, ch as u32, 24.0).expect("create video writer");
 
-        let mut contact_sheet_frame: Option<(usize, usize, Vec<u8>)> = None;
+        let mut frame_t0: Option<(usize, usize, Vec<u8>)> = None;
+        let mut frame_t1: Option<(usize, usize, Vec<u8>)> = None;
 
         for frame_idx in 0..60 {
             let oi = frame_idx % pacman_obs.len();
@@ -795,18 +808,27 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
             let mut pred_mask = vec![false; w * h];
             unfolder.unfold_and_readback_u8(ctx, &gpu_monad, &uniforms, Some(&kernel_data), &mut pred_rgb, &mut pred_mask);
 
-            let (_, _, frame_rgb) = render_generative_unfold_frame(&pred_rgb, &pred_mask, w, h, max_w, max_h, scale, target_canvas);
+            let (fw, fh, frame_rgb) = render_generative_unfold_frame(&pred_rgb, &pred_mask, w, h, max_w, max_h, scale, target_canvas);
             writer.write_frame(&frame_rgb).expect("write frame");
-            if contact_sheet_frame.is_none() && oi == 4 {
-                contact_sheet_frame = Some(render_contact_sheet_comparison(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h, max_w, max_h, scale, target_canvas));
+            if frame_idx == 0 {
+                frame_t0 = Some((fw, fh, frame_rgb.clone()));
+            } else if frame_idx == 24 {
+                frame_t1 = Some((fw, fh, frame_rgb));
             }
         }
         writer.finish().expect("finish writer");
         assert!(mp4_path.exists());
-        if let Some((cs_w, cs_h, cs_data)) = contact_sheet_frame {
+        if let Some((cs_w, cs_h, cs_data)) = frame_t0 {
             let png_path = out_dir.join("pacman_contact_sheet.png");
+            let t0_path = out_dir.join("pacman_t0s.png");
             write_png(&png_path, cs_w as u32, cs_h as u32, &cs_data).expect("write png");
-            assert!(png_path.exists());
+            write_png(&t0_path, cs_w as u32, cs_h as u32, &cs_data).expect("write t0 png");
+            assert!(png_path.exists() && t0_path.exists());
+        }
+        if let Some((cs_w, cs_h, cs_data)) = frame_t1 {
+            let t1_path = out_dir.join("pacman_t1s.png");
+            write_png(&t1_path, cs_w as u32, cs_h as u32, &cs_data).expect("write t1 png");
+            assert!(t1_path.exists());
         }
     }
 
@@ -828,7 +850,8 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
         let mp4_path = out_dir.join("raptor_generative_unfold.mp4");
         let mut writer = VideoWriter::create(&mp4_path, cw as u32, ch as u32, 24.0).expect("create video writer");
 
-        let mut contact_sheet_frame: Option<(usize, usize, Vec<u8>)> = None;
+        let mut frame_t0: Option<(usize, usize, Vec<u8>)> = None;
+        let mut frame_t1: Option<(usize, usize, Vec<u8>)> = None;
 
         for frame_idx in 0..60 {
             let oi = frame_idx % raptor_obs.len();
@@ -877,18 +900,27 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
             let mut pred_mask = vec![false; w * h];
             unfolder.unfold_and_readback_u8(ctx, &gpu_monad, &uniforms, Some(&kernel_data), &mut pred_rgb, &mut pred_mask);
 
-            let (_, _, frame_rgb) = render_generative_unfold_frame(&pred_rgb, &pred_mask, w, h, max_w, max_h, scale, target_canvas);
+            let (fw, fh, frame_rgb) = render_generative_unfold_frame(&pred_rgb, &pred_mask, w, h, max_w, max_h, scale, target_canvas);
             writer.write_frame(&frame_rgb).expect("write frame");
-            if contact_sheet_frame.is_none() && oi == 0 {
-                contact_sheet_frame = Some(render_contact_sheet_comparison(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h, max_w, max_h, scale, target_canvas));
+            if frame_idx == 0 {
+                frame_t0 = Some((fw, fh, frame_rgb.clone()));
+            } else if frame_idx == 24 {
+                frame_t1 = Some((fw, fh, frame_rgb));
             }
         }
         writer.finish().expect("finish writer");
         assert!(mp4_path.exists());
-        if let Some((cs_w, cs_h, cs_data)) = contact_sheet_frame {
+        if let Some((cs_w, cs_h, cs_data)) = frame_t0 {
             let png_path = out_dir.join("raptor_contact_sheet.png");
+            let t0_path = out_dir.join("raptor_t0s.png");
             write_png(&png_path, cs_w as u32, cs_h as u32, &cs_data).expect("write png");
-            assert!(png_path.exists());
+            write_png(&t0_path, cs_w as u32, cs_h as u32, &cs_data).expect("write t0 png");
+            assert!(png_path.exists() && t0_path.exists());
+        }
+        if let Some((cs_w, cs_h, cs_data)) = frame_t1 {
+            let t1_path = out_dir.join("raptor_t1s.png");
+            write_png(&t1_path, cs_w as u32, cs_h as u32, &cs_data).expect("write t1 png");
+            assert!(t1_path.exists());
         }
     }
 
@@ -896,9 +928,12 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
     println!("GENERATIVE VIDEO & VISUAL INSPECTION ARTIFACTS EXPORTED:");
     println!("  1. SMB3 Mario:      file://{}/smb3_mario_generative_unfold.mp4", out_dir.display());
     println!("     Contact Sheet:   file://{}/smb3_mario_contact_sheet.png", out_dir.display());
+    println!("     1s Pair:         file://{}/smb3_mario_t0s.png | file://{}/smb3_mario_t1s.png", out_dir.display(), out_dir.display());
     println!("  2. Pac-Man:         file://{}/pacman_generative_unfold.mp4", out_dir.display());
     println!("     Contact Sheet:   file://{}/pacman_contact_sheet.png", out_dir.display());
+    println!("     1s Pair:         file://{}/pacman_t0s.png | file://{}/pacman_t1s.png", out_dir.display(), out_dir.display());
     println!("  3. Raptor Jet:      file://{}/raptor_generative_unfold.mp4", out_dir.display());
     println!("     Contact Sheet:   file://{}/raptor_contact_sheet.png", out_dir.display());
+    println!("     1s Pair:         file://{}/raptor_t0s.png | file://{}/raptor_t1s.png", out_dir.display(), out_dir.display());
     println!("================================================================================\n");
 }
