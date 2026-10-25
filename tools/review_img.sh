@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # review_img.sh - Detailed visual inspection, trait analysis, and glitch review using local Qwen Vision on llama-server.
+# Supports parallel executions with reference-counted server lifecycle, kernel flock mutex, and stale-lease pruning.
 # Usage: ./tools/review_img.sh <IMAGE_FILE>
 
 set -euo pipefail
@@ -9,20 +10,30 @@ DEFAULT_PORT="8935"
 SERVER_HOST="${LLAMA_HOST:-127.0.0.1}"
 SERVER_PORT="${LLAMA_PORT:-$DEFAULT_PORT}"
 SERVER_URL="${LLAMA_SERVER_URL:-http://${SERVER_HOST}:${SERVER_PORT}}"
+PARALLEL_SLOTS="${LLAMA_PARALLEL:-4}"
 
 DEFAULT_MODEL="/mnt/storage/models/llama.cpp/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
 DEFAULT_MMPROJ="/mnt/storage/models/llama.cpp/mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf"
 MODEL_PATH="${LLAMA_MODEL_PATH:-$DEFAULT_MODEL}"
 MMPROJ_PATH="${LLAMA_MMPROJ_PATH:-$DEFAULT_MMPROJ}"
 
+# Lock and lifecycle directories
+LOCK_DIR="/tmp/llama_vision"
+ACTIVE_DIR="${LOCK_DIR}/active"
+SERVER_PID_FILE="${LOCK_DIR}/server.pid"
+SERVER_LOCK="${LOCK_DIR}/startup.lock"
+MANAGED_FLAG="${LOCK_DIR}/managed.flag"
+
 usage() {
     echo "Usage: $0 <IMAGE_FILE>"
     echo "Example: $0 ./generative_output/nimh_brisby_contact_sheet.png"
     echo ""
     echo "Environment overrides:"
-    echo "  LLAMA_SERVER_URL  URL to llama-server (default: http://127.0.0.1:8935)"
-    echo "  LLAMA_MODEL_PATH  Path to GGUF model"
-    echo "  LLAMA_MMPROJ_PATH Path to mmproj GGUF file"
+    echo "  LLAMA_SERVER_URL   URL to llama-server (default: http://127.0.0.1:8935)"
+    echo "  LLAMA_MODEL_PATH   Path to GGUF model"
+    echo "  LLAMA_MMPROJ_PATH  Path to mmproj GGUF file"
+    echo "  LLAMA_PARALLEL     Concurrent slot count (default: 4)"
+    echo "  LLAMA_KEEP_ALIVE   If set to 1, do not shut down server after all jobs finish"
     exit 1
 }
 
@@ -37,6 +48,60 @@ if [[ ! -f "$IMAGE_PATH" ]]; then
     exit 1
 fi
 
+mkdir -p "$ACTIVE_DIR"
+CLIENT_ID="client_${$}_${RANDOM}"
+touch "${ACTIVE_DIR}/${CLIENT_ID}"
+
+# Count active clients while self-healing stale leases from terminated/killed PIDs
+get_active_count() {
+    local count=0
+    for f in "${ACTIVE_DIR}"/client_*; do
+        [[ -e "$f" ]] || continue
+        local cpid
+        cpid=$(basename "$f" | cut -d'_' -f2)
+        if [[ -n "$cpid" ]] && kill -0 "$cpid" 2>/dev/null; then
+            count=$((count + 1))
+        else
+            # Stale client from an abrupt kill -9, prune it
+            rm -f "$f" 2>/dev/null || true
+        fi
+    done
+    echo "$count"
+}
+
+# Reference-counted teardown: only shutdown if all requests finished and server was launched by this CLI
+cleanup() {
+    rm -f "${ACTIVE_DIR}/${CLIENT_ID}" 2>/dev/null || true
+    if [[ "${LLAMA_KEEP_ALIVE:-0}" == "1" ]]; then
+        return 0
+    fi
+    (
+        # Wait up to 15s for the lock; fail safe if timed out
+        if flock -x -w 15 200; then
+            local active_count
+            active_count=$(get_active_count)
+            if [[ "$active_count" -eq 0 && -f "$MANAGED_FLAG" ]]; then
+                if [[ -f "$SERVER_PID_FILE" ]]; then
+                    local spid
+                    spid=$(cat "$SERVER_PID_FILE" 2>/dev/null || true)
+                    if [[ -n "$spid" ]] && kill -0 "$spid" 2>/dev/null; then
+                        echo "All review requests completed. Shutting down managed llama-server (PID $spid)..." >&2
+                        kill "$spid" 2>/dev/null || true
+                        for _ in {1..30}; do
+                            kill -0 "$spid" 2>/dev/null || break
+                            sleep 0.1
+                        done
+                        # Force kill if still hanging
+                        kill -9 "$spid" 2>/dev/null || true
+                    fi
+                    rm -f "$SERVER_PID_FILE" "$MANAGED_FLAG" 2>/dev/null || true
+                fi
+            fi
+        fi
+    ) 200>"${SERVER_LOCK}"
+}
+trap cleanup EXIT INT TERM
+
 # Function to check server health
 check_server() {
     local status
@@ -47,37 +112,52 @@ check_server() {
     return 1
 }
 
-# Auto-start server if not already running
+# Auto-start server with atomic flock if not already running
 if ! check_server; then
-    echo "Notice: llama-server not responding at ${SERVER_URL}." >&2
-    if [[ -f "$MODEL_PATH" && -f "$MMPROJ_PATH" ]]; then
-        echo "Starting llama-server with Qwen Vision model on port ${SERVER_PORT}..." >&2
-        nohup llama-server \
-            -m "$MODEL_PATH" \
-            --mmproj "$MMPROJ_PATH" \
-            -ngl 999 \
-            -fa on \
-            -c 16384 \
-            --port "$SERVER_PORT" \
-            --host "$SERVER_HOST" > /tmp/llama-server-vision.log 2>&1 &
-        
-        # Wait for server ready
-        echo -n "Waiting for model to load" >&2
-        for _ in {1..30}; do
-            if check_server; then
-                echo " Ready!" >&2
-                break
-            fi
-            echo -n "." >&2
-            sleep 1
-        done
-        
-        if ! check_server; then
-            echo "Error: Server failed to start within 30s. Check /tmp/llama-server-vision.log" >&2
+    (
+        # Acquire lock with 15s timeout failsafe
+        if ! flock -x -w 15 200; then
+            echo "Error: Timed out waiting for startup lock ${SERVER_LOCK}" >&2
             exit 1
         fi
-    else
-        echo "Error: Server is down and model weights not found at $MODEL_PATH" >&2
+
+        # Re-check server status once lock is acquired
+        if ! check_server; then
+            if [[ -f "$MODEL_PATH" && -f "$MMPROJ_PATH" ]]; then
+                echo "Notice: Starting shared llama-server on port ${SERVER_PORT} (slots=${PARALLEL_SLOTS})..." >&2
+                touch "$MANAGED_FLAG"
+                nohup llama-server \
+                    -m "$MODEL_PATH" \
+                    --mmproj "$MMPROJ_PATH" \
+                    --image-min-tokens 1024 \
+                    --cont-batching \
+                    --parallel "$PARALLEL_SLOTS" \
+                    -ngl 999 \
+                    -fa on \
+                    -c 32768 \
+                    --port "$SERVER_PORT" \
+                    --host "$SERVER_HOST" > /tmp/llama-server-vision.log 2>&1 200>&- &
+                echo $! > "$SERVER_PID_FILE"
+            else
+                echo "Error: Server is down and model weights not found at $MODEL_PATH" >&2
+                exit 1
+            fi
+        fi
+    ) 200>"${SERVER_LOCK}"
+
+    # Wait for server ready (outside the lock so concurrent workers don't serialize)
+    echo -n "Waiting for model to load" >&2
+    for _ in {1..40}; do
+        if check_server; then
+            echo " Ready!" >&2
+            break
+        fi
+        echo -n "." >&2
+        sleep 1
+    done
+
+    if ! check_server; then
+        echo "Error: Server failed to start within timeout. Check /tmp/llama-server-vision.log" >&2
         exit 1
     fi
 fi
@@ -167,7 +247,7 @@ req = urllib.request.Request(
 )
 
 try:
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    with urllib.request.urlopen(req, timeout=180) as resp:
         res = json.loads(resp.read().decode('utf-8'))
         content = res['choices'][0]['message']['content']
         print(content)
