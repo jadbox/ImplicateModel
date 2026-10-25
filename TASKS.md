@@ -42,6 +42,12 @@
 
 > **Objective:** Fix the background bake-in contamination during stationary holds and eliminate character limb amputation, achieving 100% complete character mass and zero trapped sky cavities.
 
+#### 🎯 Milestone S1 Showcase Example: 100% Character Mass & Zero Sky Contamination
+- **Showcase Command:** `cargo test -p implicate-lifter --test r10_model_sheet_gates`
+- **Output Artifacts:**
+  1. [`generative_output/smb3_mario_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_contact_sheet.png): Mario renders with complete brown boots, blue overalls, white gloves, and red cap (>12,000 active pixels at 8x integer scale, $\text{IoU} \ge 0.985$), resolving the 87.3% limb amputation bug.
+  2. [`generative_output/nimh_brisby_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_contact_sheet.png): Brisby's stationary hold locus reveals an uncontaminated rock background plenum with 0 fur texels, and the enclosed pocket between her arm and red cloak cleanly punches out yellow sunset sky ($[225, 135, 52]$) while preserving her solid torso ($\text{IoU} \ge 0.820$).
+
 - [ ] **S1.1 — Spatiotemporal Atlas Inpainting & Bake-In Purge (`multiplane_atlas/mod.rs`, `layer_accum.rs`)**
   - Mask out active actor bounding tracks from temporal-mode accumulators in `build_multiplane_atlas`.
   - When actor presence exceeds $50\%$ of temporal frames at a locus, inpaint the occluded background using harmonic minimal-gradient continuation ($\nabla^2 I = 0$) from ambient background boundaries.
@@ -70,6 +76,12 @@
 
 > **Objective:** Upgrade video presentation from brief sub-second flashes to crisp, looped, multi-second character demonstrations.
 
+#### 🎯 Milestone S2 Showcase Example: The 60-Frame Looping Turnaround Reel
+- **Showcase Command:** `cargo test -p implicate-lifter --test r10_model_sheet_gates -- r10_5_generative_video_export_and_user_validation_gate`
+- **Output Artifacts:**
+  1. [`generative_output/smb3_mario_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_generative_unfold.mp4): A crisp 60-frame ($2.5\text{s}$ at $24\text{ fps}$) looping video at $8\times$ NES scaling ($192 \times 256$) showing Mario cycling seamlessly through walking and jumping gaits with volume conservation ($\det S = 1$).
+  2. [`generative_output/nimh_brisby_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_brisby_generative_unfold.mp4): A 60-frame ($2.5\text{s}$) video at $2\times$ integer cel scaling ($236 \times 360$) showing Mrs. Brisby smoothly executing a full turnaround with fluttering cape dynamics, zero temporal flicker, and zero trapped sky blobs (replacing the previous 7-frame flash).
+
 - [ ] **S2.1 — Feature Animation Cel Presentation Scaling (`r10_model_sheet_gates.rs`)**
   - Enforce minimum $2\times$ integer scaling for feature animation cels ($236 \times 360$ canvas), eliminating cramped $1\times$ fallbacks.
 - [ ] **S2.2 — Multi-Second Generative Video Export Loops (`r10_model_sheet_gates.rs`)**
@@ -88,6 +100,13 @@
 
 > **Objective:** Implement physical platforming directly through Projective Geometric Algebra boundary predicates without a third-party physics engine.
 
+#### 🎯 Milestone S3 Showcase Example: The 0-Physics-Engine PGA Jump & Land Sandbox
+- **Showcase Command:** `cargo test -p implicate-field --test pga_platforming_gates`
+- **Output Artifacts & Kinematic Proof:**
+  - A deterministic trajectory test where a jump impulse $\Omega_{\text{jump}} = 120\,e_{02}$ is injected into Mario at $(x=32, y=64)$ above an oriented ground plane $\Pi = 0\,e_1 + 1\,e_2 + 0\,e_3 - 32\,e_0$.
+  - Mario rises, reaches apex at $t=0.3\text{s}$, and accelerates downward under Bohmian gravitational flux $\mathbf{g} = -\nabla \langle \mathcal{Q} \rangle_0 = -9.8\,e_2$.
+  - At $t=0.6\text{s}$, contact condition $P \wedge \Pi = 0$ is detected; vertical velocity reflects to $0$ via Fresnel rotor $v' = \Pi v \widetilde{\Pi}$, perfectly arresting downward movement with zero penetration ($y = 32.000 \pm 0.000$) and 0 external physics library dependencies.
+
 - [ ] **S3.1 — Oriented Ground Planes in $\mathbb{G}_{3,0,1}$ (`implicate-field`)**
   - Represent platform ground bricks and obstacle walls as oriented planes $\Pi_{\text{ground}} \in \bigwedge^1 \mathbb{G}_{3,0,1}$.
 - [ ] **S3.2 — Controller Motor Injection (`implicate-field`, `implicate-unfold`)**
@@ -103,6 +122,13 @@
 
 > **Objective:** Enable real-time keyboard/gamepad gameplay directly inside the unfolded Clifford video world.
 
+#### 🎯 Milestone S4 Showcase Example: Live Playable NES World 1-1 Run
+- **Showcase Command:** `cargo run -p implicate-cli -- play --input ./tests/fixtures/smb3_world1.implicate`
+- **Interactive Gameplay Proof:**
+  - Launches a native $120\text{ FPS}$ Vulkan/Metal window.
+  - The player uses Left/Right Arrow keys to move and Spacebar to jump.
+  - Mario runs across real NES brick terrain, jumps onto an elevated question-mark block ($\Pi_{\text{block}}$), lands solidly with audio synthesized on contact ($0.0\text{ ms}$ latency), and navigates the level in real-time. This proves the concept: playing an interactive video game directly from enfolded video without game code or a Cartesian collision engine.
+
 - [ ] **S4.1 — CLI Subcommand `implicate play` (`implicate-cli`)**
   - Implement `implicate play --input <corpus.implicate>` launching an interactive `winit` / `wgpu` viewport.
 - [ ] **S4.2 — Real-Time Interactive Loop ($\ge 60\text{ FPS}$)**
@@ -115,6 +141,12 @@
 ### Track S5 — The Generative Storybook Engine (`implicate remix`) (PLANNED)
 
 > **Objective:** Enable open-ended narrative animated film remixing from natural language prompts.
+
+#### 🎯 Milestone S5 Showcase Example: Remixed Don Bluth Feature Scene
+- **Showcase Command:** `cargo run -p implicate-cli -- remix --video ./tests/fixtures/nimh_shot14.implicate --prompt "Mrs. Brisby turns to face the stone archway, walks cautiously forward, and raises her glowing red amulet"`
+- **Output Artifact & Visual Proof:**
+  - [`generative_output/nimh_remix_stone_archway.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_remix_stone_archway.mp4) (1080p, 120 frames @ 24 fps with phase-locked 48 kHz stereo audio).
+  - The engine translates prompt verbs into spatial $\mathcal{Q}_{\text{Cl}}$ attractor beacons, rotates Brisby's Line of Action $L_{\text{spine}}$ to transition across turnaround idempotents $\epsilon_{\text{profile}} \to \epsilon_{\text{3/4}} \to \epsilon_{\text{back}}$, and synthesizes a completely new Don Bluth feature animation scene matching the original film's style and audio without diffusion hallucinations.
 
 - [ ] **S5.1 — CLI Subcommand `implicate remix` (`implicate-cli`)**
   - Implement `implicate remix --video <corpus.implicate> --prompt "<prompt>"` generating novel scene animations.
