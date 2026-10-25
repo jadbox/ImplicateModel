@@ -106,30 +106,9 @@ pub fn generative_output_dir() -> PathBuf {
     dir
 }
 
-/// Compute an optimal integer scale factor to cleanly display retro pixel art and sprites
-/// in a crisp, visible viewport without fractional interpolation blur.
-fn compute_integer_scale(max_w: usize, max_h: usize) -> usize {
-    let max_dim = max_w.max(max_h);
-    if max_dim <= 20 {
-        // Small retro arcade/NES sprites (Pac-Man 14px, Mario 16px) -> 8x integer scale
-        8
-    } else if max_dim <= 32 {
-        // Standard NES/Genesis sprites (Mario walking 24px) -> 8x integer scale
-        8
-    } else if max_dim <= 64 {
-        // DOS VGA shaded sprites (Raptor 48px) -> 4x integer scale
-        4
-    } else if max_dim <= 140 {
-        // Feature animation cels (Mrs. Brisby 114px) -> 2x integer scale
-        2
-    } else {
-        1
-    }
-}
-
-/// Render a SINGLE generative character frame for video export, cleanly framed and centered,
+/// Render a SINGLE generative character frame for video and image export, cleanly framed and centered,
 /// with integer nearest-neighbor scaling for retro pixel art.
-/// Permanently eliminates the duplicate twin-sprite glitch.
+/// Permanently eliminates the duplicate twin-sprite split-frame glitch.
 fn render_generative_unfold_frame(
     pred_rgb: &[u8],
     pred_mask: &[bool],
@@ -171,112 +150,6 @@ fn render_generative_unfold_frame(
                     }
                     for sx in 0..scale {
                         let cx = offset_x + lx * scale + sx;
-                        if cx >= canvas_w {
-                            continue;
-                        }
-                        let dst_i = (cy * canvas_w + cx) * 3;
-                        canvas[dst_i] = r;
-                        canvas[dst_i + 1] = g;
-                        canvas[dst_i + 2] = b;
-                    }
-                }
-            }
-        }
-    }
-
-    (canvas_w, canvas_h, canvas)
-}
-
-/// Render a contact sheet comparing Ground Truth Observation (Left Panel) vs
-/// Generative GPU Model Sheet Unfold (Right Panel), with clearly separated and labeled
-/// panels with integer nearest-neighbor scaling.
-fn render_contact_sheet_comparison(
-    gt_rgb: &[u8],
-    gt_mask: &[bool],
-    pred_rgb: &[u8],
-    pred_mask: &[bool],
-    w: usize,
-    h: usize,
-    max_w: usize,
-    max_h: usize,
-    scale: usize,
-    target_canvas: Option<(usize, usize)>,
-) -> (usize, usize, Vec<u8>) {
-    let (panel_w, panel_h) = if let Some((cw, ch)) = target_canvas {
-        (cw, ch)
-    } else {
-        (max_w * scale + 16 * scale, max_h * scale + 16 * scale)
-    };
-    let divider_w = (4 * scale).max(4);
-    let canvas_w = ((panel_w * 2 + divider_w) + 1) & !1;
-    let canvas_h = (panel_h + 1) & !1;
-
-    // Dark charcoal background [18, 20, 24]
-    let mut canvas = vec![18u8; canvas_w * canvas_h * 3];
-    for i in 0..canvas_w * canvas_h {
-        canvas[i * 3 + 1] = 20;
-        canvas[i * 3 + 2] = 24;
-    }
-
-    // Draw vertical divider (accent cyan line [60, 140, 220])
-    let div_x0 = panel_w;
-    let div_x1 = panel_w + divider_w;
-    for cy in 0..canvas_h {
-        for cx in div_x0..div_x1 {
-            let dst_i = (cy * canvas_w + cx) * 3;
-            canvas[dst_i] = 60;
-            canvas[dst_i + 1] = 140;
-            canvas[dst_i + 2] = 220;
-        }
-    }
-
-    // Blit Ground Truth on left panel
-    let offset_lx = (panel_w.saturating_sub(w * scale)) / 2;
-    let offset_ly = (panel_h.saturating_sub(h * scale)) / 2;
-    for ly in 0..h {
-        for lx in 0..w {
-            let src_i = ly * w + lx;
-            if src_i < gt_mask.len() && gt_mask[src_i] {
-                let r = gt_rgb[src_i * 3];
-                let g = gt_rgb[src_i * 3 + 1];
-                let b = gt_rgb[src_i * 3 + 2];
-                for sy in 0..scale {
-                    let cy = offset_ly + ly * scale + sy;
-                    if cy >= canvas_h {
-                        continue;
-                    }
-                    for sx in 0..scale {
-                        let cx = offset_lx + lx * scale + sx;
-                        if cx >= div_x0 {
-                            continue;
-                        }
-                        let dst_i = (cy * canvas_w + cx) * 3;
-                        canvas[dst_i] = r;
-                        canvas[dst_i + 1] = g;
-                        canvas[dst_i + 2] = b;
-                    }
-                }
-            }
-        }
-    }
-
-    // Blit Generative GPU Unfold on right panel
-    let offset_rx = panel_w + divider_w + (panel_w.saturating_sub(w * scale)) / 2;
-    let offset_ry = (panel_h.saturating_sub(h * scale)) / 2;
-    for ly in 0..h {
-        for lx in 0..w {
-            let src_i = ly * w + lx;
-            if src_i < pred_mask.len() && pred_mask[src_i] {
-                let r = pred_rgb[src_i * 3];
-                let g = pred_rgb[src_i * 3 + 1];
-                let b = pred_rgb[src_i * 3 + 2];
-                for sy in 0..scale {
-                    let cy = offset_ry + ly * scale + sy;
-                    if cy >= canvas_h {
-                        continue;
-                    }
-                    for sx in 0..scale {
-                        let cx = offset_rx + lx * scale + sx;
                         if cx >= canvas_w {
                             continue;
                         }
