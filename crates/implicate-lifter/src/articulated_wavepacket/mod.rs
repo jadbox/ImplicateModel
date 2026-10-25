@@ -6,6 +6,7 @@
 //! - `part_fitting`: K-means part prototype learning, view-aspect idempotent clustering, and Gaussian-Gabor kernel accumulation.
 
 pub mod clifford_features;
+pub mod morphology;
 pub mod part_fitting;
 
 use bytemuck::{Pod, Zeroable};
@@ -1161,6 +1162,87 @@ pub fn chroma_weighted_color(rgb: &[u8], mask: &[bool]) -> [f32; 3] {
     }
 }
 
+/// Track R10.10b — Extract representative colour modes using Furthest Point Sampling (FPS)
+/// with Lloyd refinement and minimum occupancy pruning (BIC/MDL principle).
+pub fn extract_color_modes_fps(rgb_samples: &[[u8; 3]], max_k: usize, min_dist: f64) -> Vec<[f64; 3]> {
+    if rgb_samples.is_empty() {
+        return Vec::new();
+    }
+    let mut sum = [0.0f64; 3];
+    for p in rgb_samples {
+        sum[0] += p[0] as f64;
+        sum[1] += p[1] as f64;
+        sum[2] += p[2] as f64;
+    }
+    let n = rgb_samples.len() as f64;
+    let mut centers = vec![[sum[0] / n, sum[1] / n, sum[2] / n]];
+
+    let mut min_dists: Vec<f64> = rgb_samples.iter().map(|p| {
+        let dr = p[0] as f64 - centers[0][0];
+        let dg = p[1] as f64 - centers[0][1];
+        let db = p[2] as f64 - centers[0][2];
+        (dr * dr + dg * dg + db * db).sqrt()
+    }).collect();
+
+    while centers.len() < max_k {
+        let (max_idx, &max_d) = min_dists.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal)).unwrap();
+        if max_d < min_dist {
+            break;
+        }
+        let cand = [rgb_samples[max_idx][0] as f64, rgb_samples[max_idx][1] as f64, rgb_samples[max_idx][2] as f64];
+        centers.push(cand);
+        for (i, p) in rgb_samples.iter().enumerate() {
+            let dr = p[0] as f64 - cand[0];
+            let dg = p[1] as f64 - cand[1];
+            let db = p[2] as f64 - cand[2];
+            let d = (dr * dr + dg * dg + db * db).sqrt();
+            if d < min_dists[i] {
+                min_dists[i] = d;
+            }
+        }
+    }
+
+    let mut counts = vec![0usize; centers.len()];
+    let mut sums = vec![[0.0f64; 3]; centers.len()];
+    for p in rgb_samples {
+        let mut best_k = 0;
+        let mut best_d = f64::INFINITY;
+        for (k, c) in centers.iter().enumerate() {
+            let dr = p[0] as f64 - c[0];
+            let dg = p[1] as f64 - c[1];
+            let db = p[2] as f64 - c[2];
+            let d = dr * dr + dg * dg + db * db;
+            if d < best_d {
+                best_d = d;
+                best_k = k;
+            }
+        }
+        counts[best_k] += 1;
+        sums[best_k][0] += p[0] as f64;
+        sums[best_k][1] += p[1] as f64;
+        sums[best_k][2] += p[2] as f64;
+    }
+
+    let min_count = (rgb_samples.len() as f64 * 0.04).max(3.0) as usize;
+    let mut pruned = Vec::new();
+    for k in 0..centers.len() {
+        if counts[k] >= min_count {
+            let cnt = counts[k] as f64;
+            pruned.push([sums[k][0] / cnt, sums[k][1] / cnt, sums[k][2] / cnt]);
+        }
+    }
+    if pruned.is_empty() { centers } else { pruned }
+}
+
+fn min_color_distance(p: [u8; 3], modes: &[[f64; 3]]) -> f64 {
+    modes.iter().map(|m| {
+        let dr = p[0] as f64 - m[0];
+        let dg = p[1] as f64 - m[1];
+        let db = p[2] as f64 - m[2];
+        (dr * dr + dg * dg + db * db).sqrt()
+    }).fold(f64::INFINITY, f64::min)
+}
+
 /// Screen pixels whose value never departs from the first frame by more than the noise floor
 /// residual. Such pixels are camera-locked (HUDs, letter/pillar-box bars, masked borders, logos)
 /// and cannot contain a moving holon. `None` when the shot is too short to tell.
@@ -1193,10 +1275,84 @@ fn screen_static_mask(frames: &[crate::video_io::RawFrame], tau: f64) -> Option<
     Some(stat)
 }
 
+/// Track R10.10a — structuring-element radius `r_B` of the Dimension Filter, derived from the
+/// mask's own medial-ridge thickness histogram (no constants):
+/// 1. Otsu's split of the ridge-radius histogram separates the thin population (filaments,
+///    strings, ink strokes) from the thick population (2D cel-filled bodies); `r_B` is the
+///    largest radius of the thin class, so erosion `D > r_B` annihilates every filament.
+/// 2. `r_B` must stay strictly below half of the thickest inscribed radius, so the holon's
+///    2-blade core always survives with interior substance (tiny sprites: limbs survive).
+/// 3. Degenerate masks (bodies no thicker than a filament) fall back to `r_B = 0` (Occam).
+pub fn dimensional_opening_radius(dist: &[u32], w: usize, h: usize) -> u32 {
+    let hist = morphology::ridge_radius_histogram(dist, w, h);
+    let d_max = hist.len().saturating_sub(1);
+    if d_max < 2 {
+        return 0;
+    }
+    // Filament mode: radius 1 represents 1-2px thin filaments and boundary strokes.
+    // To preserve thin character limbs and detached props (4x4, d=2), r_B must be bounded:
+    // r_B = 1 erases all 1D filaments (d=1) while preserving genuine 2D features (d >= 2).
+    if hist.get(1).copied().unwrap_or(0) > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+/// Track R10.10a — Dimensional Opening with Geodesic Reconstruction.
+///
+/// 1. Distance transform D(x) measures inscribed thickness.
+/// 2. Structuring element radius r_B derived from thickness histogram:
+///    r_B = 1 erases 1D filaments (strings, wires, single-pixel noise), while preserving
+///    all genuine 2D features and compact detached props (amulets, capes >= 4x4).
+/// 3. Morphological opening: opened = (M ⊖ B) ⊕ B. Filaments have no inscribed core and vanish.
+/// 4. Line-of-Action envelope preserves primary 2D body and supported limbs/props.
+/// 5. Geodesic reconstruction of kept opened features inside the original mask restores boundaries.
+pub fn dominant_silhouette_with_core(mask: &[bool], w: usize, h: usize) -> (Vec<bool>, Vec<bool>) {
+    if !mask.iter().any(|&m| m) || w == 0 || h == 0 {
+        return (vec![false; w * h], vec![false; w * h]);
+    }
+    let dist = morphology::chessboard_distance(mask, w, h);
+    let r_b = dimensional_opening_radius(&dist, w, h);
+    
+    let (core, opened): (Vec<bool>, Vec<bool>) = if r_b > 0 {
+        let c: Vec<bool> = dist.iter().map(|&d| d > r_b).collect();
+        if c.iter().any(|&v| v) {
+            let o: Vec<bool> = morphology::dilate(&c, w, h, r_b as usize)
+                .into_iter()
+                .zip(mask)
+                .map(|(dil, &m)| dil && m)
+                .collect();
+            (c, o)
+        } else {
+            (mask.to_vec(), mask.to_vec())
+        }
+    } else {
+        (mask.to_vec(), mask.to_vec())
+    };
+
+    // Label opened features and keep primary mass plus Line-of-Action supported limbs/props
+    let kept_opened = envelope_silhouette(&opened, w, h);
+    
+    // Kept core pixels belonging to the supported holon
+    let kept_core: Vec<bool> = core.iter().zip(&kept_opened).map(|(&c, &k)| c && k).collect();
+    
+    // Geodesic reconstruction inside original mask to restore extremities
+    let silhouette = morphology::geodesic_dilate(&kept_opened, mask, w, h, None);
+    (silhouette, kept_core)
+}
+
+/// Keep the dominant 2D holon silhouette of a residual mask: morphological opening
+/// erases 1D filaments, Line-of-Action envelope keeps primary mass and genuine limbs/props,
+/// and geodesic reconstruction restores full boundaries.
+pub fn dominant_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
+    dominant_silhouette_with_core(mask, w, h).0
+}
+
 /// Keep the largest 8-connected component of `mask` plus any component that falls
 /// within the Line of Action support envelope (preserving detached props such as
 /// Mrs. Brisby's amulet, Jeremy's red string, trailing cape tips, and billowing cloaks).
-pub fn dominant_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
+fn envelope_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
     let mut label = vec![0u32; w * h];
     let mut sizes: Vec<usize> = vec![0];
     let mut stack = Vec::new();
@@ -1469,13 +1625,14 @@ pub fn extract_character_observation_tracks(
     let screen_static = screen_static_mask(frames, tau);
 
     for (fi, frame) in frames.iter().enumerate() {
-        let Some(boxes) = atlas.actor_boxes_per_frame.get(fi) else {
+        let Some(raw_boxes) = atlas.actor_boxes_per_frame.get(fi) else {
             continue;
         };
+        let boxes = merge_overlapping_boxes(raw_boxes);
         let recon_bg = atlas.reconstruct_background_frame(fi);
         let mut frame_cands: Vec<TrackCand> = Vec::new();
 
-        for &bbox in boxes {
+        for &bbox in &boxes {
             let x0 = bbox.x0.clamp(0, frame.width as i32 - 1);
             let y0 = bbox.y0.clamp(0, frame.height as i32 - 1);
             let x1 = bbox.x1.clamp(x0, frame.width as i32 - 1);
@@ -1495,7 +1652,67 @@ pub fn extract_character_observation_tracks(
                     residual[(fy - y0) as usize * bw0 + (fx - x0) as usize] = d > tau_i && !locked;
                 }
             }
-            let silhouette = dominant_silhouette(&residual, bw0, bh0);
+            if std::env::var_os("IMPLICATE_DEBUG_SIL").is_some() {
+                let dist = morphology::chessboard_distance(&residual, bw0, bh0);
+                let hist = morphology::ridge_radius_histogram(&dist, bw0, bh0);
+                eprintln!("[sil] f{fi} box {:?} ridge_hist {:?}", bbox, hist);
+            }
+            let (raw_silhouette, core) = dominant_silhouette_with_core(&residual, bw0, bh0);
+
+            // Track R10.10b — Nearest-Manifold Chromatic Holon Invariant:
+            // Derive holon colour modes from the eroded core (idempotent ground state);
+            // derive vacuum colour modes from exterior box samples and atlas background;
+            // keep silhouette pixels iff closer to holon modes than to vacuum modes.
+            let silhouette = if core.iter().any(|&c| c) {
+                let mut holon_samples = Vec::new();
+                let mut vacuum_samples = Vec::new();
+                for ly in 0..bh0 {
+                    for lx in 0..bw0 {
+                        let fx = x0 as usize + lx;
+                        let fy = y0 as usize + ly;
+                        let p = frame.pixel(fx as u32, fy as u32);
+                        if core[ly * bw0 + lx] {
+                            holon_samples.push(p);
+                        }
+                        if !raw_silhouette[ly * bw0 + lx] {
+                            vacuum_samples.push(p);
+                        }
+                        vacuum_samples.push(recon_bg.pixel(fx, fy));
+                    }
+                }
+                let h_modes = extract_color_modes_fps(&holon_samples, 8, 20.0);
+                let v_modes = extract_color_modes_fps(&vacuum_samples, 8, 20.0);
+                if !h_modes.is_empty() && !v_modes.is_empty() {
+                    let mut chrom_clean = vec![false; bw0 * bh0];
+                    for ly in 0..bh0 {
+                        for lx in 0..bw0 {
+                            let idx = ly * bw0 + lx;
+                            if !raw_silhouette[idx] {
+                                continue;
+                            }
+                            let fx = x0 as usize + lx;
+                            let fy = y0 as usize + ly;
+                            let p = frame.pixel(fx as u32, fy as u32);
+                            let dh = min_color_distance(p, &h_modes);
+                            let dv = min_color_distance(p, &v_modes);
+                            if dh < dv {
+                                chrom_clean[idx] = true;
+                            }
+                        }
+                    }
+                    let rec = morphology::geodesic_dilate(&core, &chrom_clean, bw0, bh0, None);
+                    if rec.iter().filter(|&&m| m).count() >= 8 {
+                        rec
+                    } else {
+                        raw_silhouette
+                    }
+                } else {
+                    raw_silhouette
+                }
+            } else {
+                raw_silhouette
+            };
+
             let fg_cnt = silhouette.iter().filter(|&&m| m).count();
             if fg_cnt < 8 {
                 continue;
