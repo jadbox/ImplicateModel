@@ -741,7 +741,7 @@ fn r10_5_nimh_empirical_model_sheet_and_gpu_unfold_gate() {
     }
     assert_eq!(valid_pga_lines, brisby_obs.len());
 
-    // 3. Induce Don Bluth Character Board Model Sheet with 2 sub-holons (torso + aerodynamic cape)
+    // 3. Induce Character Board Model Sheet with 2 sub-holons (torso + aerodynamic cape)
     let sheet = induce_holon_model_sheet("Mrs_Brisby", &brisby_obs, Some(2), None);
     assert_eq!(sheet.name, "Mrs_Brisby");
     assert_eq!(sheet.parts.len(), 2, "Mrs. Brisby must have torso and aerodynamic cape sub-holons");

@@ -622,7 +622,7 @@ pub fn enforce_volume_conserving_gait_deformation(
     }
 }
 
-/// Induce a unified Don Bluth Character Board Model Sheet (HolonModelSheet) for an autonomous process holon.
+/// Induce a unified Animated Film Character Board Model Sheet (HolonModelSheet) for an autonomous process holon.
 pub fn induce_holon_model_sheet(
     name: &str,
     observations: &[CharacterObservation],

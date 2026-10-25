@@ -14,16 +14,16 @@
 
 Contemporary video generation architectures (such as MiniMax-H3, Sora, and Wan) model moving imagery by shattering continuous spacetime into discrete $(t, h, w)$ patch tokens and running $20\text{–}50$ iterative diffusion passes over $O(N^2)$ attention matrices. Because the latent space between tokens lacks physical continuity, conservation laws, or 3D geometric equivariance, these models require tens of billions of parameters and millions of training clips merely to prevent moving objects from dissolving between frames.
 
-**`ImplicateModel`** introduces a fundamentally different architecture grounded in **David Bohm and Basil Hiley's** *Implicate Order* and *Clifford Pregeometry*, **Louis de Broglie's** *Nonlinear Soliton Mechanics*, and the classical animation discipline of **Don Bluth's** *Character Board Model Sheets*. Rather than predicting pixel patches statistically from Gaussian noise, `ImplicateModel` compiles raw video and audio streams into an invariant **Implicate Lexicon & World Model** (`implicate enfold`) structured around **Clifford Idempotent Solitons (CIS)**, and supports two unified operational modes during **single-pass causal forward unfoldment** (`implicate unfold`) executed on GPU compute shaders at **$60\text{–}120+\text{ FPS}$**:
+**`ImplicateModel`** introduces a fundamentally different architecture grounded in **David Bohm and Basil Hiley's** *Implicate Order* and *Clifford Pregeometry*, **Louis de Broglie's** *Nonlinear Soliton Mechanics*, and the classical animation discipline of **Character Board Model Sheets**. Rather than predicting pixel patches statistically from Gaussian noise, `ImplicateModel` compiles raw video and audio streams into an invariant **Implicate Lexicon & World Model** (`implicate enfold`) structured around **Clifford Idempotent Solitons (CIS)**, and supports two unified operational modes during **single-pass causal forward unfoldment** (`implicate unfold`) executed on GPU compute shaders at **$60\text{–}120+\text{ FPS}$**:
 
-1. **Mode A — Generative Storybook Engine (Narrative Remixing):** Compiles an ingested film (e.g., Don Bluth's *The Secret of NIMH*) into autonomous character solitons and generative model sheets. Creators can script or prompt the engine to remix the world into novel story chapters with guaranteed visual identity, volume conservation ($\det S = 1$), and zero diffusion temporal flicker.
+1. **Mode A — Generative Storybook Engine (Narrative Remixing):** Compiles an ingested animated film (e.g., feature animation benchmarks such as *The Secret of NIMH*, anime, or classical 2D/3D cinema) into autonomous character solitons and generative model sheets. Creators can script or prompt the engine to remix the world into novel story chapters with guaranteed visual identity, volume conservation ($\det S = 1$), and zero diffusion temporal flicker.
 2. **Mode B — Playable Real-Time Game Engine (Interactive Agency Without a Collision Engine):** Directly executes ingested gameplay footage (*Super Mario Bros 3*, *Pac-Man*, *Raptor*) as an interactive, playable simulation. In contrast to Cartesian engines that require heavy collision meshes and bounding box trees, `ImplicateModel` treats the game world as an unbroken implicate continuum: platforms are boundary planes $\Pi \in \mathbb{G}_{3,0,1}$, ground contact is projective incidence $P \wedge \Pi = 0$, velocity reflection is a Fresnel rotor $v' = \Pi v \widetilde{\Pi}$, and downward gravity is the Bohmian quantum potential gradient $-\nabla \langle \mathcal{Q}_{\text{Cl}} \rangle_0$. Player controller inputs inject directly into the character's Clifford Lie motor, running at $\ge 60\text{--}120+\text{ FPS}$.
 
 **Universal 3D Clifford Pregeometry:** Because the underlying monad is 3D Projective Geometric Algebra ($\mathbb{G}_{3,0,1}$, 16 basis blades, 64-byte [`Mv301`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-math/src/g301.rs#L17-L19)), the engine is natively 3D. 2D arcade games and 2.5D multi-plane animation are exact planar sub-algebras ($z = \text{const}$, $e_3 = 0$) of the same 3D PGA engine. One universal mathematical core powers 2D sprites, multi-plane cel animation, and full 3D projective environments without bifurcated codebases.
 
 To achieve both mathematical rigor and mechanical sympathy with modern SIMD/GPU hardware (cache-aligned 64-byte multivector monads), `ImplicateModel` unifies three computational strata:
 1. **Stratum 1 — Pixel Lifting, Duality, & `@rolpa` Surface Refinement ($O(N)$ over 2D Grids):** Uses the **Clifford Geometric Product Duality** ($uv = u \cdot v + u \wedge v$) over the local Laplacian context ($\nabla^2 u$) to split every holon into invariant **ink contour blades** (exterior wedge vorticity $u \wedge \nabla^2 u$) and **cel paint fills** (inner product coherence $u \cdot \nabla^2 u$), refined in a single deterministic GPU pass during Unfoldment.
-2. **Stratum 2 — Symbolic Model Sheets & Semantic-to-Geometric Concept Binding ($O(K)$ Closed-Form Lie Kinematics):** Replaces heavy neural transformers with **Don Bluth Character Board Model Sheets** encoded as primitive orthogonal idempotents ($\epsilon_v^2 = \epsilon_v$) on the observer's projective horizon, with continuous articulated motion and squash-and-stretch governed by exact closed-form Lie automorphisms $M = \exp(-\frac{\theta}{2} L)$ on $\text{Spin}(3,0,1)$ and scale-invariant Bohm-Hiley Quantum Potentials ($\mathcal{Q}_{\text{Cl}} = -(\nabla^2 \Psi)\Psi^{-1}$).
+2. **Stratum 2 — Symbolic Model Sheets & Semantic-to-Geometric Concept Binding ($O(K)$ Closed-Form Lie Kinematics):** Replaces heavy neural transformers with **Animated Film Character Board Model Sheets** encoded as primitive orthogonal idempotents ($\epsilon_v^2 = \epsilon_v$) on the observer's projective horizon, with continuous articulated motion and squash-and-stretch governed by exact closed-form Lie automorphisms $M = \exp(-\frac{\theta}{2} L)$ on $\text{Spin}(3,0,1)$ and scale-invariant Bohm-Hiley Quantum Potentials ($\mathcal{Q}_{\text{Cl}} = -(\nabla^2 \Psi)\Psi^{-1}$).
 3. **Stratum 3 — Spatiotemporal Causality (The Implicate Spine):** Executes a deterministic, zero-AI GPU wave-matter lattice (`Yee` staggered FDTD + minimal left ideal `CliffordDensityElement` kinematics) that enforces object permanence, momentum conservation, Fresnel boundary reflection, Griffith fracture/annealing, and unified audio-visual projection (`@rolpa`) at $60\text{–}1,000+\text{ Hz}$.
 
 ---
@@ -121,7 +121,7 @@ Any rigid motion $M \in \text{Spin}(3,0,1)$ (combining 3D rotation around an arb
 $$X' = M\,X\,\widetilde{M}$$
 This eliminates separate transformation routines: whether transforming a vertex point, rotating a line of action, or reflecting across a floor plane, the same closed-form rotor multiplication applies identically.
 
-### 2.2 The 64-Byte Clifford Monad (`Mv301`) & The Don Bluth Model Sheet
+### 2.2 The 64-Byte Clifford Monad (`Mv301`) & The Animated Film Model Sheet
 
 High-performance real-time graphics demands **mechanical sympathy**: designing data structures that map directly to the underlying silicon. Modern CPU cores load data in 64-byte L1/L2 cache lines, and modern GPUs process data in SIMD warps.
 
@@ -134,7 +134,7 @@ pub struct Mv301 {
 }
 ```
 
-Drawing from the classical feature animation mastery of **Don Bluth**, an entity is not represented as an ad-hoc pixel silhouette or bounding box, but as an invariant **Symbolic Character Board / Model Sheet** structured by Clifford pregeometry:
+Drawing from the classical production discipline of animated films, an entity is not represented as an ad-hoc pixel silhouette or bounding box, but as an invariant **Symbolic Character Board / Model Sheet** structured by Clifford pregeometry:
 
 $$\mathcal{H}_i = \Big(L_{\text{spine}} \in \bigwedge\nolimits^2 \mathbb{G}_{3,0,1},\; \{\epsilon_{i,v}\}_{v=1}^V,\; \{\mathcal{H}_{i,p},\; \text{parent}(p),\; B_{\text{joint},p}\}_{p=1}^{P_i},\; \rho_{c,i}\Big)$$
 
@@ -204,7 +204,7 @@ Whenever the engine operates on dense 2D image grids ($H \times W$ pixels, $N \s
   - **Inner Product $u \cdot \nabla^2 u$:** Captures cel paint fills, flat color regions, and process vitality density $\rho = \text{tr}(\rho_c)$.
 * **Fused WGSL Compute Shader (Unfoldment):** A lightweight 4-block fused WGSL compute shader (`cliffordnet_rolpa.wgsl`, 2.6M parameters) refines composited wavepackets into crisp 1080p frames in **`0.4595 ms/frame`** ($> 2,100\text{ FPS}$) on an RTX 4090 with zero temporal flicker.
 
-#### Stratum 2: Don Bluth Model Sheets & Closed-Form Lie Kinematics $\implies$ PGA $\text{Spin}(3,0,1)$
+#### Stratum 2: Animated Film Model Sheets & Closed-Form Lie Kinematics $\implies$ PGA $\text{Spin}(3,0,1)$
 Whenever the engine reasons over character identities and articulated kinematics:
 * **The Model Sheet as Primitive Idempotents:** Canonical turnaround aspects (Front, 3/4 Front, Profile, Back) are discovered algebraically as the primitive orthogonal idempotents $\{\epsilon_v\}$ of the temporal covariance operator $\Gamma = \int \Psi(t) \widetilde{\Psi}(t) dt = \sum \sigma_k \epsilon_k$.
 * **Closed-Form Lie Automorphisms:** Articulated motion, squash-and-stretch ($\det S = 1$), and Line of Action spinal curves ($L_{\text{spine}} \in \mathbb{G}_{3,0,1}$) are evaluated via closed-form PGA screw motors $M = \exp(-\frac{\theta}{2} L)$ on $\text{Spin}(3,0,1)$ at **$\le 0.05\text{ ms}$**.
@@ -217,7 +217,7 @@ Time-stepping never passes through a neural network. In traditional video genera
 
 ## 4. Subsystem I: Multi-Shot Video Enfoldment & The Clifford Lifter (`implicate-lifter`)
 
-To compile both 30-second gameplay videos (`raptor.mp4`, `smb3_w1_1_320x240.mp4`, `pacman_240x308.mp4`) and an 82-minute feature film (*The Secret of NIMH*) through the same pipeline, `implicate-lifter` executes four streaming stages:
+To compile both 30-second gameplay videos (`raptor.mp4`, `smb3_w1_1_320x240.mp4`, `pacman_240x308.mp4`) and feature-length animated films (*The Secret of NIMH*) through the same pipeline, `implicate-lifter` executes four streaming stages:
 
 ### 4.1 Stage 0: Streaming Shot Segmentation & Camera Regime Discovery (`VERIFIED` in Milestone R2.1)
 A single streaming pass over the `128x64` (`ANALYSIS_W x ANALYSIS_H`) `fast_bilinear` pipe evaluates the 2D CFT cross-power spectrum $C_{t,t+1}(u, v) = \mathcal{F}_{\text{Cl}}[\Psi_{t+1}]\mathcal{F}_{\text{Cl}}^*[\Psi_t]$ and frame-to-frame 64-bin luminance-chroma histogram divergence $D_{\text{KL}}(H_t \parallel H_{t+1})$:
@@ -236,8 +236,8 @@ Single-layer temporal mode accumulation works for flat 2D games (`HolonEngine`),
 * **Minimum-Registration-Error Reference Selection & Pass-2 Dilated Inpainting:** Among world bands, the reference trajectory is selected by minimizing inter-frame L1 registration residual across the active world viewport; a band splits into a separate parallax plane only if it has sufficient gradient energy ($\|\nabla L\| \ge 8.0$) and reduces local registration error by $>20\%$.
   * **Verified Benchmark (`R2.2`):** Reconstructs held-out backgrounds at **`32.44 dB`** (*SMB3*, $L=1$ + HUD holon, `0.0000` ghosting), **`33.67 dB`** (*Raptor*, $L=1$, `<0.005` ghosting), and **`40.32 dB` / `34.82 dB` / `39.98 dB`** across 3 contiguous shots of *The Secret of NIMH* (`0.0000` ghosting).
 
-### 4.3 Stage 2: Don Bluth Model Sheet Induction & Zero-Magic-Number Lifter (`implicate-lifter`)
-To support arbitrary video games (*Pac-Man*, *SMB3*, *Raptor*) and hand-drawn feature films (*The Secret of NIMH*) without arbitrary thresholds or hardcoded constants:
+### 4.3 Stage 2: Character Board Model Sheet Induction & Zero-Magic-Number Lifter (`implicate-lifter`)
+To support arbitrary video games (*Pac-Man*, *SMB3*, *Raptor*) and hand-drawn animated films (*The Secret of NIMH*) without arbitrary thresholds or hardcoded constants:
 
 1. **Active Information Residual Field & Statistical Noise Floor:**
    Instead of hardcoded intensity cuts (`FOREGROUND_RESIDUAL = 26`), foreground presence is the departure of the multivector wavefield from the Yee background equilibrium:
@@ -272,7 +272,7 @@ To support arbitrary video games (*Pac-Man*, *SMB3*, *Raptor*) and hand-drawn fe
    - **Turnaround Invariance:** During $90^\circ$ profile-to-front turns where projected width triples, chromatic spinor coherence and continuous PGA motor flow $M(t)$ remain maximal.
    - **Permanent Holon Support:** Stationary, talking, or idling characters are retained with 100% permanence (purging `spread <= 0.5 * mean_extent`).
 
-6. **Automated Don Bluth Character Board Model Sheet Induction:**
+6. **Automated Animated Film Character Board Model Sheet Induction:**
    - **Canonical Turnaround Idempotents ($\{\epsilon_v\}$):** Factoring the temporal density covariance operator $\Gamma = \int \Psi(t)\widetilde{\Psi}(t)\,dt$ yields the primitive orthogonal idempotents $\Gamma = \sum \sigma_k \epsilon_k$ corresponding to canonical view aspects (Front, 3/4 Front, Profile, Back).
    - **Line of Action ($L_{\text{spine}}$):** The primary kinematic spine bivector blade $L_{\text{spine}} \in \mathbb{G}_{3,0,1}$ is extracted from the principal spatial inertia tensor of the holon mass.
    - **Dual Wavepacket Kernels (`WavepacketPartKernel`):** Stores invariant ink contour blades ($W = u \wedge \nabla^2 u$) and flat cel paint fills ($D = u \cdot \nabla^2 u$) parameterized along continuous phase $\phi \in S^1$ with volume conservation ($\det S = 1$).
@@ -519,7 +519,7 @@ Compiled worlds and lexicons are stored in a compact, zero-copy-friendly binary 
 |   1. Multi-Plane Atlas Layers (Depth-stratified RGB + bit-packed α)   |
 |   2. Camera-Locked HUD Holon Layer (M_hud(t) = M_cam(t))              |
 |   3. 64-byte Mv301 Multivector Monad Array (SIMD / Cache-Aligned)     |
-|   4. Don Bluth Model Sheet Part Kernels (Ink Blades + Cel Fills)      |
+|   4. Animated Film Model Sheet Part Kernels (Ink Blades + Cel Fills)  |
 +-----------------------------------------------------------------------+
 ```
 
@@ -533,9 +533,9 @@ To keep our engineering grounded, we explicitly separate what is **already prove
 * **Uncertainty Rating:** **Low (5%)**
 * **Why:** Already proven in `holonengine` at $1,500\text{–}3,000\text{ Hz}$. Porting these into `implicate-lifter` and `implicate-unfold` while adding `dzog-wgpu` field coupling and `Qwen-VL` semantic tagging is straightforward systems integration.
 
-### 2. Multi-Shot Cut Detection & Multi-Plane Background Unwarping on *The Secret of NIMH*
+### 2. Multi-Shot Cut Detection & Multi-Plane Background Unwarping on Animated Films
 * **Uncertainty Rating:** **Low–Medium (20%)**
-* **Cold Hard Truth:** Traditional 2D animation (Don Bluth, 1982) uses physical multi-plane camera stands (typically 2 to 4 painted glass layers moving at constant depth ratios), which matches our `MultiPlane-2.5D` CFT layer model well. However, painted lighting overlays (animated glow cel layers, rain, fire) and camera zooms combined with pans can cause naive temporal-mode accumulation to ghost if foreground masks miss semi-transparent shadows.
+* **Cold Hard Truth:** Classical 2D animated films use physical multi-plane camera stands (typically 2 to 4 painted glass layers moving at constant depth ratios), which matches our `MultiPlane-2.5D` CFT layer model well. However, painted lighting overlays (animated glow cel layers, rain, fire) and camera zooms combined with pans can cause naive temporal-mode accumulation to ghost if foreground masks miss semi-transparent shadows.
 * **Mitigation:** Separate additive/multiplicative luminescence cel layers ($L$) before computing the opaque RGB mode per parallax plane.
 
 ### 3. Unsupervised Articulated Sub-Holon Decomposition on Hand-Drawn Characters
@@ -596,7 +596,7 @@ Video generation models often treat characters as isolated bounding boxes or ung
 
 The geometric lifter extracts persistent foreground tracks across multiple concurrent actors and automatically segments relational interaction windows at Bohmian momentum discontinuities. By computing relative Lie motors $M_{\text{rel}}(t) = \widetilde{M}_B(t) M_A(t)$, the engine assimilates genuine pairwise geometric potentials directly from unannotated video. During unfoldment, sub-holon wavepacket banks are indexed through geodesic rotor distance and gait-phase coherence on $\text{Spin}(2) \times S^1$ (`select_view_idempotent_observation_index`), enabling characters to transition cleanly across discrete viewing idempotents $\epsilon_{s,\text{view}}$ without requiring artificial 3D mesh approximations.
 
-### 10.8 The Hiley–Carmack Clifford Idempotent Soliton & Don Bluth Model Sheet Synthesis (`R10`)
+### 10.8 The Hiley–Carmack Clifford Idempotent Soliton & Animated Film Model Sheet Synthesis (`R10`)
 In computer graphics and vision, complexity often masquerades as sophistication. Traditional pipelines chain together background subtraction, edge detection, optical flow, SVD tracking, and neural skinning, creating a fragile cascade where errors compound at every stage. Similarly, large diffusion and transformer models burn gigawatts trying to statistically approximate spatial transformations that are fundamentally algebraic.
 
 Grounded in John Carmack's mechanical sympathy and Basil Hiley's Clifford process physics, the engine unifies representation and computation around three core principles:
@@ -615,6 +615,6 @@ Empirical stress testing on real-world video benchmarks (*Super Mario Bros 3* an
 Track S resolves these anomalies by treating the video plenum as an implicate continuum governed by five unified milestones:
 1. *Milestone S1 (Plenum & Model Sheet Integrity):* Eliminates morphological limb erosion by defaulting opening radius $r_B = 0$ on thin features, establishes anatomical envelopes via the Line of Action spine $L_{\text{spine}}$, purges perimeter compression noise ($< 4\text{ px}$), and algebraically disoccludes enclosed background cavities $\Delta(C_k)$.
 2. *Milestone S2 (Spatiotemporal Tube Inpainting):* Tracks the global actor union tube $\mathcal{T}_{\text{actor}}$ across all frames and computes harmonic inpainting ($\nabla^2 I = 0$) across the occluded corridor, guaranteeing pristine, ghost-free background atlases even under sustained camera holds.
-3. *Milestone S3 (Mode A — Generative Storybook Engine):* Empowers creators to remix feature animation into novel narrative chapters governed by scale-invariant Bohmian active information $\mathcal{Q}_{\text{Cl}}$ and Don Bluth model sheets with zero diffusion temporal flicker.
+3. *Milestone S3 (Mode A — Generative Storybook Engine):* Empowers creators to remix feature animation into novel narrative chapters governed by scale-invariant Bohmian active information $\mathcal{Q}_{\text{Cl}}$ and character model sheets with zero diffusion temporal flicker.
 4. *Milestone S4 (Mode B — The Playable Game Engine):* Directly streams real-time player controller inputs ($v_x, v_y, \text{jump}$) into the actor's Clifford Lie motor on $\text{Spin}(3,0,1)$ at $\ge 60\text{--}120+\text{ FPS}$, evaluating solid platform support and velocity reflection via projective incidences ($P \wedge \Pi = 0$) and Fresnel rotors ($v' = \Pi v \widetilde{\Pi}$) without any external physics or collision engine.
 5. *Milestone S5 (Universal Empirical Benchmarking):* Validates the engine across 2D arcade games, 2.5D multi-plane feature films, and 3D camera-tracked footage using visual contact sheets and strict regression gates. Rooted in 3D Projective Geometric Algebra ($\mathbb{G}_{3,0,1}$), one universal codebase handles flat sprites, multi-plane cel animation, and full 3D environments with zero heuristic branching.

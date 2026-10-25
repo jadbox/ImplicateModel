@@ -142,11 +142,11 @@
 
 > **Objective:** Enable open-ended narrative animated film remixing from natural language prompts.
 
-#### 🎯 Milestone S5 Showcase Example: Remixed Don Bluth Feature Scene
+#### 🎯 Milestone S5 Showcase Example: Remixed Animated Feature Scene
 - **Showcase Command:** `cargo run -p implicate-cli -- remix --video ./tests/fixtures/nimh_shot14.implicate --prompt "Mrs. Brisby turns to face the stone archway, walks cautiously forward, and raises her glowing red amulet"`
 - **Output Artifact & Visual Proof:**
   - [`generative_output/nimh_remix_stone_archway.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_remix_stone_archway.mp4) (1080p, 120 frames @ 24 fps with phase-locked 48 kHz stereo audio).
-  - The engine translates prompt verbs into spatial $\mathcal{Q}_{\text{Cl}}$ attractor beacons, rotates Brisby's Line of Action $L_{\text{spine}}$ to transition across turnaround idempotents $\epsilon_{\text{profile}} \to \epsilon_{\text{3/4}} \to \epsilon_{\text{back}}$, and synthesizes a completely new Don Bluth feature animation scene matching the original film's style and audio without diffusion hallucinations.
+  - The engine translates prompt verbs into spatial $\mathcal{Q}_{\text{Cl}}$ attractor beacons, rotates Brisby's Line of Action $L_{\text{spine}}$ to transition across turnaround idempotents $\epsilon_{\text{profile}} \to \epsilon_{\text{3/4}} \to \epsilon_{\text{back}}$, and synthesizes a completely new feature animation scene matching the original film's style and audio without diffusion hallucinations.
 
 - [ ] **S5.1 — CLI Subcommand `implicate remix` (`implicate-cli`)**
   - Implement `implicate remix --video <corpus.implicate> --prompt "<prompt>"` generating novel scene animations.

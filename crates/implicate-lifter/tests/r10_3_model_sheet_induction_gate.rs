@@ -29,7 +29,7 @@ fn r10_3_pacman_4direction_turnaround_aspect_idempotents_gate() {
     let pacman_obs = tracks.iter().max_by_key(|t| t.len()).expect("Pac-Man primary track");
     assert!(pacman_obs.len() >= 100, "Expected >= 100 observations in primary track");
 
-    // 2. Induce Don Bluth Character Board Model Sheet with 4 canonical turnaround view aspects
+    // 2. Induce Animated Film Character Board Model Sheet with 4 canonical turnaround view aspects
     let sheet = induce_holon_model_sheet("PacMan", pacman_obs, Some(1), Some(4));
     assert_eq!(sheet.name, "PacMan");
     assert_eq!(sheet.parts.len(), 1);
@@ -153,7 +153,7 @@ fn r10_3_smb3_mario_posture_and_aspect_regimes_gate() {
     let max_curv = curvatures.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     assert!(min_curv < 0.0 && max_curv > 0.0, "Mario spinal curvature must dynamically vary across sign");
 
-    // 3. Induce Don Bluth HolonModelSheet with 4 kinematic & turnaround aspects
+    // 3. Induce HolonModelSheet with 4 kinematic & turnaround aspects
     let sheet = induce_holon_model_sheet("Mario", mario_obs, None, Some(4));
     assert_eq!(sheet.name, "Mario");
     assert_eq!(sheet.turnaround_views.len(), 4);
@@ -231,7 +231,7 @@ fn r10_3_nimh_brisby_bluth_model_sheet_and_cape_gate() {
     let brisby_obs = &tracks[0];
     assert!(brisby_obs.len() >= 10);
 
-    // 2. Induce Don Bluth Character Board Model Sheet with 2 sub-holons (body torso + aerodynamic cape)
+    // 2. Induce Character Board Model Sheet with 2 sub-holons (body torso + aerodynamic cape)
     let sheet = induce_holon_model_sheet("Mrs_Brisby", brisby_obs, Some(2), None);
     assert_eq!(sheet.name, "Mrs_Brisby");
     assert_eq!(sheet.parts.len(), 2, "Mrs. Brisby must have torso and aerodynamic cape sub-holons");

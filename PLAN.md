@@ -129,7 +129,7 @@ Over the 2D discrete Laplacian context $\nabla^2 u$, the Clifford geometric prod
 - **Fused WGSL Compute:** Refined in a single pass (`cliffordnet_rolpa.wgsl`, 2.6M parameters) at **$0.46\text{ ms/frame}$** ($>2,100\text{ FPS}$) on RTX 4090 with zero temporal flicker.
 
 ### 2. Stratum 2: Symbolic Model Sheets & Closed-Form Lie Kinematics ($O(K)$)
-Replaces heavy neural transformers with **Don Bluth Character Board Model Sheets** encoded as primitive orthogonal idempotents ($\epsilon_v^2 = \epsilon_v$) on $\text{Spin}(3,0,1)$:
+Replaces heavy neural transformers with **Animated Film Character Board Model Sheets** encoded as primitive orthogonal idempotents ($\epsilon_v^2 = \epsilon_v$) on $\text{Spin}(3,0,1)$:
 - Canonical turnaround aspects (Front, 3/4 Front, Profile, Back) are discovered algebraically as the primitive idempotents of the temporal covariance operator $\Gamma = \int \Psi(t)\widetilde{\Psi}(t) dt = \sum \sigma_k \epsilon_k$.
 - Motion, turnaround transitions, and articulated appendage swing are governed by closed-form PGA screw motors:
   $$M = \exp\left(-\frac{\theta}{2} L\right) = \cos\left(\frac{\theta}{2}\right) - L \sin\left(\frac{\theta}{2}\right)$$
@@ -161,7 +161,7 @@ pub struct Mv301 {
 }
 ```
 
-### 2. The Don Bluth Holon Model Sheet
+### 2. The Animated Film Holon Model Sheet
 Unified symbolic Character Board Model Sheet for any autonomous process holon:
 
 ```rust
@@ -334,11 +334,11 @@ Track S Milestone Sequence:
 ### Milestone S5: The Generative Storybook Engine (`implicate-cli remix`)
 - **Objectives:**
   1. Build `implicate remix --video nimh_corpus.implicate --prompt "@scene: Brisby explores the stone corridor"` in `crates/implicate-cli`.
-  2. Unfold a novel hand-drawn animated sequence using the induced Don Bluth character model sheet, blending between turnaround idempotents $\{\epsilon_v\}$ and continuous cape wavepackets.
+  2. Unfold a novel hand-drawn animated sequence using the induced animated film character model sheet, blending between turnaround idempotents $\{\epsilon_v\}$ and continuous cape wavepackets.
   3. Trigger event-sampled Foley audio at kinematic impulse and contact events with sub-sample onset timing and binaural stereo panning (dialogue and word-level speech synthesis explicitly deferred to future milestones).
 - **Showcase Example (Autonomous Animated Feature Scene Remix):**
   - Run: `cargo run -p implicate-cli -- remix --video ./tests/fixtures/nimh_shot14.implicate --prompt "Mrs. Brisby turns to face the stone archway, walks cautiously forward, and raises her glowing red amulet"`
-  - Output Proof: [`generative_output/nimh_remix_stone_archway.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_remix_stone_archway.mp4) (1080p, 120 frames @ 24 fps with phase-locked 48 kHz stereo audio). The engine translates prompt verbs into spatial $\mathcal{Q}_{\text{Cl}}$ attractor beacons, rotates Brisby's Line of Action $L_{\text{spine}}$ to transition across turnaround idempotents $\epsilon_{\text{profile}} \to \epsilon_{\text{3/4}} \to \epsilon_{\text{back}}$, and synthesizes a completely new Don Bluth feature animation scene matching the original film's style and audio without diffusion hallucinations.
+  - Output Proof: [`generative_output/nimh_remix_stone_archway.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/nimh_remix_stone_archway.mp4) (1080p, 120 frames @ 24 fps with phase-locked 48 kHz stereo audio). The engine translates prompt verbs into spatial $\mathcal{Q}_{\text{Cl}}$ attractor beacons, rotates Brisby's Line of Action $L_{\text{spine}}$ to transition across turnaround idempotents $\epsilon_{\text{profile}} \to \epsilon_{\text{3/4}} \to \epsilon_{\text{back}}$, and synthesizes a completely new feature animation scene matching the original film's style and audio without diffusion hallucinations.
 
 ---
 
