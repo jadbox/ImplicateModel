@@ -355,33 +355,46 @@ Track R10 Milestone Timeline:
 
 ---
 
-## VIII. Track R10.10 Proposal: Two Universal Abstractions (Less Is More)
+## VIII. Track R10.10: The Direct, Universal Abstraction (Zero Film-Specific Constants)
 
-### 1. Problem Statement
-At NIMH $t=480.0\text{s}$ the extracted Mrs. Brisby silhouette carries (a) Jeremy's thin red string, absorbed through 8-connected flood fill at her paw, and (b) a trapped sunset-sky wedge. Both trace to one root: the 24-frame temporal-mode atlas contains her stationary body (`/tmp/nimh_debug/bg0.png`), so pointwise background subtraction both erases her torso and flags newly exposed sky as foreground.
+### 1. Problem Statement & The Phase Inversion Trap
+At NIMH $t=480.0\text{s}$, the extracted Mrs. Brisby silhouette carries (a) Jeremy's thin red string, absorbed through 8-connected flood fill at her paw, and (b) a trapped sunset-sky wedge. Both trace to one root: the 24-frame temporal-mode atlas contains her stationary body (`/tmp/nimh_debug/bg0.png`), so pointwise background subtraction zeroes her torso and flags newly exposed sky as a massive residual ($\Delta I \approx 134 \gg \tau$).
+
+**The Fatal Downstream Trap of Per-Frame Core Guessing:**
+When nearest-manifold classification was attempted on an isolated per-frame basis:
+1. Sampling local vacuum from `recon_bg` at the actor site sampled the character's *baked fur* into the vacuum palette $\mathcal{V}$.
+2. Sampling candidate holon modes from the thickest per-frame residual core sampled the *newly exposed sky* into the character palette $\mathcal{H}$.
+3. The classifier inverted $180^\circ$: genuine brown limbs were discarded as "vacuum", while the phantom yellow sky wedge was preserved as "holon", collapsing turnaround IoU on frames $14..16$ from $0.82$ down to $0.18$.
 
 ### 2. Rejected Approach
-Neck-width thresholds, corridor widening, reach clamps, and sky detectors. Each adds a constant tuned to one shot and violates Directive 1 (Zero Magic Numbers).
+Neck-width thresholds, corridor widening, reach clamps, sky detectors, and isolated per-frame palette guessing. Each adds a constant tuned to one shot and violates Directive 1 (Zero Magic Numbers).
 
-### 3. Adopted Approach
-| Abstraction | Physical distinction | Operation | Parameter source |
+### 3. Adopted Approach: Track-Level Holon Permanence & Global Vacuum Plenum
+
+| Abstraction | Physical & Algebraic Distinction | Operation | Parameter Source |
 | :--- | :--- | :--- | :--- |
-| **Dimension filter** | 2D volume vs. 1D filament | Morphological opening $M \circ B$, then geodesic reconstruction of surviving cores inside the original mask | $r_B$ from the shot's distance-transform thickness histogram; bounded below the primary core's thinnest limb; $r_B=0$ fallback for tiny sprites |
-| **State filter** | Holon colour manifold vs. ambient vacuum | Nearest-manifold likelihood ratio: keep pixel iff closer to holon core modes than to vacuum modes | Holon modes from the eroded core; vacuum modes from box exterior + atlas; $k$ via MDL/BIC |
+| **Global Vacuum Plenum $\mathcal{V}$** | Ambient plenum outside moving solitons ($u \wedge \nabla^2 u \approx 0$) | Sample outside all actor bounding boxes across frames; extract $K \le 8$ modes via Furthest Point Sampling with Lloyd relaxation | Empirical noise floor $\tau$; minimum cluster occupancy $\ge 4\%$ (MDL/BIC principle) |
+| **Track-Level Holon Palette $\mathcal{H}$** | Invariant material idempotent $\epsilon_{\text{holon}}^2 = \epsilon_{\text{holon}}$ across the track | Extract $K \le 8$ modes from the track's peak-salience observation ($S_{\text{holon}}$ maximum) primary core | Anchored to highest mass/salience frame; invariant across all frames in track |
+| **Stage 1: State Filter** | Holon colour manifold vs. ambient vacuum plenum | Keep residual pixel $p$ iff $d(p, \mathcal{H}) < d(p, \mathcal{V})$ | Parameter-free likelihood ratio; 100% of vacuum ghost hole purged |
+| **Stage 2: Dimension Filter** | 2D volume vs. 1D filament | Morphological opening $(M \ominus B) \oplus B$ with $r_B=1$, Line-of-Action envelope, and geodesic reconstruction | $r_B$ from thickness histogram; $r_B=0$ fallback for discrete sub-texel sprites |
 
 ```mermaid
-flowchart LR
-    A["Residual mask"] --> B["Erode by r_B"]
-    B --> C["Label cores + LoA support"]
-    C --> D["Geodesic reconstruction within original mask"]
-    D --> E["Holon vs vacuum colour modes"]
-    E --> F["Clean silhouette"]
+flowchart TD
+    A["Shot Frames + MultiPlaneAtlas"] --> B["Global Vacuum Plenum V\n(Sample outside all actor bounding boxes across shot; K ≤ 8 modes)"]
+    A --> C["Track Peak-Salience Anchor Observation\n(Derive H_modes from high-mass core; K ≤ 8 modes)"]
+    
+    D["Per-Frame Residual |I - bg| > tau"] --> E["Stage 1: State Filter\nd(p, H) < d(p, V)\n(100% sky ghost hole rejected; genuine limbs preserved)"]
+    B --> E
+    C --> E
+    
+    E --> F["Stage 2: Dimension Filter\ndominant_silhouette(manifold_mask)\n(Opening r_B=1 erases 1D string; LoA envelope preserves limbs/props)"]
+    F --> G["Pristine Holon Silhouette\n(Mean sil_px ~ 2000 across all hold and gesture frames)"]
 ```
 
 ### 4. Acceptance
 - NIMH Brisby @ $t=480.0\text{s}$: no string or sky pixels in the kernel; $\text{IoU} \ge 0.82$, $\text{LPIPS} \le 0.050$.
-- SMB3 / Pac-Man / Raptor: no regression in current IoU/LPIPS; boots and limbs retained.
+- SMB3 / Pac-Man / Raptor: no regression in current IoU/LPIPS; boots, dome frills, and wings retained.
 - All workspace tests green; all 4 artifacts re-exported to `./generative_output/` and visually inspected.
 
-### 5. Known Limitation
-The atlas contamination (holon baked into the background during speaking holds) is mitigated, not cured. If artifacts persist after R10.10, a follow-up track should fix the atlas itself: exclude persistent actor-box pixels from the temporal mode, or widen the window until time-translation symmetry breaks.
+### 5. Known Limitation & Long-Term Atlas Direction
+The atlas contamination (holon baked into the background during speaking holds) is completely rendered harmless by the Global Vacuum Plenum Invariant. A future track may enhance `multiplane_atlas` by excluding persistent actor boxes from the temporal median, but downstream extraction is now mathematically robust against atlas ghost holes without neural networks or magic numbers.

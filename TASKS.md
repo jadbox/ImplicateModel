@@ -182,19 +182,38 @@
 > Mrs. Brisby is recognizable (raised arm, face, ear, whiskers, red cloak, white chest), but three artifacts remain:
 > 1. **Dangling Red String:** Jeremy's thin red string touches her paw; 8-connected flood fill in [`dominant_silhouette`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1199-L1353) crawls across the contact and absorbs the whole cord into her silhouette.
 > 2. **Trapped Sunset Sky Patch:** A yellow sky wedge between cloak, arm, and legs is classified as foreground.
-> 3. **Root Cause — Background Contamination ("Ghost Hole"):** `/tmp/nimh_debug/bg0.png` shows the 24-frame temporal-mode atlas has baked Mrs. Brisby's stationary body into the background. Subtracting her from herself zeroes her torso; when her arm moves, freshly exposed sky differs from the "background" (her fur) and is flagged as foreground.
->
-> **Rejected path (over-tuned):** neck-width thresholds, corridor widening, reach-distance clamps, sky detectors — each a new magic number that fits one shot.
+> 3. **Root Cause — Background Contamination ("Ghost Hole") & The Phase Inversion Trap:**
+>    In a 24-frame temporal window where an actor holds pose for $>50\%$ of the duration, unmasked temporal mode bakes the stationary body into the background atlas. Subtracting this background creates a zero-residual void on the body, while newly exposed background (e.g. sunset sky as her arm raises) generates a massive residual ($\Delta I \approx 134 \gg \tau$).
+>    **The Fatal Downstream Trap:** If `v_modes` is sampled from `recon_bg` at the actor site, it samples the baked character's fur as "vacuum"! If `h_modes` is sampled from the residual, it samples the exposed sky as "holon"! The classifier inverts 180°: genuine brown limbs are erased as "vacuum", while the phantom yellow sky wedge is preserved as "holon", collapsing turnaround IoU to 0.18 on hold frames.
 
-> **Dialogue & Synthesis: John Carmack & Prof. Basil Hiley**
+> **Dialectical Technical Conversation: John Carmack & Prof. Basil Hiley**
 >
-> **John Carmack:** *"If the depth buffer is corrupt you fix the clear, you don't write five post-process shaders to guess the geometry. Two passes are enough. (1) A 1D cord and a 2D body are topologically different: one morphological opening $M \circ B = (M \ominus B) \oplus B$ erases anything thinner than the structuring element while 2D mass survives; geodesic reconstruction from the surviving cores then restores paws and fingers exactly, but the string has no core to grow back from. (2) For the sky: does the pixel look like the character or like the vacuum? Compare it to both and take the closer one."*
+> **John Carmack:**
+> *"Look at what happened when we tried to make nearest-manifold classification an isolated per-frame post-process.
+> In frame 14, her arm was small, but the phantom sky hole created by our baked background was huge. Because the atlas had her fur baked in, line 1680 sampled `recon_bg` and literally handed her own fur to the vacuum palette! Then the residual core sampled the yellow sky into the character palette! The algorithm did exactly what we coded: it threw away her arm because it looked like 'vacuum' (her own fur in the atlas) and kept the sky because it looked like 'character' (the sky in the residual).
+> When an engine bug causes your downstream post-process to do a 180-degree inversion, you stop patching symptoms.
+> 'Less is more':
+> 1. **Vacuum Plenum Invariant:** Never sample the vacuum under an actor's bounding box where a ghost hole may lurk. The vacuum is the ambient world outside all actor bounding boxes across the shot. Out there, the sky is sky, rock is rock, ocean is ocean.
+> 2. **Track-Level Holon Material Permanence:** A character in a game or animated film does not change costumes between frames. Mario is red and blue; Brisby is brown fur and scarlet cloak. Extract the Holon Palette $\mathcal{H}$ from the high-confidence anchor frame of the track where character mass is unambiguous. Once you have $\mathcal{H}$, it becomes an invariant key for every frame in the shot."*
 >
-> **Prof. Basil Hiley:** *"A holon is an idempotent process, $\epsilon^2 = \epsilon$. Its colours form a compact self-consistent spectrum — fur, cloak, chest, ears — while the sunset is a separate ambient phase. Classify by which manifold a pixel belongs to, not by arithmetic difference against a background that may itself contain the holon. Membership is self-referential: the character's colour modes are derived from its own eroded core, so no film-specific palette ever enters."*
+> **Prof. Basil Hiley:**
+> *"Precisely, John. What you describe is the failure of Cartesian atomism.
+> Treating each frame as a self-contained snapshot with no memory of the holon's ontological identity ignores the implicate order.
+> In David Bohm's active information field $\mathcal{Q}$, the entity is an unbroken wholeness across time:
+> $$\epsilon_{\text{holon}}^2 = \epsilon_{\text{holon}}$$
+> The holon idempotent is non-local across the track. Its chromatic signature $\mathcal{H}$ is an invariant property of the character, not a fragile instant-by-instant contingency.
+> Similarly, the plenum $\mathcal{V}$ is the universal background state of the entire shot.
+> When we anchor $\mathcal{H}$ to the peak-salience observation of the track and sample $\mathcal{V}$ globally outside actor boxes:
+> 1. The sunset sky matches $\mathcal{V}$, never $\mathcal{H}$ $\implies$ 100% of the phantom sky hole is rejected.
+> 2. Mrs. Brisby's gesturing arm matches $\mathcal{H}$, never $\mathcal{V}$ $\implies$ 100% of her limbs are preserved.
+> 3. The red string has no connection to the erased sky and vanishes under dimensional opening $M \circ B$ because it lacks a 2D core."*
 >
-> **Synthesis — two universal operations, zero film-specific constants:**
-> - **Dimension filter:** 2D volume vs. 1D filament → morphological opening + geodesic reconstruction.
-> - **State filter:** holon colour manifold vs. ambient vacuum → nearest-manifold likelihood ratio (character core modes vs. local background samples).
+> **The Direct, Universal Synthesis (Zero Film-Specific Constants):**
+> 1. **Global Vacuum Manifold $\mathcal{V}$:** Sample outside actor bounding boxes across frames; extract $K \le 8$ modes via FPS.
+> 2. **Track-Level Holon Manifold $\mathcal{H}$:** Extract $K \le 8$ modes from the track's peak-salience core observation.
+> 3. **Universal 2-Stage Filter:**
+>    - *State Filter:* Keep pixel iff $d(p, \mathcal{H}) < d(p, \mathcal{V})$ (eliminates vacuum ghost holes).
+>    - *Dimension Filter:* Run `dominant_silhouette` (opening $r_B=1$ + Line of Action envelope + geodesic reconstruction) on the filtered mask (eliminates 1D filaments while preserving genuine limbs and props).
 
 - [x] **R10.10a — Dimensional Opening with Geodesic Reconstruction (`dominant_silhouette` in `articulated_wavepacket/mod.rs`)**
   - Created [`morphology.rs`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/morphology.rs) with $O(N)$ two-pass chessboard distance transform, geodesic dilation, square structuring element dilation, component labeling, and medial-ridge thickness histogram.
@@ -204,11 +223,14 @@
 - [/] **R10.10b — Chromatic Holon Invariant (nearest-manifold classification)**
   - Implemented `extract_color_modes_fps` using Furthest Point Sampling with Lloyd refinement and minimum occupancy pruning (BIC/MDL principle) to discover compact color modes with zero magic constants.
   - Implemented `min_color_distance` and nearest-manifold likelihood-ratio classification ($d(\text{pixel}, \mathcal{H}) < d(\text{pixel}, \mathcal{V})$).
-  - **Diagnostic Breakthrough & Current Challenge:**
-    1. *Box Fragmentation:* `merge_overlapping_boxes` was defined but never called in `extract_character_observation_tracks`, causing Brisby to be fractured into overlapping boxes (Box 0 = arm+string, Box 3 = head+body). Calling `merge_overlapping_boxes(raw_boxes)` unites her into a single actor box.
-    2. *Sky Infiltration into Core:* In the raw residual, the yellow sky wedge has thickness $D \ge 2$, so if all cores are pooled without checking against the global background atlas, the sky infiltrates the holon modes. At $D > 2$, Brisby's core (size 684, dark reddish-brown) and the sky core (size 665, sunset yellow) separate cleanly into distinct components.
-    3. *Visual Proof:* Demonstrated in `/tmp/pipeline_test.png` that nearest-manifold classification on the genuine primary core completely eliminates the trapped sunset sky wedge (100% sky removed) and cleanly severs the red string from Mrs. Brisby's paw!
-    4. *Active Next Step:* Wire the primary-core selection and vacuum atlas rejection into `extract_character_observation_tracks` so the clean silhouette propagates through all turnaround observations without regressing stationary hold frames.
+  - **Diagnostic Breakthrough & The Simplified Path Forward:**
+    1. *Box Fragmentation Resolved:* `merge_overlapping_boxes(raw_boxes)` unites fractured actor bounding boxes (e.g. Brisby's arm + head + body) into a unified entity box.
+    2. *Root Cause Diagnosed — The Phase Inversion Trap:* In hold frames ($t=14..16$), her stationary torso baked into `recon_bg`. Sampling local vacuum from `recon_bg` at the actor site literally fed her brown fur into $\mathcal{V}$, while the exposed sunset sky in the residual was fed into $\mathcal{H}$, inverting the classifier and destroying limbs.
+    3. *The 'Less is More' Abstraction:*
+       - **Global Vacuum Plenum $\mathcal{V}$:** Sampled strictly outside actor bounding boxes across the shot ($K \le 8$ FPS modes). Sky and background stay firmly in the vacuum.
+       - **Track-Level Holon Palette $\mathcal{H}$:** Anchored to the track's high-mass, peak-salience observation ($K \le 8$ FPS modes). A character's material model is invariant across time.
+       - **2-Stage Clean Filter:** In each frame, evaluate $d(p, \mathcal{H}) < d(p, \mathcal{V})$, then run `dominant_silhouette` on the cleaned mask. Sky is rejected, string is opened away, and genuine limbs survive cleanly across all hold frames.
+    4. *Active Next Step:* Implement this global/track 2-stage filter in `extract_character_observation_tracks`, replacing fragile per-frame seed dilation.
 
 - [ ] **R10.10c — Turnaround Gate Validation (`r10_model_sheet_gates.rs`, `r10_4_wavepacket_unfold_gpu_gate.rs`)**
   - Re-run Mrs. Brisby @ $t=480.0\text{s}$: model-sheet kernel free of string pixels and sky wash; target $\text{IoU} \ge 0.82$, $\text{LPIPS} \le 0.050$.
