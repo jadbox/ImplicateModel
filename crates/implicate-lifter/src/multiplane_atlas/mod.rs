@@ -699,7 +699,7 @@ pub fn kinematic_co_motion_binding(
 
                 // Kinematic Co-Motion Binding (Track R10.7a / R10.9):
                 // Union co-moving adjacent residual components sharing spatial proximity (gap <= 16)
-                // and velocity displacement v (v_diff <= 2.5) within a localized actor scale.
+                // and velocity displacement v (v_diff <= 3.5 for articulated limb swing) within a localized actor scale.
                 if gap <= 16 {
                     let union_w = (bi.x1.max(bj.x1) - bi.x0.min(bj.x0) + 1) as usize;
                     let union_h = (bi.y1.max(bj.y1) - bi.y0.min(bj.y0) + 1) as usize;
@@ -707,7 +707,7 @@ pub fn kinematic_co_motion_binding(
                         let vi = velocities[i];
                         let vj = velocities[j];
                         let v_diff = (vi[0] - vj[0]).hypot(vi[1] - vj[1]);
-                        if v_diff <= 2.5 {
+                        if v_diff <= 3.5 {
                             let ri = find(&mut parent, i);
                             let rj = find(&mut parent, j);
                             if ri != rj {

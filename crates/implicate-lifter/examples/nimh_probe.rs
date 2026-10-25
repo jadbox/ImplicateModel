@@ -22,11 +22,25 @@ fn main() {
     let atlas = build_multiplane_atlas(&frames, &MultiPlaneOptions::default());
     let tracks = extract_character_observation_tracks(&frames, &atlas, 2);
     let brisby_track = select_character_track(&tracks).expect("character track");
+    for o in brisby_track {
+        if o.frame_idx >= 8 && o.frame_idx <= 16 {
+            eprintln!("brisby_obs f{:02} bbox {:?} fg {}", o.frame_idx, o.bbox, o.mask.iter().filter(|&&m| m).count());
+        }
+    }
     let brisby_obs: Vec<_> = brisby_track.iter().filter(|o| !o.truncated).cloned().collect();
 
     let sheet = induce_holon_model_sheet("Mrs_Brisby", &brisby_obs, Some(2), None);
     let gpu_monad = sheet.to_gpu_monad();
     let mut art_holon = fit_articulated_holon(&brisby_obs, Some(2));
+    let view_assignments: Vec<usize> = (0..brisby_obs.len())
+        .map(|i| art_holon.poses_per_obs[i][0].view_idempotent_idx)
+        .collect();
+    implicate_lifter::articulated_wavepacket::part_fitting::enforce_volume_conserving_gait_deformation(
+        &mut art_holon.poses_per_obs,
+        &view_assignments,
+        art_holon.num_parts,
+        art_holon.num_view_cells,
+    );
     let view_assignments: Vec<usize> = (0..brisby_obs.len())
         .map(|i| art_holon.poses_per_obs[i][0].view_idempotent_idx)
         .collect();
@@ -95,7 +109,9 @@ fn main() {
         unfolder.unfold_and_readback_u8(ctx, &gpu_monad, &uniforms, Some(&kernel_data), &mut pred_rgb, &mut pred_mask);
         let iou = mask_iou(&obs.mask, &pred_mask);
         let lpips = compute_perceptual_patch_lpips(&obs.rgb, &obs.mask, &pred_rgb, &pred_mask, w, h);
-        println!("  Turnaround frame {:02}: IoU={:.4}, LPIPS={:.4}", obs.frame_idx, iou, lpips);
+        let obs_fg = obs.mask.iter().filter(|&&m| m).count();
+        let pred_fg = pred_mask.iter().filter(|&&m| m).count();
+        println!("  Turnaround frame {:02}: IoU={:.4}, LPIPS={:.4} (obs_fg={}, pred_fg={}, bbox={:?})", obs.frame_idx, iou, lpips, obs_fg, pred_fg, obs.bbox);
         total_iou += iou;
         total_lpips += lpips;
     }

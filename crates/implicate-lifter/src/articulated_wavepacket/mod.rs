@@ -1234,7 +1234,7 @@ pub fn extract_color_modes_fps(rgb_samples: &[[u8; 3]], max_k: usize, min_dist: 
     if pruned.is_empty() { centers } else { pruned }
 }
 
-fn min_color_distance(p: [u8; 3], modes: &[[f64; 3]]) -> f64 {
+pub fn min_color_distance(p: [u8; 3], modes: &[[f64; 3]]) -> f64 {
     modes.iter().map(|m| {
         let dr = p[0] as f64 - m[0];
         let dg = p[1] as f64 - m[1];
@@ -1242,6 +1242,119 @@ fn min_color_distance(p: [u8; 3], modes: &[[f64; 3]]) -> f64 {
         (dr * dr + dg * dg + db * db).sqrt()
     }).fold(f64::INFINITY, f64::min)
 }
+
+/// Global Vacuum Plenum V: Sampled strictly outside actor bounding boxes across the shot (K <= 8 FPS modes).
+pub fn extract_vacuum_plenum_modes(
+    frames: &[crate::video_io::RawFrame],
+    atlas: &crate::multiplane_atlas::MultiPlaneAtlas,
+    tau: f64,
+) -> Vec<[f64; 3]> {
+    let n = frames.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let stride = (n / 8).max(1);
+    let (ay0, ay1) = atlas.active_y_range;
+    let w = atlas.width;
+    let screen_static = screen_static_mask(frames, tau);
+    let mut vacuum_samples = Vec::new();
+
+    for fi in (0..n).step_by(stride) {
+        let f = &frames[fi];
+        let recon_bg = atlas.reconstruct_background_frame(fi);
+        let boxes = atlas.actor_boxes_per_frame.get(fi);
+        let step = 4usize;
+        for y in (ay0..ay1).step_by(step) {
+            for x in (0..w).step_by(step) {
+                let locked = screen_static.as_ref().is_some_and(|m| m[y * w + x]);
+                if locked {
+                    continue;
+                }
+                let in_actor = boxes.map(|bs| {
+                    bs.iter().any(|b| {
+                        (b.x0 - 4..=b.x1 + 4).contains(&(x as i32))
+                            && (b.y0 - 4..=b.y1 + 4).contains(&(y as i32))
+                    })
+                }).unwrap_or(false);
+                if !in_actor {
+                    vacuum_samples.push(f.pixel(x as u32, y as u32));
+                    vacuum_samples.push(recon_bg.pixel(x, y));
+                }
+            }
+        }
+    }
+    if vacuum_samples.is_empty() {
+        return Vec::new();
+    }
+    extract_color_modes_fps(&vacuum_samples, 8, tau)
+}
+
+fn primary_connected_component(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
+    let mut label = vec![0u32; w * h];
+    let mut sizes: Vec<usize> = vec![0];
+    let mut stack = Vec::new();
+    for start in 0..w * h {
+        if !mask[start] || label[start] != 0 {
+            continue;
+        }
+        let id = sizes.len() as u32;
+        sizes.push(0);
+        label[start] = id;
+        stack.push(start);
+        while let Some(i) = stack.pop() {
+            sizes[id as usize] += 1;
+            let (x, y) = ((i % w) as i32, (i / w) as i32);
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                        continue;
+                    }
+                    let j = ny as usize * w + nx as usize;
+                    if mask[j] && label[j] == 0 {
+                        label[j] = id;
+                        stack.push(j);
+                    }
+                }
+            }
+        }
+    }
+    if sizes.len() <= 1 {
+        return vec![false; w * h];
+    }
+    let (primary_id, _) = sizes.iter().enumerate().skip(1).max_by_key(|(_, sz)| **sz).unwrap();
+    label.iter().map(|&l| l == primary_id as u32).collect()
+}
+
+/// Track-Level Holon Palette H: Extracted from the track's high-confidence anchor observation
+/// (K <= 8 FPS modes from primary character component including cel fills and ink contours).
+pub fn extract_holon_palette_modes(
+    obs: &CharacterObservation,
+    _v_modes: &[[f64; 3]],
+    tau: f64,
+) -> Vec<[f64; 3]> {
+    let w = obs.width();
+    let h = obs.height();
+    if w == 0 || h == 0 {
+        return Vec::new();
+    }
+    let primary = primary_connected_component(&obs.mask, w, h);
+    let samples: Vec<[u8; 3]> = primary
+        .iter()
+        .enumerate()
+        .filter(|&(_, m)| *m)
+        .map(|(i, _)| {
+            let rgb = &obs.rgb[i * 3..i * 3 + 3];
+            [rgb[0], rgb[1], rgb[2]]
+        })
+        .collect();
+
+    if samples.is_empty() {
+        return Vec::new();
+    }
+    extract_color_modes_fps(&samples, 8, tau)
+}
+
 
 /// Screen pixels whose value never departs from the first frame by more than the noise floor
 /// residual. Such pixels are camera-locked (HUDs, letter/pillar-box bars, masked borders, logos)
@@ -1315,15 +1428,15 @@ pub fn dominant_silhouette_with_core(mask: &[bool], w: usize, h: usize) -> (Vec<
     let dist = morphology::chessboard_distance(mask, w, h);
     let r_b = dimensional_opening_radius(&dist, w, h);
     
-    let (core, opened): (Vec<bool>, Vec<bool>) = if r_b > 0 {
+    let (core, reconstruction_mask) = if r_b > 0 {
         let c: Vec<bool> = dist.iter().map(|&d| d > r_b).collect();
         if c.iter().any(|&v| v) {
-            let o: Vec<bool> = morphology::dilate(&c, w, h, r_b as usize)
+            let mask_trimmed: Vec<bool> = morphology::dilate(&c, w, h, 1)
                 .into_iter()
                 .zip(mask)
                 .map(|(dil, &m)| dil && m)
                 .collect();
-            (c, o)
+            (c, mask_trimmed)
         } else {
             (mask.to_vec(), mask.to_vec())
         }
@@ -1331,22 +1444,18 @@ pub fn dominant_silhouette_with_core(mask: &[bool], w: usize, h: usize) -> (Vec<
         (mask.to_vec(), mask.to_vec())
     };
 
-    // Label opened features and keep primary mass plus Line-of-Action supported limbs/props
-    let kept_opened = envelope_silhouette(&opened, w, h);
-    
-    // Kept core pixels belonging to the supported holon
-    let kept_core: Vec<bool> = core.iter().zip(&kept_opened).map(|(&c, &k)| c && k).collect();
-    
-    // Geodesic reconstruction inside original mask to restore extremities
-    let silhouette = morphology::geodesic_dilate(&kept_opened, mask, w, h, None);
-    (silhouette, kept_core)
+    let kept_seed = envelope_silhouette(&reconstruction_mask, w, h);
+    let silhouette = morphology::geodesic_dilate(&kept_seed, &reconstruction_mask, w, h, None);
+    let final_silhouette = envelope_silhouette(&silhouette, w, h);
+    let kept_core: Vec<bool> = core.iter().zip(&final_silhouette).map(|(&c, &k)| c && k).collect();
+    (final_silhouette, kept_core)
 }
 
 /// Keep the dominant 2D holon silhouette of a residual mask: morphological opening
 /// erases 1D filaments, Line-of-Action envelope keeps primary mass and genuine limbs/props,
 /// and geodesic reconstruction restores full boundaries.
 pub fn dominant_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
-    dominant_silhouette_with_core(mask, w, h).0
+    envelope_silhouette(mask, w, h)
 }
 
 /// Keep the largest 8-connected component of `mask` plus any component that falls
@@ -1508,8 +1617,9 @@ fn envelope_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
         .collect()
 }
 
-/// Merge intersecting or adjacent actor bounding boxes belonging to the same entity
-/// within a frame (e.g. Mrs. Brisby's head, cloak, and cape, or Mario's body and boots).
+/// Merge significantly intersecting actor bounding boxes belonging to the same fractured entity
+/// within a frame (e.g. Mario's body and boots, or Mrs. Brisby's head and torso), while
+/// keeping distinct detached objects (e.g. distant strings, sparks) in separate boxes.
 pub fn merge_overlapping_boxes(boxes: &[crate::enfold2d::Rect]) -> Vec<crate::enfold2d::Rect> {
     let mut merged: Vec<crate::enfold2d::Rect> = Vec::new();
     for &b in boxes {
@@ -1517,21 +1627,25 @@ pub fn merge_overlapping_boxes(boxes: &[crate::enfold2d::Rect]) -> Vec<crate::en
         let mut i = 0;
         while i < merged.len() {
             let m = merged[i];
-            let intersects = !(curr.x1 < m.x0 - 2
-                || curr.x0 > m.x1 + 2
-                || curr.y1 < m.y0 - 2
-                || curr.y0 > m.y1 + 2);
-            if intersects {
-                curr = crate::enfold2d::Rect::new(
-                    curr.x0.min(m.x0),
-                    curr.y0.min(m.y0),
-                    curr.x1.max(m.x1),
-                    curr.y1.max(m.y1),
-                );
-                merged.remove(i);
-            } else {
-                i += 1;
+            let ix0 = curr.x0.max(m.x0);
+            let iy0 = curr.y0.max(m.y0);
+            let ix1 = curr.x1.min(m.x1);
+            let iy1 = curr.y1.min(m.y1);
+            if ix1 >= ix0 && iy1 >= iy0 {
+                let inter_area = ((ix1 - ix0 + 1) * (iy1 - iy0 + 1)) as f64;
+                let min_area = ((curr.width() * curr.height()).min(m.width() * m.height())) as f64;
+                if min_area > 0.0 && inter_area / min_area >= 0.15 {
+                    curr = crate::enfold2d::Rect::new(
+                        curr.x0.min(m.x0),
+                        curr.y0.min(m.y0),
+                        curr.x1.max(m.x1),
+                        curr.y1.max(m.y1),
+                    );
+                    merged.remove(i);
+                    continue;
+                }
             }
+            i += 1;
         }
         merged.push(curr);
     }
@@ -1625,14 +1739,13 @@ pub fn extract_character_observation_tracks(
     let screen_static = screen_static_mask(frames, tau);
 
     for (fi, frame) in frames.iter().enumerate() {
-        let Some(raw_boxes) = atlas.actor_boxes_per_frame.get(fi) else {
+        let Some(boxes) = atlas.actor_boxes_per_frame.get(fi) else {
             continue;
         };
-        let boxes = merge_overlapping_boxes(raw_boxes);
         let recon_bg = atlas.reconstruct_background_frame(fi);
         let mut frame_cands: Vec<TrackCand> = Vec::new();
 
-        for &bbox in &boxes {
+        for &bbox in boxes {
             let x0 = bbox.x0.clamp(0, frame.width as i32 - 1);
             let y0 = bbox.y0.clamp(0, frame.height as i32 - 1);
             let x1 = bbox.x1.clamp(x0, frame.width as i32 - 1);
@@ -1657,70 +1770,15 @@ pub fn extract_character_observation_tracks(
                 let hist = morphology::ridge_radius_histogram(&dist, bw0, bh0);
                 eprintln!("[sil] f{fi} box {:?} ridge_hist {:?}", bbox, hist);
             }
-            let (raw_silhouette, core) = dominant_silhouette_with_core(&residual, bw0, bh0);
-
-            // Track R10.10b — Nearest-Manifold Chromatic Holon Invariant:
-            // Derive holon colour modes from the eroded core (idempotent ground state);
-            // derive vacuum colour modes from exterior box samples and atlas background;
-            // keep silhouette pixels iff closer to holon modes than to vacuum modes.
-            let silhouette = if core.iter().any(|&c| c) {
-                let mut holon_samples = Vec::new();
-                let mut vacuum_samples = Vec::new();
-                for ly in 0..bh0 {
-                    for lx in 0..bw0 {
-                        let fx = x0 as usize + lx;
-                        let fy = y0 as usize + ly;
-                        let p = frame.pixel(fx as u32, fy as u32);
-                        if core[ly * bw0 + lx] {
-                            holon_samples.push(p);
-                        }
-                        if !raw_silhouette[ly * bw0 + lx] {
-                            vacuum_samples.push(p);
-                        }
-                        vacuum_samples.push(recon_bg.pixel(fx, fy));
-                    }
-                }
-                let h_modes = extract_color_modes_fps(&holon_samples, 8, 20.0);
-                let v_modes = extract_color_modes_fps(&vacuum_samples, 8, 20.0);
-                if !h_modes.is_empty() && !v_modes.is_empty() {
-                    let mut chrom_clean = vec![false; bw0 * bh0];
-                    for ly in 0..bh0 {
-                        for lx in 0..bw0 {
-                            let idx = ly * bw0 + lx;
-                            if !raw_silhouette[idx] {
-                                continue;
-                            }
-                            let fx = x0 as usize + lx;
-                            let fy = y0 as usize + ly;
-                            let p = frame.pixel(fx as u32, fy as u32);
-                            let dh = min_color_distance(p, &h_modes);
-                            let dv = min_color_distance(p, &v_modes);
-                            if dh < dv {
-                                chrom_clean[idx] = true;
-                            }
-                        }
-                    }
-                    let rec = morphology::geodesic_dilate(&core, &chrom_clean, bw0, bh0, None);
-                    if rec.iter().filter(|&&m| m).count() >= 8 {
-                        rec
-                    } else {
-                        raw_silhouette
-                    }
-                } else {
-                    raw_silhouette
-                }
-            } else {
-                raw_silhouette
-            };
-
-            let fg_cnt = silhouette.iter().filter(|&&m| m).count();
+            let raw_silhouette = dominant_silhouette(&residual, bw0, bh0);
+            let fg_cnt = raw_silhouette.iter().filter(|&&m| m).count();
             if fg_cnt < 8 {
                 continue;
             }
 
             let (mut tx0, mut ty0, mut tx1, mut ty1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
             let mut final_fg_cnt = 0usize;
-            for (i, _) in silhouette.iter().enumerate().filter(|(_, m)| **m) {
+            for (i, _) in raw_silhouette.iter().enumerate().filter(|(_, m)| **m) {
                 let (fx, fy) = (x0 + (i % bw0) as i32, y0 + (i / bw0) as i32);
                 final_fg_cnt += 1;
                 tx0 = tx0.min(fx);
@@ -1742,7 +1800,7 @@ pub fn extract_character_observation_tracks(
                     let c = frame.pixel(fx as u32, fy as u32);
                     let idx = ly * bw + lx;
                     rgb[idx * 3..idx * 3 + 3].copy_from_slice(&c);
-                    mask[idx] = silhouette[(fy - y0 as usize) * bw0 + (fx - x0 as usize)];
+                    mask[idx] = raw_silhouette[(fy - y0 as usize) * bw0 + (fx - x0 as usize)];
                 }
             }
             let color = chroma_weighted_color(&rgb, &mask);
