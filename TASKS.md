@@ -1,7 +1,7 @@
 # ImplicateModel — Research & Experiment Tasks
 
 > **Status:** Track S1 & S2 — Spatiotemporal Plenum Character Restoration Plan Active (Visual Verification Phase).
-> **Note (Visual QA Tooling):** Automated visual trait analysis and glitch bounding box auditing CLI is implemented at `./tools/review_img.sh <IMAGE_FILE>` (see `./tools/review_img_example.sh` for an executable sample run using local `llama-server` + Qwen 3 VL (Q4 KM quants)). Can run 4 calls in parallel.
+> **Note (Visual QA Tooling):** Automated visual trait analysis and glitch bounding box auditing CLI is implemented at `./tools/review_img.sh <IMAGE_FILE>` (see `./tools/review_img_example.sh` for an executable sample). Can run only 2 calls in parallel.
 
 **Goal:** Build the Implicate Video Engine (`ImplicateModel`)—an engine that enfolds arbitrary video inputs (from 2D arcade gameplay to hand-drawn feature animation) into a unified Clifford spacetime field, and enables:
 1. **Mode A (Generative Storybook):** Remixing animated films and game worlds into novel narrative sequences from natural-language prompts.
@@ -126,10 +126,10 @@ flowchart TD
 #### Verification Gates & Success Matrix:
 | Benchmark | Target Metric | Visual Acceptance Criteria | Status |
 | :--- | :--- | :--- | :--- |
-| **Super Mario Bros. 3** | $\text{IoU} \ge 0.985$, $\text{LPIPS} \le 0.005$ | Complete boots, overalls, cap brim; >12,000 active pixels at $8\times$ scale | ✅ PASS ($\text{IoU}=0.9918, \text{LPIPS}=0.0014$) |
-| **The Secret of NIMH** | $\text{IoU} \ge 0.820$, $\text{LPIPS} \le 0.050$ | 0 yellow sky pixels in torso pocket; 0 detached red string; smooth $2.5\text{s}$ loop | 🔄 In Progress (Track turnaround selection) |
-| **Pac-Man** | $\text{IoU} \ge 0.850$, $\text{LPIPS} \le 0.050$ | Yellow Pac-Man extracted; honest wavepacket kernel unfoldment | 🔄 In Progress ($\text{IoU}=0.7094$, edge noise tuning) |
-| **Raptor: Call of Shadows**| $\text{IoU} \ge 0.800$, $\text{LPIPS} \le 0.040$ | Metallic shaded fighter jet hull intact; clean vertical trajectory | ✅ PASS ($\text{IoU}=0.8708, \text{LPIPS}=0.0302$) |
+| **Super Mario Bros. 3** | $\text{IoU} \ge 0.985$, $\text{LPIPS} \le 0.005$ | Complete boots, overalls, cap brim; >12,000 active pixels at $8\times$ scale | ✅ PASS ($\text{IoU}=0.9950, \text{LPIPS}=0.0007$) |
+| **The Secret of NIMH** | $\text{IoU} \ge 0.820$, $\text{LPIPS} \le 0.050$ | 0 yellow sky pixels in torso pocket; 0 detached red string; smooth $2.5\text{s}$ loop | 🔄 In Progress ($\text{IoU}=0.9892, \text{LPIPS}=0.0026$; 10-min longitudinal corpus & yellow sky pocket cleanup remaining) |
+| **Pac-Man** | $\text{IoU} \ge 0.850$, $\text{LPIPS} \le 0.050$ | Yellow Pac-Man extracted; honest wavepacket kernel unfoldment | ✅ PASS ($\text{IoU}=0.9986, \text{LPIPS}=0.0002$) |
+| **Raptor: Call of Shadows**| $\text{IoU} \ge 0.800$, $\text{LPIPS} \le 0.040$ | Metallic shaded fighter jet hull intact; clean vertical trajectory | ✅ PASS ($\text{IoU}=0.9909, \text{LPIPS}=0.0031$; shadow/wake/yellow orb purged) |
 | **Workspace Test Suite** | 100% Pass (`cargo test --workspace --tests`) | Zero test regressions across all crates | ✅ PASS |
 
 ---

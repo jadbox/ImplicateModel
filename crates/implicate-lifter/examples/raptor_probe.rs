@@ -10,9 +10,51 @@ const RAPTOR_PATH: &str =
 
 fn main() {
     let raptor_path = Path::new(RAPTOR_PATH);
-    let frames = video_io::read_frames(raptor_path, Some(1.0), Some(2.0)).unwrap();
+    let frames = video_io::read_frames(raptor_path, Some(3.0), Some(2.0)).unwrap();
     let atlas = build_multiplane_atlas(&frames, &MultiPlaneOptions::default());
+    let bg0 = atlas.reconstruct_background_frame(0);
+    video_io::write_png(Path::new("/tmp/opencode/raptor_f0.png"), frames[0].width, frames[0].height, &frames[0].rgb).unwrap();
+    video_io::write_png(Path::new("/tmp/opencode/raptor_bg0.png"), bg0.width as u32, bg0.height as u32, &bg0.rgb).unwrap();
     let obs = extract_dominant_character_observations(&frames, &atlas);
+    for (oi, o) in obs.iter().enumerate() {
+        let yellow_px = (0..o.width() * o.height())
+            .filter(|&i| o.mask[i] && o.rgb[i * 3] > 180 && o.rgb[i * 3 + 1] > 140 && o.rgb[i * 3 + 2] < 80)
+            .count();
+        if yellow_px > 0 || o.width() > 20 || o.height() > 36 {
+            println!("obs[{:02}] f={:02} bbox={:?} ({}x{}) yellow_px={}", oi, o.frame_idx, o.bbox, o.width(), o.height(), yellow_px);
+            if oi == 47 || oi == 49 {
+                for ly in 18..32 {
+                    print!("  rgb y={:02}: ", ly);
+                    for lx in 0..7 {
+                        let i = ly * o.width() + lx;
+                        if o.mask[i] {
+                            print!("[{:3},{:3},{:3}] ", o.rgb[i*3], o.rgb[i*3+1], o.rgb[i*3+2]);
+                        } else {
+                            print!("[  .   .   .] ");
+                        }
+                    }
+                    println!();
+                }
+                for ly in 0..o.height() {
+                    let mut line = format!("  y={:02}: ", ly);
+                    for lx in 0..o.width() {
+                        let i = ly * o.width() + lx;
+                        if o.mask[i] {
+                            let (r, g, b) = (o.rgb[i * 3], o.rgb[i * 3 + 1], o.rgb[i * 3 + 2]);
+                            if r > 180 && g > 140 && b < 80 {
+                                line.push('Y');
+                            } else {
+                                line.push('#');
+                            }
+                        } else {
+                            line.push('.');
+                        }
+                    }
+                    println!("{}", line);
+                }
+            }
+        }
+    }
     let sheet = induce_holon_model_sheet("Raptor_Jet", &obs, Some(1), None);
     let gpu_monad = sheet.to_gpu_monad();
     let ctx = RolpaGpuContext::shared();
@@ -21,7 +63,7 @@ fn main() {
     let (mut all_iou, mut clean_iou) = (0.0, 0.0);
     let (mut all_n, mut clean_n) = (0, 0);
 
-    for oi in 0..obs.len().min(30) {
+    for oi in 0..obs.len() {
         let obsi = &obs[oi];
         let (w, h) = (obsi.width(), obsi.height());
         let unfolder = GpuModelSheetUnfolder::new(ctx, w as u32, h as u32);
@@ -76,7 +118,10 @@ fn main() {
             clean_iou += iou;
             clean_n += 1;
         }
-        println!("Frame {:02}: h={}, IoU={:.4} (clean={})", oi, h, iou, !is_firing_merge);
+        let pred_yellow = (0..w * h)
+            .filter(|&i| pred_mask[i] && pred_rgb[i * 3] > 180 && pred_rgb[i * 3 + 1] > 140 && pred_rgb[i * 3 + 2] < 80)
+            .count();
+        println!("Frame {:02}: w={} h={}, IoU={:.4}, pred_yellow={}", oi, w, h, iou, pred_yellow);
     }
     println!("All {} frames: Mean IoU = {:.4}", all_n, all_iou / all_n as f64);
     println!("Clean {} frames: Mean IoU = {:.4}", clean_n, clean_iou / clean_n as f64);

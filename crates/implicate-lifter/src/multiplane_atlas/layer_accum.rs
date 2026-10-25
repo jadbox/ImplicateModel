@@ -313,8 +313,9 @@ pub fn accumulate_band_atlas_masked(
     for iy in 0..ch {
         for ix in 0..cw {
             let idx = iy * cw + ix;
-            // Dimensionless occlusion ratio: a locus is clean background if it has at least one
-            // valid unoccluded observation and the occlusion fraction is strictly under half (majority unoccluded).
+            // Dimensionless occlusion ratio (Track S1.1 / S1.R.1): preserve observed scenery when
+            // strictly majority unoccluded (occl_count * 2 < obs_count); actor-dominated loci are
+            // harmonically inpainted from the surrounding unoccluded boundary.
             if valid_count[idx] > 0 && occl_count[idx] * 2 < obs_count[idx] {
                 continue;
             }
@@ -330,6 +331,45 @@ pub fn accumulate_band_atlas_masked(
         }
     }
     harmonic_inpaint(&mut atlas.image, &hole);
+
+    // Harmonic-Guided Empirical Plenum Selection:
+    // Where a hole locus was transiently disoccluded during the shot (e.g., sky revealed when an
+    // actor raises an arm for 4+ frames, even if < 50% of the clip), select the observed empirical
+    // color mode that aligns with the harmonic background continuation $\Psi_{\text{harm}}$.
+    let mut all_buckets: HashMap<(i32, i32), Bucket> = HashMap::new();
+    for (fi, frame) in frames.iter().enumerate() {
+        if held_out.contains(&fi) {
+            continue;
+        }
+        let off = traj[fi];
+        for y in y0..y1 {
+            let wy = y as i32 + off[1];
+            for x in 0..w {
+                let wx = x as i32 + off[0];
+                let ix = (wx - atlas.origin[0]) as usize;
+                let iy = (wy - atlas.origin[1]) as usize;
+                if ix < cw && iy < ch && hole[iy * cw + ix] {
+                    all_buckets.entry((wx, wy)).or_default().add(frame.pixel(x as u32, y as u32));
+                }
+            }
+        }
+    }
+    for iy in 0..ch {
+        for ix in 0..cw {
+            let idx = iy * cw + ix;
+            if !hole[idx] {
+                continue;
+            }
+            let h_c = atlas.image.pixel(ix, iy);
+            let wx = atlas.origin[0] + ix as i32;
+            let wy = atlas.origin[1] + iy as i32;
+            if let Some(b) = all_buckets.get(&(wx, wy)) {
+                if let Some(best_emp) = b.closest_mode_to(h_c, 3, 32) {
+                    atlas.image.set_pixel(ix, iy, best_emp);
+                }
+            }
+        }
+    }
     atlas
 }
 
@@ -383,13 +423,18 @@ pub fn harmonic_inpaint(img: &mut crate::enfold2d::RgbImage8, hole: &[bool]) {
             let (x, y) = (i % w, i / w);
             let mut acc = [0.0f32; 3];
             let mut n = 0.0f32;
-            for (nx, ny) in [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)] {
+            for (nx, ny, w_nb) in [
+                (x.wrapping_sub(1), y, 2.0f32),
+                (x + 1, y, 2.0f32),
+                (x, y.wrapping_sub(1), 1.0f32),
+                (x, y + 1, 1.0f32),
+            ] {
                 if nx < w && ny < h {
                     let v = f[ny * w + nx];
                     for k in 0..3 {
-                        acc[k] += v[k];
+                        acc[k] += w_nb * v[k];
                     }
-                    n += 1.0;
+                    n += w_nb;
                 }
             }
             for k in 0..3 {

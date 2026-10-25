@@ -1119,10 +1119,13 @@ pub fn accumulate_part_wavepacket_kernel(
     let mut gaussian_envelope = vec![1.0f32; n_cells];
     let mut mode_rgb = vec![[0u8; 3]; n_cells];
 
-    // Track S1.R.3.4: Solve 5-mode Clifford Fourier system for every texel with fg_hits >= 1
-    // so cyclic features (e.g., Pac-Man's opening/closing mouth wedge) animate across phase φ ∈ S¹.
+    // Track S1.R.3.4: Solve 5-mode Clifford Fourier system for texels whose co-moving occupancy
+    // meets the harmonic basis support floor (fg_hits * M >= N_view, where M = 5 CFT modes),
+    // preserving cyclic features (e.g., Pac-Man's mouth wedge) while rejecting transient 1-frame passing projectiles.
+    let min_cft_hits = (cell_obs_indices.len() + CFT_WAVEPACKET_MODES - 1) / CFT_WAVEPACKET_MODES;
+    let min_cft_hits = min_cft_hits.max(1) as u32;
     for k_idx in 0..n_cells {
-        if fg_hits[k_idx] >= 1 {
+        if fg_hits[k_idx] >= min_cft_hits {
             if let Some((c, _)) = buckets[k_idx].mode() {
                 mode_rgb[k_idx] = c;
                 dc_rgba[k_idx * 4..k_idx * 4 + 3].copy_from_slice(&c);
@@ -1175,7 +1178,7 @@ pub fn accumulate_part_wavepacket_kernel(
         rgb_slice[i * 3] = mode_rgb[i][0];
         rgb_slice[i * 3 + 1] = mode_rgb[i][1];
         rgb_slice[i * 3 + 2] = mode_rgb[i][2];
-        mask_slice[i] = fg_hits[i] >= 1;
+        mask_slice[i] = fg_hits[i] >= min_cft_hits;
     }
     let dual = decompose_masked_clifford_dual_product(&rgb_slice, Some(&mask_slice), res_w, res_h);
 
@@ -1186,7 +1189,7 @@ pub fn accumulate_part_wavepacket_kernel(
             let k_idx = ky * res_w + kx;
             let r2 = u * u + v * v;
             gaussian_envelope[k_idx] = (-0.08 * r2 * r2).exp();
-            if fg_hits[k_idx] >= 1 {
+            if fg_hits[k_idx] >= min_cft_hits {
                 for ch in 0..4 {
                     let coeffs = solve_5x5(gram, rhs[k_idx * 4 + ch]);
                     cft_rgba_coeffs[k_idx * 4 + ch] = coeffs;

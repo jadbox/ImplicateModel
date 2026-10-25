@@ -350,14 +350,20 @@ pub fn build_multiplane_atlas(frames: &[RawFrame], opts: &MultiPlaneOptions) -> 
         }
     }
 
-    let full_traj = estimate_band_trajectory(frames, y0, y1);
+    let full_traj = if camera_is_static {
+        zero_traj.clone()
+    } else {
+        estimate_band_trajectory(frames, y0, y1)
+    };
     let mut best_traj = full_traj;
     let mut best_err = band_registration_error(frames, y0, y1, &best_traj);
-    for tr in &raw_trajs {
-        let err = band_registration_error(frames, y0, y1, tr);
-        if err < best_err {
-            best_err = err;
-            best_traj = tr.clone();
+    if !camera_is_static {
+        for tr in &raw_trajs {
+            let err = band_registration_error(frames, y0, y1, tr);
+            if err < best_err {
+                best_err = err;
+                best_traj = tr.clone();
+            }
         }
     }
     let global_traj = best_traj;
@@ -495,7 +501,18 @@ pub fn build_multiplane_atlas(frames: &[RawFrame], opts: &MultiPlaneOptions) -> 
         });
     }
 
-    let mut actor_boxes_per_frame = kinematic_co_motion_binding(
+    // Track S1.R.1: Propagate active actor silhouettes across stationary holds idempotently
+    // before kinematic co-motion binding so co-moving parts (e.g. Mario's torso and brown boots)
+    // are bound into a single coherent actor bounding box without clobbering.
+    let mut dummy_boxes = Vec::new();
+    propagate_stationary_hold_silhouettes(
+        &mut raw_actor_masks,
+        &mut dummy_boxes,
+        w,
+        h,
+    );
+
+    let actor_boxes_per_frame = kinematic_co_motion_binding(
         frames,
         &raw_actor_masks,
         w,
@@ -504,23 +521,22 @@ pub fn build_multiplane_atlas(frames: &[RawFrame], opts: &MultiPlaneOptions) -> 
         opts.actor_mask_dilation,
     );
 
-    // Track S1.R.1: Mask out active actor silhouettes across stationary holds idempotently.
-    propagate_stationary_hold_silhouettes(
-        &mut raw_actor_masks,
-        &mut actor_boxes_per_frame,
-        w,
-        h,
-    );
-
-    let mut dilated_masks: Vec<Vec<bool>> = vec![vec![false; w * h]; n_frames];
-    for fi in 0..n_frames {
-        let boxes = &actor_boxes_per_frame[fi];
-        for y in 0..h {
-            for x in 0..w {
-                if raw_actor_masks[fi][y * w + x]
-                    || boxes.iter().any(|r| r.contains(x as i32, y as i32))
-                {
-                    dilated_masks[fi][y * w + x] = true;
+    let dil_r = (opts.actor_mask_dilation.max(1) as usize).min(2);
+    let mut dilated_masks: Vec<Vec<bool>> = raw_actor_masks
+        .iter()
+        .map(|m| crate::articulated_wavepacket::morphology::dilate(m, w, h, dil_r))
+        .collect();
+    for (fi, boxes) in actor_boxes_per_frame.iter().enumerate() {
+        for b in boxes {
+            if (b.width() as usize) * (b.height() as usize) <= (w * h) / 3 {
+                let x0_b = b.x0.clamp(0, w as i32 - 1) as usize;
+                let y0_b = b.y0.clamp(0, h as i32 - 1) as usize;
+                let x1_b = b.x1.clamp(0, w as i32 - 1) as usize;
+                let y1_b = b.y1.clamp(0, h as i32 - 1) as usize;
+                for yy in y0_b..=y1_b {
+                    for xx in x0_b..=x1_b {
+                        dilated_masks[fi][yy * w + xx] = true;
+                    }
                 }
             }
         }
@@ -767,7 +783,7 @@ pub fn kinematic_co_motion_binding(
                                 let cos_sp = (si * sj + bi_sp * bj_sp) / (norm_i * norm_j + f64::EPSILON);
                                 cos_sp > 0.5 && cde_coh >= 0.65
                             } else {
-                                cde_coh >= 0.65
+                                (norm_i - norm_j).abs() <= 0.12 && cde_coh >= 0.65
                             };
                             if spinor_coherent {
                                 let ri = find(&mut parent, i);
@@ -940,10 +956,42 @@ pub fn propagate_stationary_hold_silhouettes(
             }
         }
 
-        // Fill solid interior cavities (e.g. Mrs. Brisby torso/cloak) inside the hold silhouette
-        let cavities = crate::articulated_wavepacket::morphology::detect_enclosed_cavities(&hold_mask, w, h);
-        for cav in cavities {
-            for &p in &cav {
+        // Fill solid interior of the 2-blade character body (dist >= 2) inside the hold silhouette
+        // without filling open doorway scenery next to thin 1-blade filaments (Track S1.R.1 / S1.R.2).
+        let dist = crate::articulated_wavepacket::morphology::chessboard_distance(&hold_mask, w, h);
+        let core_seed: Vec<bool> = dist.iter().map(|&d| d >= 2).collect();
+        let body_mask = if core_seed.iter().any(|&v| v) {
+            let (lbls, szs) = crate::articulated_wavepacket::morphology::label_components(&core_seed, w, h);
+            let main_lbl = szs
+                .iter()
+                .enumerate()
+                .skip(1)
+                .max_by_key(|&(_, &s)| s)
+                .map(|(id, _)| id as u32)
+                .unwrap_or(0);
+            let main_core: Vec<bool> = lbls.iter().map(|&l| l == main_lbl && main_lbl > 0).collect();
+            let regrown = crate::articulated_wavepacket::morphology::dilate(&main_core, w, h, 3);
+            let mut filled = regrown.clone();
+            let cavs = crate::articulated_wavepacket::morphology::detect_enclosed_cavities(&regrown, w, h);
+            for cav in cavs {
+                for &p in &cav {
+                    filled[p] = true;
+                }
+            }
+            for y in 0..h {
+                let row = &main_core[y * w..(y + 1) * w];
+                if let (Some(xl), Some(xr)) = (row.iter().position(|&v| v), row.iter().rposition(|&v| v)) {
+                    for x in xl..=xr {
+                        filled[y * w + x] = true;
+                    }
+                }
+            }
+            filled
+        } else {
+            hold_mask.clone()
+        };
+        for p in 0..w * h {
+            if body_mask[p] {
                 hold_mask[p] = true;
             }
         }
@@ -972,20 +1020,22 @@ pub fn propagate_stationary_hold_silhouettes(
                     raw_masks[fi][p] = true;
                 }
             }
-            actor_boxes_per_frame[fi].retain(|b| {
-                let inter_x0 = b.x0.max(hold_box.x0);
-                let inter_y0 = b.y0.max(hold_box.y0);
-                let inter_x1 = b.x1.min(hold_box.x1);
-                let inter_y1 = b.y1.min(hold_box.y1);
-                if inter_x1 >= inter_x0 && inter_y1 >= inter_y0 {
-                    let inter_area = (inter_x1 - inter_x0 + 1) * (inter_y1 - inter_y0 + 1);
-                    let b_area = b.width() * b.height();
-                    (inter_area as f64) / (b_area as f64) < 0.5
-                } else {
-                    true
-                }
-            });
-            actor_boxes_per_frame[fi].push(hold_box);
+            if let Some(boxes) = actor_boxes_per_frame.get_mut(fi) {
+                boxes.retain(|b| {
+                    let inter_x0 = b.x0.max(hold_box.x0);
+                    let inter_y0 = b.y0.max(hold_box.y0);
+                    let inter_x1 = b.x1.min(hold_box.x1);
+                    let inter_y1 = b.y1.min(hold_box.y1);
+                    if inter_x1 >= inter_x0 && inter_y1 >= inter_y0 {
+                        let inter_area = (inter_x1 - inter_x0 + 1) * (inter_y1 - inter_y0 + 1);
+                        let b_area = b.width() * b.height();
+                        (inter_area as f64) / (b_area as f64) < 0.5
+                    } else {
+                        true
+                    }
+                });
+                boxes.push(hold_box);
+            }
         }
     }
 }

@@ -728,6 +728,10 @@ fn r10_5_nimh_empirical_model_sheet_and_gpu_unfold_gate() {
     assert!(!nimh_frames.is_empty());
 
     let atlas = build_multiplane_atlas(&nimh_frames, &MultiPlaneOptions::default());
+    video_io::write_png(Path::new("/tmp/opencode/nimh_f0.png"), nimh_frames[0].width, nimh_frames[0].height, &nimh_frames[0].rgb).ok();
+    video_io::write_png(Path::new("/tmp/opencode/nimh_f14.png"), nimh_frames[14].width, nimh_frames[14].height, &nimh_frames[14].rgb).ok();
+    let bg14 = atlas.reconstruct_background_frame(14);
+    video_io::write_png(Path::new("/tmp/opencode/nimh_bg14.png"), bg14.width as u32, bg14.height as u32, &bg14.rgb).ok();
 
     // Zero magic number noise floor verification
     let tau = compute_shot_noise_floor(&nimh_frames, &atlas);

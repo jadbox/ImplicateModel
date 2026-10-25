@@ -215,22 +215,29 @@ pub struct HudPartition {
 pub fn partition_hud_and_viewport(frames: &[RawFrame]) -> HudPartition {
     assert!(!frames.is_empty(), "need at least one frame");
     let (w, h) = (frames[0].width as usize, frames[0].height as usize);
+    let n_f = frames.len() as f32;
     let mut row_deviation = Vec::with_capacity(h);
     for y in 0..h {
         let mut devs = Vec::with_capacity(w);
         for x in 0..w {
-            let mut vals = Vec::with_capacity(frames.len());
-            for f in frames {
-                let i = (y * w + x) * 3;
-                vals.push(f.rgb[i + 1] as f32);
+            let mut max_ch_std = 0.0f32;
+            for ch in 0..3 {
+                let mut sum = 0.0f32;
+                let mut sum_sq = 0.0f32;
+                for f in frames {
+                    let v = f.rgb[(y * w + x) * 3 + ch] as f32;
+                    sum += v;
+                    sum_sq += v * v;
+                }
+                let mean = sum / n_f;
+                let var = (sum_sq / n_f - mean * mean).max(0.0);
+                max_ch_std = max_ch_std.max(var.sqrt());
             }
-            let mean = vals.iter().sum::<f32>() / vals.len() as f32;
-            let var =
-                vals.iter().map(|v| (v - mean) * (v - mean)).sum::<f32>() / vals.len() as f32;
-            devs.push(var.sqrt());
+            devs.push(max_ch_std);
         }
         devs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        row_deviation.push(devs[devs.len() / 2]);
+        let p94 = ((devs.len() * 94) / 100).min(devs.len().saturating_sub(1));
+        row_deviation.push(devs[p94]);
     }
     let mut top = h;
     for y in (0..h).rev() {

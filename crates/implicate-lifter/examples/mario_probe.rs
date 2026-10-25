@@ -10,6 +10,7 @@ fn main() {
     let smb_path = Path::new(SMB3_PATH);
     let frames = video_io::read_frames(smb_path, Some(1.0), Some(1.5)).unwrap();
     let atlas = build_multiplane_atlas(&frames, &MultiPlaneOptions::default());
+    println!("active_y_range = {:?}", atlas.active_y_range);
     let mario_obs = extract_dominant_character_observations(&frames, &atlas);
     println!("Total mario obs: {}", mario_obs.len());
     for (i, obs) in mario_obs.iter().enumerate() {

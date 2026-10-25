@@ -924,26 +924,48 @@ const OUTLIER_MADS: f64 = 3.0;
 /// Scale factor making the MAD a consistent estimator of the standard deviation.
 const MAD_TO_SIGMA: f64 = 1.4826;
 
-/// Observations whose log silhouette area deviates from the track median by more than
-/// `OUTLIER_MADS` robust standard deviations: stable bodies flag merges, deforming bodies tolerate
-/// their own range of motion.
+/// Observations whose log silhouette area or log bounding-box extents deviate from the track
+/// median by more than `OUTLIER_MADS` robust standard deviations: stable bodies flag merges
+/// and passing projectiles, while deforming bodies tolerate their own range of motion.
 fn area_outliers(observations: &[CharacterObservation]) -> Vec<bool> {
-    let la: Vec<f64> = observations
-        .iter()
-        .map(|o| (o.mask.iter().filter(|&&m| m).count().max(1) as f64).ln())
-        .collect();
     let median = |v: &mut Vec<f64>| {
         v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         v.get(v.len() / 2).copied().unwrap_or(0.0)
     };
-    let m = median(&mut la.clone());
-    let sigma = MAD_TO_SIGMA * median(&mut la.iter().map(|a| (a - m).abs()).collect());
-    la.iter().map(|a| sigma > 0.0 && (a - m).abs() > OUTLIER_MADS * sigma).collect()
+    let flag_series = |series: Vec<f64>| -> Vec<bool> {
+        let m = median(&mut series.clone());
+        let sigma = MAD_TO_SIGMA * median(&mut series.iter().map(|a| (a - m).abs()).collect());
+        series
+            .iter()
+            .map(|a| sigma > 0.0 && (a - m).abs() > OUTLIER_MADS * sigma)
+            .collect()
+    };
+    let out_a = flag_series(
+        observations
+            .iter()
+            .map(|o| (o.mask.iter().filter(|&&m| m).count().max(1) as f64).ln())
+            .collect(),
+    );
+    let out_w = flag_series(
+        observations
+            .iter()
+            .map(|o| (o.width().max(1) as f64).ln())
+            .collect(),
+    );
+    let out_h = flag_series(
+        observations
+            .iter()
+            .map(|o| (o.height().max(1) as f64).ln())
+            .collect(),
+    );
+    (0..observations.len())
+        .map(|i| out_a[i] || out_w[i] || out_h[i])
+        .collect()
 }
 
 /// Register rigid ($P = 1$) observations into one pixel-native frame: every pose gets the shared
 /// half-extents of a `res_w x res_h` kernel, and its centre is shifted by the integer offset that
-/// maximizes silhouette agreement with its view cell's reference (largest-area) observation.
+/// maximizes silhouette agreement with its view cell's canonical median-area reference observation.
 fn register_rigid_observations(
     observations: &[CharacterObservation],
     poses_per_obs: &mut [Vec<SubHolonPose>],
@@ -957,11 +979,25 @@ fn register_rigid_observations(
     let n_cells = view_assignments.iter().copied().max().map_or(0, |m| m + 1);
     for vc in 0..n_cells {
         let members: Vec<usize> = (0..observations.len()).filter(|&i| view_assignments[i] == vc).collect();
+        let mut clean_areas: Vec<usize> = members
+            .iter()
+            .filter(|&&i| clean[i])
+            .map(|&i| area(&observations[i]))
+            .collect();
+        if clean_areas.is_empty() {
+            clean_areas = members.iter().map(|&i| area(&observations[i])).collect();
+        }
+        clean_areas.sort_unstable();
+        let med_area = clean_areas.get(clean_areas.len() / 2).copied().unwrap_or(0) as i64;
         let Some(&ref_i) = members
             .iter()
             .filter(|&&i| clean[i])
-            .max_by_key(|&&i| area(&observations[i]))
-            .or_else(|| members.iter().max_by_key(|&&i| area(&observations[i])))
+            .min_by_key(|&&i| (area(&observations[i]) as i64 - med_area).abs())
+            .or_else(|| {
+                members
+                    .iter()
+                    .min_by_key(|&&i| (area(&observations[i]) as i64 - med_area).abs())
+            })
         else {
             continue;
         };
@@ -1242,7 +1278,7 @@ pub fn extract_color_modes_fps(rgb_samples: &[[u8; 3]], max_k: usize, min_dist: 
         sums[best_k][2] += p[2] as f64;
     }
 
-    let min_count = (rgb_samples.len() as f64 * 0.01).max(3.0) as usize;
+    let min_count = (rgb_samples.len() as f64 * 0.025).max(5.0) as usize;
     let mut pruned = Vec::new();
     for k in 0..centers.len() {
         if counts[k] >= min_count {
@@ -1250,7 +1286,11 @@ pub fn extract_color_modes_fps(rgb_samples: &[[u8; 3]], max_k: usize, min_dist: 
             pruned.push([sums[k][0] / cnt, sums[k][1] / cnt, sums[k][2] / cnt]);
         }
     }
-    if pruned.is_empty() { centers } else { pruned }
+    if pruned.is_empty() {
+        vec![centers[0]]
+    } else {
+        pruned
+    }
 }
 
 pub fn min_color_distance(p: [u8; 3], modes: &[[f64; 3]]) -> f64 {
@@ -1262,24 +1302,61 @@ pub fn min_color_distance(p: [u8; 3], modes: &[[f64; 3]]) -> f64 {
     }).fold(f64::INFINITY, f64::min)
 }
 
-/// Identify if a candidate pixel belongs to the static vacuum plenum \mathcal{V} (\min_{v \in \mathcal{V}} \|p - v\| <= \tau).
+/// Identify if a candidate pixel belongs to the static vacuum plenum 1-complex $\mathcal{V}$:
+/// checks both 0-cells (modes $v_i \in \mathcal{V}$) and coherent 1-cells (segments $\overline{v_i v_j}$
+/// spanning 4:2:0 chroma wall blends or continuous sky gradients).
 pub fn is_vacuum_plenum_color(c: [u8; 3], vacuum_modes: &[[f64; 3]], tau: f64) -> bool {
     if vacuum_modes.is_empty() {
         return false;
     }
+    let p = [c[0] as f64, c[1] as f64, c[2] as f64];
     for v in vacuum_modes {
-        let dr = c[0] as f64 - v[0];
-        let dg = c[1] as f64 - v[1];
-        let db = c[2] as f64 - v[2];
-        let dist = (dr * dr + dg * dg + db * db).sqrt();
-        if dist <= tau {
+        let dr = p[0] - v[0];
+        let dg = p[1] - v[1];
+        let db = p[2] - v[2];
+        if (dr * dr + dg * dg + db * db).sqrt() <= tau {
             return true;
+        }
+    }
+    let k = vacuum_modes.len();
+    for i in 0..k {
+        let vi = vacuum_modes[i];
+        let max_vi = vi[0].max(vi[1]).max(vi[2]);
+        let psi_i = [vi[0] - vi[1], 0.5 * (vi[0] + vi[1]) - vi[2]];
+        let norm_i = (psi_i[0] * psi_i[0] + psi_i[1] * psi_i[1]).sqrt();
+        for j in (i + 1)..k {
+            let vj = vacuum_modes[j];
+            let max_vj = vj[0].max(vj[1]).max(vj[2]);
+            let dx = [vj[0] - vi[0], vj[1] - vi[1], vj[2] - vi[2]];
+            let seg_len_sq = dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2];
+            if !(1.0..=22500.0).contains(&seg_len_sq) {
+                continue;
+            }
+            let psi_j = [vj[0] - vj[1], 0.5 * (vj[0] + vj[1]) - vj[2]];
+            let norm_j = (psi_j[0] * psi_j[0] + psi_j[1] * psi_j[1]).sqrt();
+            let is_dark_blend = (max_vi < 36.0 || max_vj < 36.0) && seg_len_sq <= 19600.0;
+            let is_coherent_gradient = norm_i > 15.0
+                && norm_j > 15.0
+                && (psi_i[0] * psi_j[0] + psi_i[1] * psi_j[1]) / (norm_i * norm_j) > 0.85
+                && seg_len_sq <= 14400.0;
+            if !is_dark_blend && !is_coherent_gradient {
+                continue;
+            }
+            let t = (((p[0] - vi[0]) * dx[0] + (p[1] - vi[1]) * dx[1] + (p[2] - vi[2]) * dx[2])
+                / seg_len_sq)
+                .clamp(0.0, 1.0);
+            let proj = [vi[0] + t * dx[0], vi[1] + t * dx[1], vi[2] + t * dx[2]];
+            let dist = ((p[0] - proj[0]).powi(2) + (p[1] - proj[1]).powi(2) + (p[2] - proj[2]).powi(2)).sqrt();
+            if dist <= tau {
+                return true;
+            }
         }
     }
     false
 }
 
-/// Global Vacuum Plenum V: Sampled strictly outside actor bounding boxes across the shot (K <= 8 FPS modes).
+/// Global Vacuum Plenum V: Sampled strictly outside actor bounding boxes from temporally invariant
+/// background loci across the shot (K <= 8 FPS modes).
 pub fn extract_vacuum_plenum_modes(
     frames: &[crate::video_io::RawFrame],
     atlas: &crate::multiplane_atlas::MultiPlaneAtlas,
@@ -1415,7 +1492,11 @@ pub fn extract_mask_holon_modes(
         .enumerate()
         .filter(|&(_, m)| *m)
         .map(|(i, _)| [rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]])
-        .filter(|&c| vacuum_modes.is_empty() || min_color_distance(c, vacuum_modes) > tau)
+        .filter(|&c| {
+            vacuum_modes.is_empty()
+                || (!is_vacuum_plenum_color(c, vacuum_modes, 2.5 * tau)
+                    && min_color_distance(c, vacuum_modes) > 2.5 * tau)
+        })
         .collect();
 
     if samples.is_empty() {
@@ -1424,13 +1505,10 @@ pub fn extract_mask_holon_modes(
     extract_color_modes_fps(&samples, 8, tau)
 }
 
-/// Topological Cavity Disocclusion (Track S1.2):
+/// Topological Cavity Disocclusion (Track S1.2 / S1.R.2):
 /// Evaluates chromatic likelihood ratio Δ(C_k) = 1/|C_k| \sum [d(p, H) - d(p, V)] for each
-/// enclosed cavity C_k isolated by `detect_enclosed_cavities`.
-/// - If Δ(C_k) > 0: cavity is confirmed vacuum/background (e.g. trapped sunset sky in an arm loop),
-///   so punch out C_k from the silhouette mask (`mask[p] = false`).
-/// - If Δ(C_k) <= 0: cavity is solid interior character body (e.g. torso/cloak),
-///   so fill C_k into the silhouette mask (`mask[p] = true`).
+/// enclosed cavity C_k isolated by `detect_enclosed_cavities`, and punches out exposed
+/// chromatic vacuum pockets (where Δ(p) > 2τ and p matches a luminous chromatic vacuum mode).
 pub fn disocclude_vacuum_cavities(
     mask: &mut [bool],
     rgb: &[u8],
@@ -1448,6 +1526,7 @@ pub fn disocclude_vacuum_cavities(
             continue;
         }
         let mut sum_diff = 0.0f64;
+        let mut vac_hits = 0usize;
         for &p in &cavity {
             let px = p * 3;
             if px + 2 >= rgb.len() {
@@ -1457,10 +1536,12 @@ pub fn disocclude_vacuum_cavities(
             let d_holon = min_color_distance(c, holon_modes);
             let d_vacuum = min_color_distance(c, vacuum_modes);
             sum_diff += d_holon - d_vacuum;
+            if is_vacuum_plenum_color(c, vacuum_modes, 24.0) {
+                vac_hits += 1;
+            }
         }
         let delta = sum_diff / cavity.len() as f64;
-        println!("[cavity] size={}, delta={:.2}, d_holon-d_vac={:.2}", cavity.len(), delta, sum_diff / cavity.len() as f64);
-        if delta > 0.0 {
+        if delta > 0.0 || vac_hits * 2 >= cavity.len() {
             // Vacuum cavity (e.g. trapped sunset sky): punch out from silhouette mask
             for &p in &cavity {
                 mask[p] = false;
@@ -1525,10 +1606,10 @@ pub fn dimensional_opening_radius(dist: &[u32], w: usize, h: usize) -> u32 {
     }
     let filament_count = hist.get(1).copied().unwrap_or(0);
     let body_count: usize = hist.iter().skip(2).sum();
-    // Scale-invariant Clifford dual grade separation: 1D filament purge (r_B = 1) is active
-    // when a thin 1-blade filament mode coexists with a dominant 2-blade body core.
+    // Scale-invariant Clifford dual grade separation: 1D filament purge radius r_B = floor(d_max / 5)
+    // when a thin 1-blade filament mode coexists with a dominant 2-blade body core (2 * r_B < d_max).
     if filament_count > 0 && body_count > 0 && d_max >= 5 {
-        1
+        ((d_max / 5) as u32).min(2)
     } else {
         0
     }
@@ -1538,7 +1619,7 @@ pub fn dimensional_opening_radius(dist: &[u32], w: usize, h: usize) -> u32 {
 ///
 /// 1. Distance transform D(x) measures inscribed thickness.
 /// 2. Structuring element radius r_B derived from thickness histogram:
-///    r_B = 1 erases 1D filaments (strings, wires, single-pixel noise), while preserving
+///    r_B >= 1 erases 1D filaments (strings, wires, single-pixel noise), while preserving
 ///    all genuine 2D features and compact detached props (amulets, capes >= 4x4).
 /// 3. Morphological opening: opened = (M ⊖ B) ⊕ B. Filaments have no inscribed core and vanish.
 /// 4. Line-of-Action envelope preserves primary 2D body and supported limbs/props.
@@ -1553,7 +1634,7 @@ pub fn dominant_silhouette_with_core(mask: &[bool], w: usize, h: usize) -> (Vec<
     let (core, reconstruction_mask) = if r_b > 0 {
         let c: Vec<bool> = dist.iter().map(|&d| d > r_b).collect();
         if c.iter().any(|&v| v) {
-            let mask_trimmed: Vec<bool> = morphology::dilate(&c, w, h, 1)
+            let mask_trimmed: Vec<bool> = morphology::dilate(&c, w, h, r_b as usize)
                 .into_iter()
                 .zip(mask)
                 .map(|(dil, &m)| dil && m)
@@ -1722,9 +1803,10 @@ fn envelope_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
             false
         };
 
-        // Retain all genuine 2-blade components (comp_sz >= 4) within the physical support radius of the character.
+        // Retain genuine 2-blade components (comp_sz >= 4) separated only by a local ink/outline
+        // contour gap (min_dist_to_primary <= 3.5), rejecting distant detached specks and strings.
         let is_2blade_area = comp_sz >= 4;
-        let in_envelope = (in_distance_envelope || in_corridor) && min_dist_to_primary <= support_radius;
+        let in_envelope = (in_distance_envelope || in_corridor) && min_dist_to_primary <= 3.5;
         if is_2blade_area && in_envelope {
             keep[id] = true;
         }
@@ -1734,6 +1816,49 @@ fn envelope_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
         .iter()
         .map(|&l| l != 0 && keep[l as usize])
         .collect()
+}
+
+/// Test whether pixel `c` over background `bg` is a translucent cast shadow, specular wake,
+/// or boundary anti-aliasing blend of a spatially homogeneous, chromatically polarized ambient
+/// background medium (characterized by exterior boundary ring spinor `ring_spinor`) in $\mathbb{G}_{2,0}^+$.
+///
+/// Evaluates the Clifford geometric product $\psi_c \widetilde{\psi}_b = \langle \psi_c \widetilde{\psi}_b \rangle_0 + \langle \psi_c \widetilde{\psi}_b \rangle_2$:
+/// a medium modulation preserves the spinor phase ($\langle \psi_c \widetilde{\psi}_b \rangle_0 > 0$,
+/// $|\langle \psi_c \widetilde{\psi}_b \rangle_2| \le \tan(\pi / 12) \langle \psi_c \widetilde{\psi}_b \rangle_0$)
+/// while retaining the medium's chromatic polarization ($|\psi_c| \ge \frac{1}{3} |\psi_b|$).
+#[inline]
+fn is_chromatic_medium_modulation(c: [u8; 3], bg: [u8; 3], tau: f64) -> bool {
+    let (s_b, b_b) = (
+        bg[0] as f64 - bg[1] as f64,
+        0.5 * (bg[0] as f64 + bg[1] as f64) - bg[2] as f64,
+    );
+    let norm_b = (s_b * s_b + b_b * b_b).sqrt();
+    if norm_b <= 3.0 * tau {
+        return false;
+    }
+    let d_inf = (c[0] as i32 - bg[0] as i32)
+        .abs()
+        .max((c[1] as i32 - bg[1] as i32).abs())
+        .max((c[2] as i32 - bg[2] as i32).abs()) as f64;
+    if d_inf > norm_b {
+        return false;
+    }
+    let (s_c, b_c) = (
+        c[0] as f64 - c[1] as f64,
+        0.5 * (c[0] as f64 + c[1] as f64) - c[2] as f64,
+    );
+    let norm_c = (s_c * s_c + b_c * b_c).sqrt();
+    if norm_c * 2.0 < norm_b {
+        return false;
+    }
+    // Clifford geometric product in G_{2,0}^+: ψ_c ψ̃_b = scalar + wedge e_12
+    let scalar = s_c * s_b + b_c * b_b;
+    if scalar <= 0.0 {
+        return false;
+    }
+    let wedge = (b_c * s_b - s_c * b_b).abs();
+    let d_psi = ((s_c - s_b).powi(2) + (b_c - b_b).powi(2)).sqrt();
+    wedge <= (std::f64::consts::PI / 12.0).tan() * scalar && d_psi * 2.0 <= norm_b
 }
 
 /// Compute the Hiley CDE and opponent chromatic spinor (in $\mathbb{G}_{2,0}^+$) for foreground
@@ -1822,7 +1947,7 @@ pub fn merge_overlapping_boxes_cde(
                         let cos_sp = (sp_a[0] * sp_b[0] + sp_a[1] * sp_b[1]) / (norm_a * norm_b + f64::EPSILON);
                         cos_sp > 0.5 && cde_coh >= 0.65
                     } else {
-                        cde_coh >= 0.65
+                        (norm_a - norm_b).abs() <= 0.12 && cde_coh >= 0.65
                     };
                     if spinor_coherent {
                         curr = crate::enfold2d::Rect::new(
@@ -1919,11 +2044,14 @@ pub fn cde_bilinear_geodesic_affinity(tr: &[TrackCand], cand: &TrackCand) -> f64
     let cdist = color_dist(cand.color, last.color) as f64;
     let c_affinity = (-0.5 * (cdist / 36.0).powi(2)).exp();
 
-    // 2. Scale / Log-Area Invariance (Squash & Stretch volume conservation): S_scale in [0, 1]
+    // 2. Scale & Aspect Invariance (Squash & Stretch volume + shape conservation): S_scale in [0, 1]
     let area_cand = cand.obs.mask.iter().filter(|&&m| m).count().max(1) as f64;
     let area_last = last.obs.mask.iter().filter(|&&m| m).count().max(1) as f64;
     let log_area_ratio = (area_cand / area_last).ln().abs();
-    let s_affinity = (-0.5 * (log_area_ratio / 0.85).powi(2)).exp();
+    let ar_cand = cand.obs.width().max(1) as f64 / cand.obs.height().max(1) as f64;
+    let ar_last = last.obs.width().max(1) as f64 / last.obs.height().max(1) as f64;
+    let log_ar_ratio = (ar_cand / ar_last).ln().abs();
+    let s_affinity = (-0.5 * ((log_area_ratio / 0.85).powi(2) + (log_ar_ratio / 0.65).powi(2))).exp();
 
     // 3. Geodesic Spatial Continuity: K_geodesic in [0, 1]
     let v = tracklet_velocity(tr, true);
@@ -1981,14 +2109,14 @@ pub fn extract_character_observation_tracks(
             let y1 = bbox.y1.clamp(y0, fh - 1);
 
             // Local 3x3 Vacuum Idempotent Annihilation (Track S1.R.3.2):
-            // Project pixel spinor orthogonal to the local 3x3 recon_bg subspace to eliminate
-            // 4:2:0 chroma wall bleed without heuristic tau multipliers.
+            // Project pixel spinor orthogonal to the local 3x3 recon_bg subspace.
             let (bw0, bh0) = ((x1 - x0 + 1) as usize, (y1 - y0 + 1) as usize);
             let mut residual = vec![false; bw0 * bh0];
             for fy in y0..=y1 {
                 for fx in x0..=x1 {
                     let c = frame.pixel(fx as u32, fy as u32);
                     let mut best_d = i32::MAX;
+                    let mut medium_mod = false;
                     for dy_bg in -1..=1 {
                         let by = (fy + dy_bg).clamp(0, fh - 1) as usize;
                         for dx_bg in -1..=1 {
@@ -2001,14 +2129,16 @@ pub fn extract_character_observation_tracks(
                             if d < best_d {
                                 best_d = d;
                             }
+                            if is_chromatic_medium_modulation(c, bg, tau) {
+                                medium_mod = true;
+                            }
                         }
                     }
                     let locked = screen_static
                         .as_ref()
                         .is_some_and(|m| m[fy as usize * frame.width as usize + fx as usize]);
-                    let is_vac = is_vacuum_plenum_color(c, &vacuum_modes, tau);
                     residual[(fy - y0) as usize * bw0 + (fx - x0) as usize] =
-                        best_d > tau_i && !locked && !is_vac;
+                        best_d > tau_i && !locked && !medium_mod;
                 }
             }
             if std::env::var_os("IMPLICATE_DEBUG_SIL").is_some() {
@@ -2050,13 +2180,8 @@ pub fn extract_character_observation_tracks(
                 }
             }
             // Task S1.2: Topological Cavity Disocclusion
-            let cnt_before = mask.iter().filter(|&&m| m).count();
             let holon_modes = extract_mask_holon_modes(&rgb, &mask, bw, bh, &vacuum_modes, tau);
             disocclude_vacuum_cavities(&mut mask, &rgb, bw, bh, &holon_modes, &vacuum_modes);
-            let cnt_after = mask.iter().filter(|&&m| m).count();
-            if fi == 0 {
-                println!("[debug cav] f0: before={}, after={}, added={}", cnt_before, cnt_after, cnt_after - cnt_before);
-            }
             if !mask.iter().any(|&m| m) {
                 continue;
             }
@@ -2147,7 +2272,174 @@ pub fn extract_character_observation_tracks(
         })
         .collect();
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    scored.into_iter().take(max_tracks.max(1)).map(|(_, obs)| obs).collect()
+    scored
+        .into_iter()
+        .take(max_tracks.max(1))
+        .map(|(_, mut obs)| {
+            enforce_track_comoving_soliton_coherency(&mut obs, tau);
+            obs
+        })
+        .collect()
+}
+
+/// Enforce spatiotemporal soliton coherency across the entire character track:
+/// Aligns observations in the co-moving frame of the primary component's center of mass,
+/// extracts the persistent core palette ($\bar{\rho}_{3\times 3} \ge 0.50$), and prunes
+/// transient scattering artifacts ($\bar{\rho}_{3\times 3} < 1 / M$, where $M = 5$ CFT modes)
+/// that are either detached satellites or chromatically foreign to the persistent core.
+pub fn enforce_track_comoving_soliton_coherency(
+    track: &mut [CharacterObservation],
+    tau: f64,
+) {
+    let n = track.len();
+    if n < 8 {
+        return;
+    }
+    let max_r = track
+        .iter()
+        .map(|o| o.width().max(o.height()))
+        .max()
+        .unwrap_or(16)
+        + 4;
+    let gw = 2 * max_r + 1;
+    let center_off = max_r as i32;
+    let mut occ = vec![0usize; gw * gw];
+    let mut centers = Vec::with_capacity(n);
+
+    for obs in track.iter() {
+        let (w, h) = (obs.width(), obs.height());
+        let prim = primary_connected_component(&obs.mask, w, h);
+        let (mut sx, mut sy, mut cnt) = (0.0f64, 0.0f64, 0usize);
+        for y in 0..h {
+            for x in 0..w {
+                if prim[y * w + x] {
+                    sx += x as f64;
+                    sy += y as f64;
+                    cnt += 1;
+                }
+            }
+        }
+        let (cx, cy) = if cnt > 0 {
+            ((sx / cnt as f64).round() as i32, (sy / cnt as f64).round() as i32)
+        } else {
+            (w as i32 / 2, h as i32 / 2)
+        };
+        centers.push([cx, cy]);
+        for y in 0..h {
+            for x in 0..w {
+                if obs.mask[y * w + x] {
+                    let gx = (x as i32 - cx + center_off).clamp(0, gw as i32 - 1) as usize;
+                    let gy = (y as i32 - cy + center_off).clamp(0, gw as i32 - 1) as usize;
+                    occ[gy * gw + gx] += 1;
+                }
+            }
+        }
+    }
+
+    let mut occ_3x3 = vec![0usize; gw * gw];
+    for gy in 0..gw {
+        for gx in 0..gw {
+            let mut m = 0usize;
+            for dy in -1..=1isize {
+                for dx in -1..=1isize {
+                    let nx = gx as isize + dx;
+                    let ny = gy as isize + dy;
+                    if nx >= 0 && ny >= 0 && (nx as usize) < gw && (ny as usize) < gw {
+                        m = m.max(occ[ny as usize * gw + nx as usize]);
+                    }
+                }
+            }
+            occ_3x3[gy * gw + gx] = m;
+        }
+    }
+
+    let mut core_samples = Vec::new();
+    for (oi, obs) in track.iter().enumerate() {
+        let (w, h) = (obs.width(), obs.height());
+        let [cx, cy] = centers[oi];
+        for y in 0..h {
+            for x in 0..w {
+                let i = y * w + x;
+                if obs.mask[i] {
+                    let gx = (x as i32 - cx + center_off).clamp(0, gw as i32 - 1) as usize;
+                    let gy = (y as i32 - cy + center_off).clamp(0, gw as i32 - 1) as usize;
+                    if occ_3x3[gy * gw + gx] * 2 >= n {
+                        core_samples.push([obs.rgb[i * 3], obs.rgb[i * 3 + 1], obs.rgb[i * 3 + 2]]);
+                    }
+                }
+            }
+        }
+    }
+    let core_modes = extract_color_modes_fps(&core_samples, 8, tau);
+
+    for (oi, obs) in track.iter_mut().enumerate() {
+        let (w, h) = (obs.width(), obs.height());
+        let [cx, cy] = centers[oi];
+        let prim = primary_connected_component(&obs.mask, w, h);
+        let mut new_mask = obs.mask.clone();
+        let mut changed = false;
+
+        for y in 0..h {
+            for x in 0..w {
+                let i = y * w + x;
+                if !obs.mask[i] {
+                    continue;
+                }
+                let gx = (x as i32 - cx + center_off).clamp(0, gw as i32 - 1) as usize;
+                let gy = (y as i32 - cy + center_off).clamp(0, gw as i32 - 1) as usize;
+                let hits = occ_3x3[gy * gw + gx];
+                let c = [obs.rgb[i * 3], obs.rgb[i * 3 + 1], obs.rgb[i * 3 + 2]];
+                let foreign_color =
+                    !core_modes.is_empty() && min_color_distance(c, &core_modes) > 2.0 * tau;
+                if hits * CFT_WAVEPACKET_MODES < n && (!prim[i] || foreign_color) {
+                    new_mask[i] = false;
+                    changed = true;
+                }
+            }
+        }
+
+        if changed {
+            new_mask = dominant_silhouette(&new_mask, w, h);
+            let (mut lx0, mut ly0, mut lx1, mut ly1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+            let mut fg_cnt = 0usize;
+            for y in 0..h {
+                for x in 0..w {
+                    if new_mask[y * w + x] {
+                        fg_cnt += 1;
+                        lx0 = lx0.min(x as i32);
+                        ly0 = ly0.min(y as i32);
+                        lx1 = lx1.max(x as i32);
+                        ly1 = ly1.max(y as i32);
+                    }
+                }
+            }
+            if fg_cnt >= 8 {
+                let nw = (lx1 - lx0 + 1) as usize;
+                let nh = (ly1 - ly0 + 1) as usize;
+                let mut cropped_mask = vec![false; nw * nh];
+                let mut cropped_rgb = vec![0u8; nw * nh * 3];
+                for ny in 0..nh {
+                    for nx in 0..nw {
+                        let sy = ly0 as usize + ny;
+                        let sx = lx0 as usize + nx;
+                        let si = sy * w + sx;
+                        let di = ny * nw + nx;
+                        cropped_mask[di] = new_mask[si];
+                        cropped_rgb[di * 3..di * 3 + 3].copy_from_slice(&obs.rgb[si * 3..si * 3 + 3]);
+                    }
+                }
+                obs.bbox = Rect::new(
+                    obs.bbox.x0 + lx0,
+                    obs.bbox.y0 + ly0,
+                    obs.bbox.x0 + lx1,
+                    obs.bbox.y0 + ly1,
+                );
+                obs.mask = cropped_mask;
+                obs.rgb = cropped_rgb;
+                obs.line_of_action = extract_line_of_action(&obs.mask, nw, nh);
+            }
+        }
+    }
 }
 
 /// Re-join tracklets fragmented by occlusion or silhouette merging: tracklet `B` continues `A`
@@ -2206,6 +2498,10 @@ pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
         return 0.0;
     }
     let n = track.len() as f64;
+    let n_eff: f64 = track
+        .iter()
+        .map(|o| if o.truncated { 0.5 } else { 1.0 })
+        .sum();
     let mut total_mass = 0.0f64;
     let mut total_density = 0.0f64;
     let mut total_plucker = 0.0f64;
@@ -2232,7 +2528,7 @@ pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
         };
         total_plucker += plucker_factor;
 
-        // Universal Vacuum Spinor Divergence <ψ̃_obs (1 - P_vac) ψ_obs>_0:
+        // Universal Vacuum Spinor Divergence <ψ̃_obs (1 - P_vac) ψ_obs>_0 in G_{2,0}^+:
         let mut fg_rgb = [0.0f64; 3];
         let mut fg_cnt = 0.0f64;
         let mut vac_rgb = [0.0f64; 3];
@@ -2263,24 +2559,23 @@ pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
         } else {
             [0.0; 3]
         };
-        let vac_norm = (u_vac[0] * u_vac[0] + u_vac[1] * u_vac[1] + u_vac[2] * u_vac[2]).sqrt();
-        let u_perp_vac = if vac_norm > 1e-3 {
-            let v_hat = [u_vac[0] / vac_norm, u_vac[1] / vac_norm, u_vac[2] / vac_norm];
-            let proj = (u_fg[0] * v_hat[0] + u_fg[1] * v_hat[1] + u_fg[2] * v_hat[2]).max(0.0);
-            [
-                u_fg[0] - proj * v_hat[0],
-                u_fg[1] - proj * v_hat[1],
-                u_fg[2] - proj * v_hat[2],
-            ]
+        // Orthonormal opponent chromatic spinor ψ = s + b e_12 in G_{2,0}^+:
+        // e_rg = (R - G)/sqrt(2), e_yb = (R + G - 2B)/sqrt(6)
+        let s_fg = (u_fg[0] - u_fg[1]) * std::f64::consts::FRAC_1_SQRT_2;
+        let b_fg = (u_fg[0] + u_fg[1] - 2.0 * u_fg[2]) / 6.0f64.sqrt();
+        let s_vac = (u_vac[0] - u_vac[1]) * std::f64::consts::FRAC_1_SQRT_2;
+        let b_vac = (u_vac[0] + u_vac[1] - 2.0 * u_vac[2]) / 6.0f64.sqrt();
+        // Orthogonal projection of ψ_fg off ψ_vac:
+        let norm_vac_sq = s_vac * s_vac + b_vac * b_vac;
+        let (perp_s, perp_b) = if norm_vac_sq > 1e-4 {
+            let dot = (s_fg * s_vac + b_fg * b_vac).max(0.0);
+            let scale = (dot / norm_vac_sq).clamp(0.0, 1.0);
+            (s_fg - scale * s_vac, b_fg - scale * b_vac)
         } else {
-            u_fg
+            (s_fg, b_fg)
         };
-        let div_vac_sq = u_perp_vac[0].powi(2) + u_perp_vac[1].powi(2) + u_perp_vac[2].powi(2);
-        let mean_luma = (u_fg[0] + u_fg[1] + u_fg[2]) / 3.0;
-        let div_gray_sq = (u_fg[0] - mean_luma).powi(2)
-            + (u_fg[1] - mean_luma).powi(2)
-            + (u_fg[2] - mean_luma).powi(2);
-        total_vac_div += (div_vac_sq + div_gray_sq).sqrt();
+        let spinor_div = 3.0 * (perp_s * perp_s + perp_b * perp_b);
+        total_vac_div += spinor_div;
     }
 
     let mean_density = total_density / n;
@@ -2291,7 +2586,7 @@ pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
     // Mass stability: volume conservation / rigidity det S ≈ 1 across time
     let mass_variance: f64 = masses.iter().map(|&m| (m - mean_mass).powi(2)).sum::<f64>() / n;
     let mass_cv = mass_variance.sqrt() / (mean_mass + 1e-6);
-    let mass_stability = 1.0 / ((1.0 + mass_cv).powi(2));
+    let mass_stability = 1.0 / (1.0 + mass_cv);
 
     // Causal Trajectory Agency: volume-conserving active movement and turning curvature across the world manifold
     let mut path_len = 0.0f64;
@@ -2302,7 +2597,11 @@ pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
         let dt = (track[i].frame_idx.saturating_sub(track[i - 1].frame_idx)).max(1) as f64;
         let dx = (c1[0] - c0[0]) / dt;
         let dy = (c1[1] - c0[1]) / dt;
-        let step = (dx * dx + dy * dy).sqrt();
+        let dw = (track[i].width() as f64 - track[i - 1].width() as f64).abs() / dt;
+        let dh = (track[i].height() as f64 - track[i - 1].height() as f64).abs() / dt;
+        let loc_dx = (dx.abs() - 0.5 * dw).max(0.0).copysign(dx);
+        let loc_dy = (dy.abs() - 0.5 * dh).max(0.0).copysign(dy);
+        let step = (loc_dx * loc_dx + loc_dy * loc_dy).sqrt();
         // Weight step by instantaneous volume conservation exp(-2 |ln(M_i / M_{i-1})|)
         // so unphysical bounding-box merge jumps do not masquerade as causal locomotion.
         let m0 = masses[i - 1].max(1.0);
@@ -2314,7 +2613,7 @@ pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
             let dt0 = (track[i - 1].frame_idx.saturating_sub(track[i - 2].frame_idx)).max(1) as f64;
             let dx0 = (c0[0] - c_prev[0]) / dt0;
             let dy0 = (c0[1] - c_prev[1]) / dt0;
-            let dot = dx0 * dx + dy0 * dy;
+            let dot = dx0 * loc_dx + dy0 * loc_dy;
             let norm0 = (dx0 * dx0 + dy0 * dy0).sqrt();
             if norm0 > 0.5 && step > 0.5 {
                 let cos_turn = (dot / (norm0 * step)).clamp(-1.0, 1.0);
@@ -2325,11 +2624,11 @@ pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
     let mean_speed = path_len / (n - 1.0).max(1.0);
     let mean_turn = turn_variance / (n - 2.0).max(1.0);
     let kinematic_agency = 1.0 + mean_speed + 2.0 * mean_turn;
-    let vacuum_spinor_salience = 1.0 + mean_vac_div;
+    let vacuum_spinor_salience = (1.0 + mean_vac_div).powi(2);
 
-    // Dimensionless permanence (n^2) * Weber-Fechner logarithmic mass * fill compactness * Plücker consistency * causal agency * vacuum spinor divergence * mass stability
+    // Dimensionless interior permanence (n_eff^2) * Weber-Fechner logarithmic mass * fill compactness * Plücker consistency * causal agency * vacuum spinor divergence * mass stability
     let mass_factor = (1.0 + mean_mass).ln();
-    let score = n * n * mass_factor * mean_density * mean_plucker * kinematic_agency * vacuum_spinor_salience * mass_stability;
+    let score = n_eff * n_eff * mass_factor * mean_density * mean_plucker * kinematic_agency * vacuum_spinor_salience * mass_stability;
     println!("[score break] b0={:?}: score={:.2}, n={:.0}, mass={:.0}, dens={:.3}, pluck={:.3}, agency={:.3}, vac_div={:.3}, stab={:.3}",
         track.first().map(|o| o.bbox), score, n, mean_mass, mean_density, mean_plucker, kinematic_agency, vacuum_spinor_salience, mass_stability);
     score

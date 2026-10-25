@@ -75,6 +75,34 @@ impl Bucket {
     pub fn total(&self) -> u32 {
         self.entries.iter().map(|e| e.count).sum()
     }
+
+    pub fn closest_mode_to(
+        &self,
+        target: [u8; 3],
+        min_count: u32,
+        max_dist: i32,
+    ) -> Option<[u8; 3]> {
+        let mut best: Option<(i32, [u8; 3])> = None;
+        for e in &self.entries {
+            if e.count < min_count {
+                continue;
+            }
+            let n = e.count.max(1);
+            let c = [
+                ((e.sr + n / 2) / n) as u8,
+                ((e.sg + n / 2) / n) as u8,
+                ((e.sb + n / 2) / n) as u8,
+            ];
+            let d = (c[0] as i32 - target[0] as i32)
+                .abs()
+                .max((c[1] as i32 - target[1] as i32).abs())
+                .max((c[2] as i32 - target[2] as i32).abs());
+            if d <= max_dist && best.is_none_or(|(bd, _)| d < bd) {
+                best = Some((d, c));
+            }
+        }
+        best.map(|(_, c)| c)
+    }
 }
 
 /// Streaming world atlas accumulator.
