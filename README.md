@@ -150,6 +150,11 @@ let (wav_path, mp4_path) = report.export_wav_and_mp4(Path::new("/tmp/opencode/ou
   - *Raptor: Call of the Shadows* (`320x240`): `/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d_raptor/raptor_320x240.mp4`
 - **Tier-2 (Full-Length Multi-Plane Feature Animation):**
   - *The Secret of NIMH* (`1920x1040`, `23.976 fps`): `/mnt/storage/DDownloads/The Secret Of NIMH (1982) [BluRay] [1080p] [YTS.AM]/The.Secret.Of.NIMH.1982.1080p.BluRay.x264-[YTS.AM].mp4`
-- **Local VLM Weights (`llama.cpp`):**
+- **Local VLM Weights (`llama.cpp`):** [^review-tool]
   - `/mnt/storage/models/llama.cpp/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf`
   - `/mnt/storage/models/llama.cpp/mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf`
+
+---
+
+[^review-tool]: Visual inspection CLI available at `./tools/review_img.sh <IMAGE_FILE>` (example runner: `./tools/review_img_example.sh`). Analyzes scene/character traits and detects extraction/rendering glitches with pixel bounding boxes via local `llama-server`.
+
