@@ -682,6 +682,8 @@ pub fn kinematic_co_motion_binding(
         let forward = fi + 1 < n_frames;
 
         let mut velocities = Vec::with_capacity(boxes.len());
+        let mut cde_spinors = Vec::with_capacity(boxes.len());
+        let mut fg_counts = Vec::with_capacity(boxes.len());
         for b in &boxes {
             let v = if n_frames > 1 {
                 estimate_component_displacement(&frames[fi], &frames[other_fi], mask, w, h, b, forward)
@@ -689,6 +691,38 @@ pub fn kinematic_co_motion_binding(
                 [0.0, 0.0]
             };
             velocities.push(v);
+
+            let y_s = b.y0.clamp(0, h as i32 - 1) as usize;
+            let y_e = b.y1.clamp(0, h as i32 - 1) as usize;
+            let x_s = b.x0.clamp(0, w as i32 - 1) as usize;
+            let x_e = b.x1.clamp(0, w as i32 - 1) as usize;
+            let mut sum_rgb = [0.0f64; 3];
+            let mut cnt = 0usize;
+            for yy in y_s..=y_e {
+                for xx in x_s..=x_e {
+                    if mask[yy * w + xx] {
+                        let px = frames[fi].pixel(xx as u32, yy as u32);
+                        sum_rgb[0] += px[0] as f64;
+                        sum_rgb[1] += px[1] as f64;
+                        sum_rgb[2] += px[2] as f64;
+                        cnt += 1;
+                    }
+                }
+            }
+            let fc = cnt.max(1) as f64;
+            let rgb_u8 = [
+                (sum_rgb[0] / fc).round().clamp(0.0, 255.0) as u8,
+                (sum_rgb[1] / fc).round().clamp(0.0, 255.0) as u8,
+                (sum_rgb[2] / fc).round().clamp(0.0, 255.0) as u8,
+            ];
+            let theta = (v[1] as f64).atan2(v[0] as f64);
+            let cde = implicate_math::CliffordDensityElement::new(fc.sqrt(), theta, 0, 2, rgb_u8);
+            let r_n = rgb_u8[0] as f64 / 255.0;
+            let g_n = rgb_u8[1] as f64 / 255.0;
+            let b_n = rgb_u8[2] as f64 / 255.0;
+            let spinor = [r_n - g_n, 0.5 * (r_n + g_n) - b_n];
+            cde_spinors.push((cde, spinor));
+            fg_counts.push(cnt.max(1));
         }
 
         let mut parent: Vec<usize> = (0..boxes.len()).collect();
@@ -705,10 +739,18 @@ pub fn kinematic_co_motion_binding(
                 let dy = (bi.y0 - bj.y1).max(bj.y0 - bi.y1).max(0);
                 let gap = dx.max(dy);
 
-                // Kinematic Co-Motion Binding (Track R10.7a / R10.9):
-                // Union co-moving adjacent residual components sharing spatial proximity (gap <= 16)
-                // and velocity displacement v (v_diff <= 3.5 for articulated limb swing) within a localized actor scale.
-                if gap <= 16 {
+                let min_fg = fg_counts[i].min(fg_counts[j]);
+                let max_fg = fg_counts[i].max(fg_counts[j]);
+                let max_allowed_gap = if min_fg * 2 >= max_fg && min_fg >= 64 {
+                    2
+                } else {
+                    16
+                };
+
+                // Kinematic Co-Motion Binding with Hiley CDE Chromatic-Kinematic Separation (Track S1.R.3.3):
+                // Require positive Hiley CDE spinor coherence <ψ_i ψ̃_j>_0 > 0 and signature coherence
+                // before merging co-moving components.
+                if gap <= max_allowed_gap {
                     let union_w = (bi.x1.max(bj.x1) - bi.x0.min(bj.x0) + 1) as usize;
                     let union_h = (bi.y1.max(bj.y1) - bi.y0.min(bj.y0) + 1) as usize;
                     if union_w <= w / 2 && union_h <= h / 2 {
@@ -716,10 +758,23 @@ pub fn kinematic_co_motion_binding(
                         let vj = velocities[j];
                         let v_diff = (vi[0] - vj[0]).hypot(vi[1] - vj[1]);
                         if v_diff <= 3.5 {
-                            let ri = find(&mut parent, i);
-                            let rj = find(&mut parent, j);
-                            if ri != rj {
-                                parent[ri] = rj;
+                            let cde_coh = cde_spinors[i].0.signature_coherence(&cde_spinors[j].0);
+                            let (si, bi_sp) = (cde_spinors[i].1[0], cde_spinors[i].1[1]);
+                            let (sj, bj_sp) = (cde_spinors[j].1[0], cde_spinors[j].1[1]);
+                            let norm_i = (si * si + bi_sp * bi_sp).sqrt();
+                            let norm_j = (sj * sj + bj_sp * bj_sp).sqrt();
+                            let spinor_coherent = if norm_i > 0.08 && norm_j > 0.08 {
+                                let cos_sp = (si * sj + bi_sp * bj_sp) / (norm_i * norm_j + f64::EPSILON);
+                                cos_sp > 0.5 && cde_coh >= 0.65
+                            } else {
+                                cde_coh >= 0.65
+                            };
+                            if spinor_coherent {
+                                let ri = find(&mut parent, i);
+                                let rj = find(&mut parent, j);
+                                if ri != rj {
+                                    parent[ri] = rj;
+                                }
                             }
                         }
                     }

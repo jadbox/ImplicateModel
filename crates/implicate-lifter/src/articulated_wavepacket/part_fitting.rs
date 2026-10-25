@@ -3,7 +3,7 @@
 use super::{
     CFT_WAVEPACKET_MODES, CharacterObservation, ConstitutiveTuple, HolonModelSheet,
     ModelSheetPartKernel, SubHolonPartSpec, SubHolonPose, TurnaroundViewAspect,
-    WavepacketPartKernel, classify_view_regime, fit_articulated_holon,
+    WavepacketPartKernel, classify_view_regime, fit_articulated_holon_with_views,
     clifford_features::{
         compute_cliffordnet_laplacian_features, decompose_masked_clifford_dual_product,
         decompose_observation_dual_product,
@@ -553,8 +553,44 @@ pub fn assign_view_idempotent_cells_and_cft_phases(
     observations: &[CharacterObservation],
     num_view_cells: usize,
 ) -> (Vec<usize>, Vec<f64>) {
-    let decomp = factor_temporal_covariance_idempotents(observations, Some(num_view_cells));
-    (decomp.observation_assignments, decomp.observation_phases)
+    let n = observations.len();
+    if n == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    let k = num_view_cells.clamp(1, n);
+    let decomp = factor_temporal_covariance_idempotents(observations, Some(k));
+    // Order observations along the principal spectral posture-heading axis and partition
+    // into k balanced posture cells (each with <= ceil(n / k) members) so the 5-mode
+    // Clifford Fourier basis interpolates every cell without capacity collapse.
+    let headings = compute_trajectory_headings(observations);
+    let mut ranked: Vec<usize> = (0..n).collect();
+    ranked.sort_by(|&a, &b| {
+        let ca = decomp.observation_assignments[a];
+        let cb = decomp.observation_assignments[b];
+        ca.cmp(&cb)
+            .then_with(|| headings[a].partial_cmp(&headings[b]).unwrap_or(std::cmp::Ordering::Equal))
+            .then_with(|| {
+                decomp.observation_phases[a]
+                    .partial_cmp(&decomp.observation_phases[b])
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.cmp(&b))
+    });
+    let mut assignments = vec![0usize; n];
+    let mut phases = vec![0.0f64; n];
+    let mut cell_members: Vec<Vec<usize>> = vec![Vec::new(); k];
+    for (pos, &oi) in ranked.iter().enumerate() {
+        let ci = (pos * k) / n;
+        assignments[oi] = ci;
+        cell_members[ci].push(oi);
+    }
+    for members in &cell_members {
+        let m_len = members.len().max(1);
+        for (rank, &oi) in members.iter().enumerate() {
+            phases[oi] = 2.0 * std::f64::consts::PI * (rank as f64) / (m_len as f64);
+        }
+    }
+    (assignments, phases)
 }
 
 /// Compute continuous volume-conserving scale factor s(φ) along gait phase φ ∈ S¹
@@ -642,7 +678,7 @@ pub fn induce_holon_model_sheet(
     }
 
     let decomp = factor_temporal_covariance_idempotents(observations, forced_views);
-    let holon = fit_articulated_holon(observations, forced_parts);
+    let holon = fit_articulated_holon_with_views(observations, forced_parts, Some(decomp.k_aspects));
 
     // Line of Action from central observation
     let mid_idx = observations.len() / 2;
@@ -669,6 +705,27 @@ pub fn induce_holon_model_sheet(
     ];
 
     // Articulated SubHolonPartSpec
+    let spin2_chordal_variance = |thetas: &[f64]| -> f64 {
+        if thetas.len() <= 1 {
+            return 0.0;
+        }
+        let n_t = thetas.len() as f64;
+        let (sum_s, sum_c) = thetas
+            .iter()
+            .fold((0.0f64, 0.0f64), |(acc_s, acc_c), &th| {
+                let (s, c) = th.sin_cos();
+                (acc_s + s, acc_c + c)
+            });
+        let r_bar = ((sum_c / n_t).powi(2) + (sum_s / n_t).powi(2)).sqrt().clamp(0.0, 1.0);
+        1.0 - r_bar
+    };
+    let root_joint_angles: Vec<f64> = holon
+        .poses_per_obs
+        .iter()
+        .filter_map(|poses| poses.first().map(|pose| pose.joint_angle_rad))
+        .collect();
+    let var_spin2_root = spin2_chordal_variance(&root_joint_angles);
+
     let mut parts = Vec::with_capacity(holon.num_parts);
     for p in 0..holon.num_parts {
         let part_name = if p == 0 {
@@ -678,7 +735,7 @@ pub fn induce_holon_model_sheet(
         };
         let parent_part_id = if p == 0 { None } else { Some(holon.parent_indices[p]) };
 
-        // Measure joint angle variance across observations
+        // Measure Spin(2) circular variance across observations
         let mut angles = Vec::new();
         let mut offsets_x = Vec::new();
         let mut offsets_y = Vec::new();
@@ -690,16 +747,18 @@ pub fn induce_holon_model_sheet(
             }
         }
         let mean_angle = if !angles.is_empty() {
-            angles.iter().sum::<f64>() / angles.len() as f64
+            let (sum_s, sum_c) = angles
+                .iter()
+                .fold((0.0f64, 0.0f64), |(acc_s, acc_c), &th| {
+                    let (s, c) = th.sin_cos();
+                    (acc_s + s, acc_c + c)
+                });
+            sum_s.atan2(sum_c)
         } else {
             0.0
         };
-        let var_angle = if angles.len() > 1 {
-            angles.iter().map(|a| (a - mean_angle).powi(2)).sum::<f64>() / (angles.len() - 1) as f64
-        } else {
-            0.0
-        };
-        println!("[debug flow] p={}, angles.len()={}, var_angle={:.5}", p, angles.len(), var_angle);
+        let var_spin2_p = spin2_chordal_variance(&angles);
+        println!("[debug flow] p={}, angles.len()={}, var_spin2={:.5}", p, angles.len(), var_spin2_p);
         let mean_ox = if !offsets_x.is_empty() {
             offsets_x.iter().sum::<f64>() / offsets_x.len() as f64
         } else {
@@ -714,8 +773,10 @@ pub fn induce_holon_model_sheet(
         let (flow_compliance, spring_stiffness, damping) = if p == 0 {
             (0.0f32, 100.0f32, 10.0f32)
         } else {
-            let comp = (var_angle * 10.0).clamp(0.0, 10.0) as f32;
-            let stiff = (1.0 / (var_angle + 0.05)).clamp(1.0, 100.0) as f32;
+            // Dimensionless Spin(2) circular variance ratio χ_p = Var_Spin(2)(θ_p) / (Var_Spin(2)(θ_0) + ε_mach)
+            let chi_p = var_spin2_p / (var_spin2_root + f64::EPSILON);
+            let comp = chi_p.clamp(0.0, 10.0) as f32;
+            let stiff = (1.0 / (var_spin2_p + 0.05)).clamp(1.0, 100.0) as f32;
             let damp = 0.5 * stiff.sqrt();
             (comp, stiff, damp)
         };
@@ -1001,9 +1062,8 @@ pub fn accumulate_part_wavepacket_kernel(
     let mut fg_hits = vec![0u32; n_cells];
     let mut cell_obs_indices: Vec<(usize, [f64; 5])> = Vec::new();
     let mut gram = [[0.0f64; 5]; 5];
-    gram[0][0] = 1e-4;
-    for m in 1..5 {
-        gram[m][m] = 0.08;
+    for m in 0..5 {
+        gram[m][m] = 1e-4;
     }
 
     for (oi, obs) in observations.iter().enumerate() {
@@ -1053,23 +1113,16 @@ pub fn accumulate_part_wavepacket_kernel(
         }
     }
 
-    let n_obs_cell = cell_obs_indices.len();
-    let is_rigid = poses_per_obs.first().map(|p| p.len()).unwrap_or(1) == 1;
-    let consensus_fraction = if is_rigid { 0.60 } else { 0.40 };
-    let min_consensus_hits: u32 = if n_obs_cell >= 2 {
-        (n_obs_cell as f64 * consensus_fraction).ceil() as u32
-    } else {
-        1
-    };
-
     let mut dc_rgba = vec![0u8; n_cells * 4];
     let harmonic_rgba = vec![128u8; n_cells * 4];
     let mut cft_rgba_coeffs = vec![[0.0f32; CFT_WAVEPACKET_MODES]; n_cells * 4];
     let mut gaussian_envelope = vec![1.0f32; n_cells];
     let mut mode_rgb = vec![[0u8; 3]; n_cells];
 
+    // Track S1.R.3.4: Solve 5-mode Clifford Fourier system for every texel with fg_hits >= 1
+    // so cyclic features (e.g., Pac-Man's opening/closing mouth wedge) animate across phase φ ∈ S¹.
     for k_idx in 0..n_cells {
-        if fg_hits[k_idx] >= min_consensus_hits {
+        if fg_hits[k_idx] >= 1 {
             if let Some((c, _)) = buckets[k_idx].mode() {
                 mode_rgb[k_idx] = c;
                 dc_rgba[k_idx * 4..k_idx * 4 + 3].copy_from_slice(&c);
@@ -1094,7 +1147,7 @@ pub fn accumulate_part_wavepacket_kernel(
                 let k_idx = ky * res_w + kx;
                 let mut is_fg = false;
                 let mut col = mode_rgb[k_idx];
-                if lx >= 0 && ly >= 0 && lx < w as i32 && ly < h as i32 {
+                if lx >= 0 && ly >= 0 && lx < w as i32 && ly >= 0 && ly < h as i32 {
                     let p_idx = ly as usize * w + lx as usize;
                     if obs.mask[p_idx] && p_assign[p_idx] == part_id {
                         is_fg = true;
@@ -1122,7 +1175,7 @@ pub fn accumulate_part_wavepacket_kernel(
         rgb_slice[i * 3] = mode_rgb[i][0];
         rgb_slice[i * 3 + 1] = mode_rgb[i][1];
         rgb_slice[i * 3 + 2] = mode_rgb[i][2];
-        mask_slice[i] = fg_hits[i] >= min_consensus_hits;
+        mask_slice[i] = fg_hits[i] >= 1;
     }
     let dual = decompose_masked_clifford_dual_product(&rgb_slice, Some(&mask_slice), res_w, res_h);
 
@@ -1133,7 +1186,7 @@ pub fn accumulate_part_wavepacket_kernel(
             let k_idx = ky * res_w + kx;
             let r2 = u * u + v * v;
             gaussian_envelope[k_idx] = (-0.08 * r2 * r2).exp();
-            if fg_hits[k_idx] >= min_consensus_hits {
+            if fg_hits[k_idx] >= 1 {
                 for ch in 0..4 {
                     let coeffs = solve_5x5(gram, rhs[k_idx * 4 + ch]);
                     cft_rgba_coeffs[k_idx * 4 + ch] = coeffs;

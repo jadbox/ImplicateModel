@@ -300,16 +300,7 @@ fn r10_5_smb3_empirical_model_sheet_and_gpu_unfold_gate() {
 
     // 5. GPU Unfoldment across continuous gameplay frames
     let ctx = RolpaGpuContext::shared();
-    let mut art_holon = fit_articulated_holon(&mario_obs, None);
-    let view_assignments: Vec<usize> = (0..mario_obs.len())
-        .map(|i| art_holon.poses_per_obs[i][0].view_idempotent_idx)
-        .collect();
-    enforce_volume_conserving_gait_deformation(
-        &mut art_holon.poses_per_obs,
-        &view_assignments,
-        art_holon.num_parts,
-        art_holon.num_view_cells,
-    );
+    let art_holon = fit_articulated_holon(&mario_obs, None);
 
     let eval_count = mario_obs.len().min(24);
     let mut total_iou = 0.0f64;
@@ -647,16 +638,7 @@ fn r10_5_raptor_empirical_model_sheet_and_gpu_unfold_gate() {
 
     // 5. GPU Unfoldment across vertical flight trajectory
     let ctx = RolpaGpuContext::shared();
-    let mut art_holon = fit_articulated_holon(&raptor_obs, Some(1));
-    let view_assignments: Vec<usize> = (0..raptor_obs.len())
-        .map(|i| art_holon.poses_per_obs[i][0].view_idempotent_idx)
-        .collect();
-    enforce_volume_conserving_gait_deformation(
-        &mut art_holon.poses_per_obs,
-        &view_assignments,
-        art_holon.num_parts,
-        art_holon.num_view_cells,
-    );
+    let art_holon = fit_articulated_holon(&raptor_obs, Some(1));
 
     let eval_count = raptor_obs.len().min(30);
     let mut total_iou = 0.0f64;
@@ -803,16 +785,7 @@ fn r10_5_nimh_empirical_model_sheet_and_gpu_unfold_gate() {
 
     // 5. GPU Unfoldment across continuous turnaround & flowing cape
     let ctx = RolpaGpuContext::shared();
-    let mut art_holon = fit_articulated_holon(&brisby_obs, Some(2));
-    let view_assignments: Vec<usize> = (0..brisby_obs.len())
-        .map(|i| art_holon.poses_per_obs[i][0].view_idempotent_idx)
-        .collect();
-    enforce_volume_conserving_gait_deformation(
-        &mut art_holon.poses_per_obs,
-        &view_assignments,
-        art_holon.num_parts,
-        art_holon.num_view_cells,
-    );
+    let art_holon = fit_articulated_holon(&brisby_obs, Some(2));
 
     // Evaluate clean turnaround observations (active gesture frames 8..16, excluding stationary holds)
     let turnaround_obs: Vec<&implicate_lifter::CharacterObservation> = brisby_obs
@@ -916,16 +889,7 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
         let mario_obs = extract_dominant_character_observations(&smb_frames, &atlas);
         let sheet = induce_holon_model_sheet("Mario", &mario_obs, None, None);
         let gpu_monad = sheet.to_gpu_monad();
-        let mut art_holon = fit_articulated_holon(&mario_obs, None);
-        let view_assignments: Vec<usize> = (0..mario_obs.len())
-            .map(|i| art_holon.poses_per_obs[i][0].view_idempotent_idx)
-            .collect();
-        enforce_volume_conserving_gait_deformation(
-            &mut art_holon.poses_per_obs,
-            &view_assignments,
-            art_holon.num_parts,
-            art_holon.num_view_cells,
-        );
+        let art_holon = fit_articulated_holon(&mario_obs, None);
 
         let max_w = mario_obs.iter().map(|o| o.width()).max().unwrap_or(32).max(32);
         let max_h = mario_obs.iter().map(|o| o.height()).max().unwrap_or(48).max(48);
@@ -1008,16 +972,7 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
         let pacman_obs = extract_dominant_character_observations(&pacman_frames, &atlas);
         let sheet = induce_holon_model_sheet("PacMan", &pacman_obs, Some(1), Some(4));
         let gpu_monad = sheet.to_gpu_monad();
-        let mut art_holon = fit_articulated_holon(&pacman_obs, Some(1));
-        let view_assignments: Vec<usize> = (0..pacman_obs.len())
-            .map(|i| art_holon.poses_per_obs[i][0].view_idempotent_idx)
-            .collect();
-        enforce_volume_conserving_gait_deformation(
-            &mut art_holon.poses_per_obs,
-            &view_assignments,
-            art_holon.num_parts,
-            art_holon.num_view_cells,
-        );
+        let art_holon = fit_articulated_holon(&pacman_obs, Some(1));
 
         let max_w = pacman_obs.iter().map(|o| o.width()).max().unwrap_or(24).max(24);
         let max_h = pacman_obs.iter().map(|o| o.height()).max().unwrap_or(24).max(24);
@@ -1102,16 +1057,7 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
             raptor_obs.len(), raptor_obs.first().map(|o| o.bbox), raptor_obs.get(10).map(|o| o.bbox));
         let sheet = induce_holon_model_sheet("Raptor_Jet", &raptor_obs, Some(1), None);
         let gpu_monad = sheet.to_gpu_monad();
-        let mut art_holon = fit_articulated_holon(&raptor_obs, Some(1));
-        let view_assignments: Vec<usize> = (0..raptor_obs.len())
-            .map(|i| art_holon.poses_per_obs[i][0].view_idempotent_idx)
-            .collect();
-        enforce_volume_conserving_gait_deformation(
-            &mut art_holon.poses_per_obs,
-            &view_assignments,
-            art_holon.num_parts,
-            art_holon.num_view_cells,
-        );
+        let art_holon = fit_articulated_holon(&raptor_obs, Some(1));
 
         let max_w = raptor_obs.iter().map(|o| o.width()).max().unwrap_or(48).max(48);
         let max_h = raptor_obs.iter().map(|o| o.height()).max().unwrap_or(48).max(48);
@@ -1197,16 +1143,7 @@ fn r10_5_generative_video_export_and_user_validation_gate() {
         let brisby_obs: Vec<_> = brisby_track.iter().filter(|o| !o.truncated).cloned().collect();
         let sheet = induce_holon_model_sheet("Mrs_Brisby", &brisby_obs, Some(2), None);
         let gpu_monad = sheet.to_gpu_monad();
-        let mut art_holon = fit_articulated_holon(&brisby_obs, Some(2));
-        let view_assignments: Vec<usize> = (0..brisby_obs.len())
-            .map(|i| art_holon.poses_per_obs[i][0].view_idempotent_idx)
-            .collect();
-        enforce_volume_conserving_gait_deformation(
-            &mut art_holon.poses_per_obs,
-            &view_assignments,
-            art_holon.num_parts,
-            art_holon.num_view_cells,
-        );
+        let art_holon = fit_articulated_holon(&brisby_obs, Some(2));
 
         let max_w = brisby_obs.iter().map(|o| o.width()).max().unwrap_or(80).max(80);
         let max_h = brisby_obs.iter().map(|o| o.height()).max().unwrap_or(90).max(90);

@@ -10,7 +10,7 @@
 
 1. **Enfoldment (`Video -> Implicate Order`):**
    - **Stage 0–2 (`implicate-lifter`):** Streaming Dirac-Spinor Clifford Fourier Transform (CFT) shot segmentation, camera regime classification (`Ortho2D-Static`, `Ortho2D-Scroll`, `MultiPlane-2.5D`, `Perspective-3D`), depth-stratified background panorama reconstruction, camera-locked HUD holon extraction (`camera_locked_hud`), and articulated $P$-part ($P \in \{1..8\}$) sub-holon wavepacket decomposition.
-   - **Stage 3 (`implicate-lexicon`):** Offline semantic harvesting via `llama.cpp` (`Qwen2.5-VL-7B-Instruct` @ `Q4_K_M`) constrained by `IMPLICATE_LEXICON_GBNF`. Grounds verbs, physical entities, HUD interfaces, Affective Emotions, and Jungian Archetypes into 16-channel $(\mathbb{G}_{2,0}^+)^{16}$ wording-space spinors (`Spinor16`) and canonical relative PGA Bohm-Hiley verb potentials ($\mathcal{Q}_{\text{Cl},v}$).
+   - **Stage 3 (`implicate-lexicon`):** Offline semantic harvesting via `llama.cpp` (`Qwen3-VL-8B-Instruct` @ `Q4_K_M`) constrained by `IMPLICATE_LEXICON_GBNF`. Grounds verbs, physical entities, HUD interfaces, Affective Emotions, and Jungian Archetypes into 16-channel $(\mathbb{G}_{2,0}^+)^{16}$ wording-space spinors (`Spinor16`) and canonical relative PGA Bohm-Hiley verb potentials ($\mathcal{Q}_{\text{Cl},v}$).
 
 2. **Unfoldment (`Prompt + Lexicon -> Real-Time Video & 48 kHz Audio`):**
    - **Stratum 2 (`GATr` Relational Binder):** A 6-block $\text{Pin}(3,0,1)$-equivariant Geometric Algebra Transformer binds prompted subjects, targets, and verbs into $E(3)$-invariant relative trajectories and $\mathcal{Q}_{\text{Cl}}$ guidance forces.
@@ -151,8 +151,8 @@ let (wav_path, mp4_path) = report.export_wav_and_mp4(Path::new("/tmp/opencode/ou
 - **Tier-2 (Full-Length Multi-Plane Feature Animation):**
   - *The Secret of NIMH* (`1920x1040`, `23.976 fps`): `/mnt/storage/DDownloads/The Secret Of NIMH (1982) [BluRay] [1080p] [YTS.AM]/The.Secret.Of.NIMH.1982.1080p.BluRay.x264-[YTS.AM].mp4`
 - **Local VLM Weights (`llama.cpp`):** [^review-tool]
-  - `/mnt/storage/models/llama.cpp/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf`
-  - `/mnt/storage/models/llama.cpp/mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf`
+  - `/mnt/storage/models/llama.cpp/Qwen3VL-8B-Instruct-Q4_K_M.gguf`
+  - `/mnt/storage/models/llama.cpp/mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf`
 
 ---
 

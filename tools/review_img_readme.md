@@ -1,6 +1,6 @@
 # `review_img.sh` — Visual QA & Defect Inspection CLI
 
-Automated visual review CLI powered by local `llama.cpp` server and the Qwen 3 VL (Q4 KM quants) vision-language model.
+Automated visual review CLI powered by local `llama.cpp` server with **Qwen 3 VL (Q4 KM quants)** as the default vision-language model.
 
 ---
 
@@ -44,8 +44,8 @@ Automated visual review CLI powered by local `llama.cpp` server and the Qwen 3 V
 | `LLAMA_SERVER_URL` | `http://127.0.0.1:8935` | Target llama.cpp server URL |
 | `LLAMA_PORT` | `8935` | Server port |
 | `LLAMA_PARALLEL` | `4` | Concurrent request slots |
-| `LLAMA_MODEL_PATH` | `/mnt/storage/models/llama.cpp/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf` | GGUF model path |
-| `LLAMA_MMPROJ_PATH` | `/mnt/storage/models/llama.cpp/mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf` | Multimodal projector path |
+| `LLAMA_MODEL_PATH` | `/mnt/storage/models/llama.cpp/Qwen3VL-8B-Instruct-Q4_K_M.gguf` | GGUF model path (Qwen 3 VL Q4_K_M) |
+| `LLAMA_MMPROJ_PATH` | `/mnt/storage/models/llama.cpp/mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf` | Multimodal projector path (Qwen 3 VL Q8_0) |
 | `LLAMA_KEEP_ALIVE` | `0` | Set to `1` to prevent automatic teardown after requests finish |
 
 

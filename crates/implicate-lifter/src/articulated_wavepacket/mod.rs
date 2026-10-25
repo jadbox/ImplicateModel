@@ -678,6 +678,15 @@ pub fn fit_articulated_holon(
     observations: &[CharacterObservation],
     forced_parts: Option<usize>,
 ) -> ArticulatedHolon {
+    fit_articulated_holon_with_views(observations, forced_parts, None)
+}
+
+/// Fit an `ArticulatedHolon` to a tracked character sequence with optional forced view count.
+pub fn fit_articulated_holon_with_views(
+    observations: &[CharacterObservation],
+    forced_parts: Option<usize>,
+    forced_views: Option<usize>,
+) -> ArticulatedHolon {
     // Truncated observations and silhouette-area outliers relative to the holon's own variability
     // (merges with other holons, residual debris) keep their kinematics but shape neither
     // morphology nor appearance.
@@ -731,7 +740,9 @@ pub fn fit_articulated_holon(
     let parent_indices = vec![0usize; num_parts];
     // Posture idempotents are learned from the observations that shape appearance (clean ones);
     // each unclean observation inherits the cell and phase of its temporally nearest clean one.
-    let num_view_cells = view_count_for(defining_obs.len(), num_parts);
+    let num_view_cells = forced_views
+        .map(|v| v.clamp(1, defining_obs.len().max(1)))
+        .unwrap_or_else(|| view_count_for(defining_obs.len(), num_parts));
     let (cells, phases) = assign_view_idempotent_cells_and_cft_phases(&defining_obs, num_view_cells);
     let mut view_assignments = vec![0usize; observations.len()];
     let mut cft_phases = vec![0.0f64; observations.len()];
@@ -839,8 +850,16 @@ pub fn fit_articulated_holon(
         part_assignments_per_obs.push(pixel_part);
     }
 
-    // Rigid holons use a pixel-native kernel frame (1 texel = 1 source pixel) with half-extents
-    // shared by all observations, registered per view cell; articulated parts use a canonical grid.
+    // Strict volume conservation det S = 1 on continuous gait deformations along phase φ ∈ S¹
+    if num_parts > 1 {
+        enforce_volume_conserving_gait_deformation(
+            &mut poses_per_obs,
+            &view_assignments,
+            num_parts,
+            num_view_cells,
+        );
+    }
+
     // Every kernel is pixel-native (1 texel per source pixel at the part's largest observed extent),
     // so neither rigid holons nor articulated parts are resampled through a fixed canonical grid.
     let part_res: Vec<(usize, usize)> = if num_parts == 1 {
@@ -864,16 +883,6 @@ pub fn fit_articulated_holon(
             })
             .collect()
     };
-
-    // Strict volume conservation det S = 1 on continuous gait deformations along phase φ ∈ S¹
-    if num_parts > 1 {
-        enforce_volume_conserving_gait_deformation(
-            &mut poses_per_obs,
-            &view_assignments,
-            num_parts,
-            num_view_cells,
-        );
-    }
 
     let mut kernels: Vec<Vec<WavepacketPartKernel>> = Vec::with_capacity(num_view_cells);
     for vc in 0..num_view_cells {
@@ -910,8 +919,8 @@ pub fn fit_articulated_holon(
     }
 }
 
-/// Robust outlier bound in median absolute deviations (the conventional 2-sigma / 95% confidence bound).
-const OUTLIER_MADS: f64 = 2.0;
+/// Robust outlier bound in median absolute deviations (3.0-sigma statistical lattice bound).
+const OUTLIER_MADS: f64 = 3.0;
 /// Scale factor making the MAD a consistent estimator of the standard deviation.
 const MAD_TO_SIGMA: f64 = 1.4826;
 
@@ -1568,7 +1577,7 @@ pub fn dominant_silhouette_with_core(mask: &[bool], w: usize, h: usize) -> (Vec<
 /// erases 1D filaments, Line-of-Action envelope keeps primary mass and genuine limbs/props,
 /// and geodesic reconstruction restores full boundaries.
 pub fn dominant_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
-    envelope_silhouette(mask, w, h)
+    dominant_silhouette_with_core(mask, w, h).0
 }
 
 /// Keep the largest 8-connected component of `mask` plus any component that falls
@@ -1727,9 +1736,115 @@ fn envelope_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
         .collect()
 }
 
+/// Compute the Hiley CDE and opponent chromatic spinor (in $\mathbb{G}_{2,0}^+$) for foreground
+/// residual pixels inside `b` orthogonal to the local $3 \times 3$ `recon_bg` vacuum subspace.
+fn box_cde_spinor(
+    b: &crate::enfold2d::Rect,
+    frame: &crate::video_io::RawFrame,
+    recon_bg: &crate::enfold2d::RgbImage8,
+    tau_i: i32,
+) -> (implicate_math::CliffordDensityElement, [f64; 2]) {
+    let fw = frame.width as i32;
+    let fh = frame.height as i32;
+    let x0 = b.x0.clamp(0, fw - 1);
+    let y0 = b.y0.clamp(0, fh - 1);
+    let x1 = b.x1.clamp(x0, fw - 1);
+    let y1 = b.y1.clamp(y0, fh - 1);
+    let mut sum = [0.0f64; 3];
+    let mut cnt = 0usize;
+    for fy in y0..=y1 {
+        for fx in x0..=x1 {
+            let c = frame.pixel(fx as u32, fy as u32);
+            let mut best_d = i32::MAX;
+            for dy_bg in -1..=1 {
+                let by = (fy + dy_bg).clamp(0, fh - 1) as usize;
+                for dx_bg in -1..=1 {
+                    let bx = (fx + dx_bg).clamp(0, fw - 1) as usize;
+                    let bg = recon_bg.pixel(bx, by);
+                    let d = (c[0] as i32 - bg[0] as i32)
+                        .abs()
+                        .max((c[1] as i32 - bg[1] as i32).abs())
+                        .max((c[2] as i32 - bg[2] as i32).abs());
+                    if d < best_d {
+                        best_d = d;
+                    }
+                }
+            }
+            if best_d > tau_i {
+                sum[0] += c[0] as f64;
+                sum[1] += c[1] as f64;
+                sum[2] += c[2] as f64;
+                cnt += 1;
+            }
+        }
+    }
+    let fc = cnt.max(1) as f64;
+    let rgb_u8 = [
+        (sum[0] / fc).round().clamp(0.0, 255.0) as u8,
+        (sum[1] / fc).round().clamp(0.0, 255.0) as u8,
+        (sum[2] / fc).round().clamp(0.0, 255.0) as u8,
+    ];
+    let cde = implicate_math::CliffordDensityElement::new(fc.sqrt(), 0.0, 0, 2, rgb_u8);
+    let r_n = rgb_u8[0] as f64 / 255.0;
+    let g_n = rgb_u8[1] as f64 / 255.0;
+    let b_n = rgb_u8[2] as f64 / 255.0;
+    (cde, [r_n - g_n, 0.5 * (r_n + g_n) - b_n])
+}
+
+/// Merge overlapping actor bounding boxes only when their core (un-dilated) footprints intersect
+/// and their Hiley CDE spinor signatures exhibit positive algebraic coherence $\langle \psi_i \widetilde{\psi}_j \rangle_0 > 0$.
+pub fn merge_overlapping_boxes_cde(
+    boxes: &[crate::enfold2d::Rect],
+    frame: &crate::video_io::RawFrame,
+    recon_bg: &crate::enfold2d::RgbImage8,
+    tau_i: i32,
+) -> Vec<crate::enfold2d::Rect> {
+    let mut merged: Vec<crate::enfold2d::Rect> = Vec::new();
+    for &b in boxes {
+        let mut curr = b;
+        let mut i = 0;
+        while i < merged.len() {
+            let m = merged[i];
+            let ix0 = curr.x0.max(m.x0);
+            let iy0 = curr.y0.max(m.y0);
+            let ix1 = curr.x1.min(m.x1);
+            let iy1 = curr.y1.min(m.y1);
+            if ix1 >= ix0 && iy1 >= iy0 {
+                let inter_area = ((ix1 - ix0 + 1) * (iy1 - iy0 + 1)) as f64;
+                let min_area = ((curr.width() * curr.height()).min(m.width() * m.height())) as f64;
+                if min_area > 0.0 && inter_area / min_area >= 0.15 {
+                    let (cde_a, sp_a) = box_cde_spinor(&curr, frame, recon_bg, tau_i);
+                    let (cde_b, sp_b) = box_cde_spinor(&m, frame, recon_bg, tau_i);
+                    let cde_coh = cde_a.signature_coherence(&cde_b);
+                    let norm_a = (sp_a[0] * sp_a[0] + sp_a[1] * sp_a[1]).sqrt();
+                    let norm_b = (sp_b[0] * sp_b[0] + sp_b[1] * sp_b[1]).sqrt();
+                    let spinor_coherent = if norm_a > 0.08 && norm_b > 0.08 {
+                        let cos_sp = (sp_a[0] * sp_b[0] + sp_a[1] * sp_b[1]) / (norm_a * norm_b + f64::EPSILON);
+                        cos_sp > 0.5 && cde_coh >= 0.65
+                    } else {
+                        cde_coh >= 0.65
+                    };
+                    if spinor_coherent {
+                        curr = crate::enfold2d::Rect::new(
+                            curr.x0.min(m.x0),
+                            curr.y0.min(m.y0),
+                            curr.x1.max(m.x1),
+                            curr.y1.max(m.y1),
+                        );
+                        merged.remove(i);
+                        continue;
+                    }
+                }
+            }
+            i += 1;
+        }
+        merged.push(curr);
+    }
+    merged
+}
+
 /// Merge significantly intersecting actor bounding boxes belonging to the same fractured entity
-/// within a frame (e.g. Mario's body and boots, or Mrs. Brisby's head and torso), while
-/// keeping distinct detached objects (e.g. distant strings, sparks) in separate boxes.
+/// within a frame.
 pub fn merge_overlapping_boxes(boxes: &[crate::enfold2d::Rect]) -> Vec<crate::enfold2d::Rect> {
     let mut merged: Vec<crate::enfold2d::Rect> = Vec::new();
     for &b in boxes {
@@ -1854,29 +1969,46 @@ pub fn extract_character_observation_tracks(
         let Some(boxes) = atlas.actor_boxes_per_frame.get(fi) else {
             continue;
         };
-        let candidate_boxes = merge_overlapping_boxes(boxes);
         let recon_bg = atlas.reconstruct_background_frame(fi);
+        let candidate_boxes = merge_overlapping_boxes_cde(boxes, frame, &recon_bg, tau_i);
         let mut frame_cands: Vec<TrackCand> = Vec::new();
 
+        let (fw, fh) = (frame.width as i32, frame.height as i32);
         for &bbox in &candidate_boxes {
-            let x0 = bbox.x0.clamp(0, frame.width as i32 - 1);
-            let y0 = bbox.y0.clamp(0, frame.height as i32 - 1);
-            let x1 = bbox.x1.clamp(x0, frame.width as i32 - 1);
-            let y1 = bbox.y1.clamp(y0, frame.height as i32 - 1);
+            let x0 = bbox.x0.clamp(0, fw - 1);
+            let y0 = bbox.y0.clamp(0, fh - 1);
+            let x1 = bbox.x1.clamp(x0, fw - 1);
+            let y1 = bbox.y1.clamp(y0, fh - 1);
 
-            // Residual mask inside the (dilated) actor box, reduced to the dominant silhouette.
+            // Local 3x3 Vacuum Idempotent Annihilation (Track S1.R.3.2):
+            // Project pixel spinor orthogonal to the local 3x3 recon_bg subspace to eliminate
+            // 4:2:0 chroma wall bleed without heuristic tau multipliers.
             let (bw0, bh0) = ((x1 - x0 + 1) as usize, (y1 - y0 + 1) as usize);
             let mut residual = vec![false; bw0 * bh0];
             for fy in y0..=y1 {
                 for fx in x0..=x1 {
                     let c = frame.pixel(fx as u32, fy as u32);
-                    let bg = recon_bg.pixel(fx as usize, fy as usize);
-                    let d = (0..3).map(|k| (c[k] as i32 - bg[k] as i32).abs()).max().unwrap_or(0);
+                    let mut best_d = i32::MAX;
+                    for dy_bg in -1..=1 {
+                        let by = (fy + dy_bg).clamp(0, fh - 1) as usize;
+                        for dx_bg in -1..=1 {
+                            let bx = (fx + dx_bg).clamp(0, fw - 1) as usize;
+                            let bg = recon_bg.pixel(bx, by);
+                            let d = (c[0] as i32 - bg[0] as i32)
+                                .abs()
+                                .max((c[1] as i32 - bg[1] as i32).abs())
+                                .max((c[2] as i32 - bg[2] as i32).abs());
+                            if d < best_d {
+                                best_d = d;
+                            }
+                        }
+                    }
                     let locked = screen_static
                         .as_ref()
                         .is_some_and(|m| m[fy as usize * frame.width as usize + fx as usize]);
-                    let is_vac = is_vacuum_plenum_color(c, &vacuum_modes, tau * 1.5);
-                    residual[(fy - y0) as usize * bw0 + (fx - x0) as usize] = d > tau_i && !locked && !is_vac;
+                    let is_vac = is_vacuum_plenum_color(c, &vacuum_modes, tau);
+                    residual[(fy - y0) as usize * bw0 + (fx - x0) as usize] =
+                        best_d > tau_i && !locked && !is_vac;
                 }
             }
             if std::env::var_os("IMPLICATE_DEBUG_SIL").is_some() {
@@ -2064,11 +2196,11 @@ pub fn extract_dominant_character_observations(
         .unwrap_or_default()
 }
 
-/// Compute the universal Holon Salience Metric for a candidate track:
-/// Ranks candidate tracks by dimensionless permanence, fill compactness \rho_{fill},
-/// Plücker line invariance (1 - |d · m| / (||d|| ||m||)), kinematic agency, and mass stability.
-///
-/// Salience S = \Pi_{perm} * \rho_{fill} * \mathcal{I}_{Plücker} * \mathcal{A}_{kin} * \mathcal{S}_{mass}
+/// Compute the universal Holon Salience Metric for a candidate track (Track S1.R.3.1):
+/// Ranks candidate tracks by dimensionless permanence, fill compactness $\rho_{\text{fill}}$,
+/// Plücker line invariance $(1 - |\mathbf{d} \cdot \mathbf{m}| / (\|\mathbf{d}\| \|\mathbf{m}\|))$,
+/// Vacuum Spinor Divergence $\langle \widetilde{\psi}_{\text{obs}}(1 - P_{\text{vac}})\psi_{\text{obs}}\rangle_0$,
+/// Causal Trajectory Agency $\mathcal{A}_{\text{kin}}$, and volume-conserving mass stability $\mathcal{S}_{\text{mass}}$.
 pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
     if track.is_empty() {
         return 0.0;
@@ -2077,7 +2209,7 @@ pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
     let mut total_mass = 0.0f64;
     let mut total_density = 0.0f64;
     let mut total_plucker = 0.0f64;
-    let mut total_chroma = 0.0f64;
+    let mut total_vac_div = 0.0f64;
     let mut masses = Vec::with_capacity(track.len());
 
     for obs in track {
@@ -2100,80 +2232,106 @@ pub fn compute_holon_salience_score(track: &[CharacterObservation]) -> f64 {
         };
         total_plucker += plucker_factor;
 
-        let circularity = if let Some(loa) = obs.line_of_action() {
-            let r = loa.spread_perpendicular / loa.spread_parallel.max(1e-3);
-            r.min(1.0 / r.max(1e-3))
-        } else {
-            0.8
-        };
-
-        let mut sum_r = 0.0f64;
-        let mut sum_g = 0.0f64;
-        let mut sum_b = 0.0f64;
-        let mut cnt = 0.0f64;
+        // Universal Vacuum Spinor Divergence <ψ̃_obs (1 - P_vac) ψ_obs>_0:
+        let mut fg_rgb = [0.0f64; 3];
+        let mut fg_cnt = 0.0f64;
+        let mut vac_rgb = [0.0f64; 3];
+        let mut vac_cnt = 0.0f64;
         for (i, &m) in obs.mask.iter().enumerate() {
+            let r = obs.rgb[i * 3] as f64 / 255.0;
+            let g = obs.rgb[i * 3 + 1] as f64 / 255.0;
+            let b = obs.rgb[i * 3 + 2] as f64 / 255.0;
             if m {
-                sum_r += obs.rgb[i * 3] as f64;
-                sum_g += obs.rgb[i * 3 + 1] as f64;
-                sum_b += obs.rgb[i * 3 + 2] as f64;
-                cnt += 1.0;
+                fg_rgb[0] += r;
+                fg_rgb[1] += g;
+                fg_rgb[2] += b;
+                fg_cnt += 1.0;
+            } else {
+                vac_rgb[0] += r;
+                vac_rgb[1] += g;
+                vac_rgb[2] += b;
+                vac_cnt += 1.0;
             }
         }
-        let (mr, mg, mb) = if cnt > 0.0 {
-            (sum_r / cnt, sum_g / cnt, sum_b / cnt)
+        let u_fg = if fg_cnt > 0.0 {
+            [fg_rgb[0] / fg_cnt, fg_rgb[1] / fg_cnt, fg_rgb[2] / fg_cnt]
         } else {
-            (0.0, 0.0, 0.0)
+            [0.0; 3]
         };
-        let mean_luma = (mr + mg + mb) / 3.0;
-        let chroma = ((mr - mean_luma).powi(2) + (mg - mean_luma).powi(2) + (mb - mean_luma).powi(2)).sqrt();
-        // Yellow primary player energy: min(R, G) - B in RGB space
-        let yellow_energy = ((mr.min(mg) - mb).max(0.0) / 255.0).clamp(0.0, 1.0);
-        total_chroma += chroma * (1.0 + 2.0 * yellow_energy);
-        total_plucker += plucker_factor * circularity;
+        let u_vac = if vac_cnt > 0.0 {
+            [vac_rgb[0] / vac_cnt, vac_rgb[1] / vac_cnt, vac_rgb[2] / vac_cnt]
+        } else {
+            [0.0; 3]
+        };
+        let vac_norm = (u_vac[0] * u_vac[0] + u_vac[1] * u_vac[1] + u_vac[2] * u_vac[2]).sqrt();
+        let u_perp_vac = if vac_norm > 1e-3 {
+            let v_hat = [u_vac[0] / vac_norm, u_vac[1] / vac_norm, u_vac[2] / vac_norm];
+            let proj = (u_fg[0] * v_hat[0] + u_fg[1] * v_hat[1] + u_fg[2] * v_hat[2]).max(0.0);
+            [
+                u_fg[0] - proj * v_hat[0],
+                u_fg[1] - proj * v_hat[1],
+                u_fg[2] - proj * v_hat[2],
+            ]
+        } else {
+            u_fg
+        };
+        let div_vac_sq = u_perp_vac[0].powi(2) + u_perp_vac[1].powi(2) + u_perp_vac[2].powi(2);
+        let mean_luma = (u_fg[0] + u_fg[1] + u_fg[2]) / 3.0;
+        let div_gray_sq = (u_fg[0] - mean_luma).powi(2)
+            + (u_fg[1] - mean_luma).powi(2)
+            + (u_fg[2] - mean_luma).powi(2);
+        total_vac_div += (div_vac_sq + div_gray_sq).sqrt();
     }
 
     let mean_density = total_density / n;
     let mean_plucker = total_plucker / n;
     let mean_mass = total_mass / n;
-    let mean_chroma = total_chroma / n;
+    let mean_vac_div = total_vac_div / n;
 
     // Mass stability: volume conservation / rigidity det S ≈ 1 across time
     let mass_variance: f64 = masses.iter().map(|&m| (m - mean_mass).powi(2)).sum::<f64>() / n;
     let mass_cv = mass_variance.sqrt() / (mean_mass + 1e-6);
-    let mass_stability = 1.0 / (1.0 + mass_cv);
+    let mass_stability = 1.0 / ((1.0 + mass_cv).powi(2));
 
-    // Kinematic agency: purposeful trajectory across frames (active movement + turning variance)
+    // Causal Trajectory Agency: volume-conserving active movement and turning curvature across the world manifold
     let mut path_len = 0.0f64;
     let mut turn_variance = 0.0f64;
     for i in 1..track.len() {
         let c0 = track[i - 1].world_center();
         let c1 = track[i].world_center();
-        let dx = c1[0] - c0[0];
-        let dy = c1[1] - c0[1];
+        let dt = (track[i].frame_idx.saturating_sub(track[i - 1].frame_idx)).max(1) as f64;
+        let dx = (c1[0] - c0[0]) / dt;
+        let dy = (c1[1] - c0[1]) / dt;
         let step = (dx * dx + dy * dy).sqrt();
-        path_len += step;
+        // Weight step by instantaneous volume conservation exp(-2 |ln(M_i / M_{i-1})|)
+        // so unphysical bounding-box merge jumps do not masquerade as causal locomotion.
+        let m0 = masses[i - 1].max(1.0);
+        let m1 = masses[i].max(1.0);
+        let w_vol = (-2.0 * (m1 / m0).ln().abs()).exp();
+        path_len += step * w_vol;
         if i >= 2 {
             let c_prev = track[i - 2].world_center();
-            let dx0 = c0[0] - c_prev[0];
-            let dy0 = c0[1] - c_prev[1];
+            let dt0 = (track[i - 1].frame_idx.saturating_sub(track[i - 2].frame_idx)).max(1) as f64;
+            let dx0 = (c0[0] - c_prev[0]) / dt0;
+            let dy0 = (c0[1] - c_prev[1]) / dt0;
             let dot = dx0 * dx + dy0 * dy;
             let norm0 = (dx0 * dx0 + dy0 * dy0).sqrt();
             if norm0 > 0.5 && step > 0.5 {
                 let cos_turn = (dot / (norm0 * step)).clamp(-1.0, 1.0);
-                turn_variance += 1.0 - cos_turn;
+                turn_variance += w_vol * (1.0 - cos_turn);
             }
         }
     }
     let mean_speed = path_len / (n - 1.0).max(1.0);
     let mean_turn = turn_variance / (n - 2.0).max(1.0);
     let kinematic_agency = 1.0 + mean_speed + 2.0 * mean_turn;
-    let chromatic_salience = 1.0 + mean_chroma / 64.0;
+    let vacuum_spinor_salience = 1.0 + mean_vac_div;
 
-    // Dimensionless permanence (n^2) * Weber-Fechner logarithmic mass * fill compactness * Plücker consistency * kinematic agency * chromatic salience * mass stability
+    // Dimensionless permanence (n^2) * Weber-Fechner logarithmic mass * fill compactness * Plücker consistency * causal agency * vacuum spinor divergence * mass stability
     let mass_factor = (1.0 + mean_mass).ln();
-    let score = n * n * mass_factor * mean_density * mean_plucker * kinematic_agency * chromatic_salience * mass_stability;
-    println!("[score break] b0={:?}: score={:.2}, n={:.0}, mass={:.0}, dens={:.3}, pluck={:.3}, agency={:.3}, chroma={:.3}, stab={:.3}",
-        track.first().map(|o| o.bbox), score, n, mean_mass, mean_density, mean_plucker, kinematic_agency, chromatic_salience, mass_stability);
+    let score = n * n * mass_factor * mean_density * mean_plucker * kinematic_agency * vacuum_spinor_salience * mass_stability;
+    println!("[score break] b0={:?}: score={:.2}, n={:.0}, mass={:.0}, dens={:.3}, pluck={:.3}, agency={:.3}, vac_div={:.3}, stab={:.3}",
+        track.first().map(|o| o.bbox), score, n, mean_mass, mean_density, mean_plucker, kinematic_agency, vacuum_spinor_salience, mass_stability);
     score
 }
 

@@ -1,7 +1,7 @@
 # ImplicateModel — Research & Experiment Tasks
 
 > **Status:** Track S1 & S2 — Spatiotemporal Plenum Character Restoration Plan Active (Visual Verification Phase).
-> **Note (Visual QA Tooling):** Automated visual trait analysis and glitch bounding box auditing CLI is implemented at `./tools/review_img.sh <IMAGE_FILE>` (see `./tools/review_img_example.sh` for an executable sample run using local `llama-server` + Qwen 3 VL (Q4 KM quants)).
+> **Note (Visual QA Tooling):** Automated visual trait analysis and glitch bounding box auditing CLI is implemented at `./tools/review_img.sh <IMAGE_FILE>` (see `./tools/review_img_example.sh` for an executable sample run using local `llama-server` + Qwen 3 VL (Q4 KM quants)). Can run 4 calls in parallel.
 
 **Goal:** Build the Implicate Video Engine (`ImplicateModel`)—an engine that enfolds arbitrary video inputs (from 2D arcade gameplay to hand-drawn feature animation) into a unified Clifford spacetime field, and enables:
 1. **Mode A (Generative Storybook):** Remixing animated films and game worlds into novel narrative sequences from natural-language prompts.

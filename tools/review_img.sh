@@ -14,8 +14,8 @@ PARALLEL_SLOTS="${LLAMA_PARALLEL:-4}"
 REQUEST_TIMEOUT="${LLAMA_TIMEOUT:-60}"
 STARTUP_TIMEOUT="${LLAMA_STARTUP_TIMEOUT:-45}"
 
-DEFAULT_MODEL="/mnt/storage/models/llama.cpp/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
-DEFAULT_MMPROJ="/mnt/storage/models/llama.cpp/mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf"
+DEFAULT_MODEL="/mnt/storage/models/llama.cpp/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+DEFAULT_MMPROJ="/mnt/storage/models/llama.cpp/mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf"
 MODEL_PATH="${LLAMA_MODEL_PATH:-$DEFAULT_MODEL}"
 MMPROJ_PATH="${LLAMA_MMPROJ_PATH:-$DEFAULT_MMPROJ}"
 
