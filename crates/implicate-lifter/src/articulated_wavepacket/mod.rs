@@ -1803,11 +1803,11 @@ fn envelope_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
             false
         };
 
-        // Retain genuine 2-blade components (comp_sz >= 4) within the CFT harmonic reach M
-        // along the Line of Action envelope, rejecting distant detached specks and strings.
+        // Retain genuine 2-blade components (comp_sz >= 4) within the kinematic reach of the body
+        // along the Line of Action corridor, rejecting distant detached specks and background clutter.
         let is_2blade_area = comp_sz >= 4;
-        let in_envelope =
-            (in_distance_envelope || in_corridor) && min_dist_to_primary <= CFT_WAVEPACKET_MODES as f64;
+        let max_reach = (p_extent * 0.5).max(CFT_WAVEPACKET_MODES as f64);
+        let in_envelope = (in_distance_envelope || in_corridor) && min_dist_to_primary <= max_reach;
         if is_2blade_area && in_envelope {
             keep[id] = true;
         }
@@ -2505,8 +2505,8 @@ pub fn enforce_track_comoving_soliton_coherency(
             }
         }
 
-        // Bridge 1-2px contour gaps between primary body and surviving chromatically coherent limbs
-        // (e.g. Mario's brown boots separated by a 2px black overall/background contour line).
+        // Bridge vertical gaps along the Line of Action between primary body and supported limbs
+        // (e.g. Mario's brown boots separated from torso by black overalls on dark stage).
         let post_prim = primary_connected_component(&new_mask, w, h);
         let limb_mask: Vec<bool> = new_mask
             .iter()
@@ -2514,12 +2514,29 @@ pub fn enforce_track_comoving_soliton_coherency(
             .map(|(&m, &p)| m && !p)
             .collect();
         if limb_mask.iter().any(|&v| v) {
-            let dil_prim = morphology::dilate(&post_prim, w, h, 2);
-            let dil_limb = morphology::dilate(&limb_mask, w, h, 2);
-            for i in 0..w * h {
-                if dil_prim[i] && dil_limb[i] && !new_mask[i] {
-                    new_mask[i] = true;
-                    changed = true;
+            let max_gap = (h / 3).max(4);
+            for x in 0..w {
+                let mut torso_bottom = None;
+                for y in (0..h).rev() {
+                    if post_prim[y * w + x] {
+                        torso_bottom = Some(y);
+                        break;
+                    }
+                }
+                let mut limb_top = None;
+                for y in 0..h {
+                    if limb_mask[y * w + x] {
+                        limb_top = Some(y);
+                        break;
+                    }
+                }
+                if let (Some(yb), Some(yt)) = (torso_bottom, limb_top) {
+                    if yt > yb && yt - yb <= max_gap {
+                        for y in yb..=yt {
+                            new_mask[y * w + x] = true;
+                            changed = true;
+                        }
+                    }
                 }
             }
         }

@@ -35,25 +35,17 @@ fn print_obs_ascii(label: &str, obs: &implicate_lifter::CharacterObservation) {
 
 fn main() {
     let smb_path = Path::new(SMB3_PATH);
-    let w1_frames = video_io::read_frames(smb_path, Some(22.0), Some(2.5)).unwrap();
-    let w1_atlas = build_multiplane_atlas(&w1_frames, &MultiPlaneOptions::default());
-
-    // Let's inspect all tracks extracted from t = 22.0..24.5s
-    let tracks = implicate_lifter::extract_character_observation_tracks(&w1_frames, &w1_atlas, 12);
-    for (ti, tr) in tracks.iter().enumerate() {
-        let f0 = tr.first().unwrap();
-        let fl = tr.last().unwrap();
-        let w0 = f0.world_center();
-        let wl = fl.world_center();
-        // Measure vertical bounce (min wy vs max wy) and horizontal drift
-        let min_wy = tr.iter().map(|o| o.bbox.y0 as f64 + o.camera_offset[1]).fold(f64::INFINITY, f64::min);
-        let max_wy = tr.iter().map(|o| o.bbox.y0 as f64 + o.camera_offset[1]).fold(f64::NEG_INFINITY, f64::max);
-        let min_wx = tr.iter().map(|o| o.bbox.x0 as f64 + o.camera_offset[0]).fold(f64::INFINITY, f64::min);
-        let max_wx = tr.iter().map(|o| o.bbox.x0 as f64 + o.camera_offset[0]).fold(f64::NEG_INFINITY, f64::max);
+    let frames = video_io::read_frames(smb_path, Some(1.0), Some(1.5)).unwrap();
+    let atlas = build_multiplane_atlas(&frames, &MultiPlaneOptions::default());
+    let mario_obs = implicate_lifter::extract_dominant_character_observations(&frames, &atlas);
+    println!("Total mario obs: {}", mario_obs.len());
+    for (i, obs) in mario_obs.iter().take(5).enumerate() {
         println!(
-            "Track {:02}: len={:02}, fi={:02}..{:02}, b0={:?} ({}x{}), world_start=({:.1},{:.1}), world_end=({:.1},{:.1}), wx_span={:.1}, wy_span={:.1}",
-            ti, tr.len(), f0.frame_idx, fl.frame_idx, f0.bbox, f0.width(), f0.height(),
-            w0[0], w0[1], wl[0], wl[1], max_wx - min_wx, max_wy - min_wy
+            "obs {:02}: frame_idx={}, bbox={:?}, w={}, h={}, fg={}",
+            i, obs.frame_idx, obs.bbox, obs.width(), obs.height(), obs.mask.iter().filter(|&&m| m).count()
         );
+    }
+    if let Some(obs) = mario_obs.first() {
+        print_obs_ascii("mario_obs[0]", obs);
     }
 }
