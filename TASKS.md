@@ -114,71 +114,40 @@
 
 ---
 
-### Track S3 — Intrinsic Clifford Platforming & Controller Motor Injection (PLANNED)
+### Track S2.5 — Full-Screen World Composite & Initial State Restitution ($t_0$ Diorama Gate)
+Objective: Reconstruct and render complete, pixel-accurate initial game screens ($t = t_0$) for SMB3 (256×240), Pac-Man (240×308), and Raptor (320×240) by compositing the inpainted background plenum, camera-locked HUD, induced actor model sheets at $P_i(t_0) \in \bigwedge^3 \mathbb{G}_{3,0,1}$, and extracted world constraint geometry ($\Pi_k, L_k$).
+- S2.5.1 — Multi-Layer World Restitution (implicate-lifter, implicate-unfold):
+- Composite MultiPlaneAtlas background + camera_locked_hud + all active HolonModelSheet actors at their exact $t_0$ PGA motors $M_i(t_0) \in \text{Spin}(3,0,1)$ with integer presentation scaling.
+- S2.5.2 — Algebraic Constraint Alignment Audit:
+- Extract initial world boundaries ($\Pi_{\text{ground}}, \Pi_{\text{block}}$ for SMB3; corridor lines $L_k = \Pi_1 \wedge \Pi_2$ for Pac-Man; viewport bounds for Raptor) and verify zero initial incidence error ($|P_{\text{mario}}(t_0) \vee \Pi_{\text{ground}}| \le 0.5\text{ px}$, $d(P_{\text{pacman}}(t_0), L_k) \le 0.5\text{ px}$).
+- S2.5.3 — Full-Screen Visual & Quantitative Gate (s2_5_world_screen_gates):
+- Export full-screen composite PNGs (smb3_world_t0.png, pacman_world_t0.png, raptor_world_t0.png) and diagnostic constraint overlays (*_constraints_t0.png).
+- Gate: Full-screen $\text{PSNR} \ge 34.0\text{ dB}$ against ground-truth frame $t_0$, $100\%$ actor placement accuracy, verified via ./tools/review_img.sh.
 
-> **Objective:** Implement physical platforming directly through Projective Geometric Algebra boundary predicates without a third-party physics engine.
-
-#### 🎯 Milestone S3 Showcase Example: The 0-Physics-Engine PGA Jump & Land Sandbox
-- **Showcase Command:** `cargo test -p implicate-field --test pga_platforming_gates`
-- **Output Artifacts & Kinematic Proof:**
-  - A deterministic trajectory test where a jump impulse $\Omega_{\text{jump}} = 120\,e_{02}$ is injected into Mario at $(x=32, y=64)$ above an oriented ground plane $\Pi = 0\,e_1 + 1\,e_2 + 0\,e_3 - 32\,e_0$.
-  - Mario rises, reaches apex at $t=0.3\text{s}$, and accelerates downward under Bohmian gravitational flux $\mathbf{g} = -\nabla \langle \mathcal{Q} \rangle_0 = -9.8\,e_2$.
-  - At $t=0.6\text{s}$, contact condition $P \wedge \Pi = 0$ is detected; vertical velocity reflects to $0$ via Fresnel rotor $v' = \Pi v \widetilde{\Pi}$, perfectly arresting downward movement with zero penetration ($y = 32.000 \pm 0.000$) and 0 external physics library dependencies.
-
-- [ ] **S3.1 — Oriented Ground Planes in $\mathbb{G}_{3,0,1}$ (`implicate-field`)**
-  - Represent platform ground bricks and obstacle walls as oriented planes $\Pi_{\text{ground}} \in \bigwedge^1 \mathbb{G}_{3,0,1}$.
-- [ ] **S3.2 — Controller Motor Injection (`implicate-field`, `implicate-unfold`)**
-  - Map keyboard/gamepad inputs ($v_x, v_y, \text{jump}$) directly to Lie motor velocity generators:
-    $$\Omega_{\text{player}} = v_x e_{01} + v_y e_{02} \in \mathfrak{spin}(3,0,1)$$
-- [ ] **S3.3 — Intrinsic Ground Contact & Fresnel Momentum Reflection**
-  - Couple actor trivector position $P(t)$ with the ground plane $\Pi$ using the Clifford wedge product $P \wedge \Pi = 0$.
-  - Reflect vertical momentum via the rotor sandwich $v' = \Pi v \widetilde{\Pi}$, arresting downward fall on platforms without an external collision engine.
-
----
-
-### Track S4 — The Playable Mario Engine (`implicate play`) (PLANNED)
-
-> **Objective:** Enable real-time keyboard/gamepad gameplay directly inside the unfolded Clifford video world.
-
-#### 🎯 Milestone S4 Showcase Example: Live Playable NES World 1-1 Run
-- **Showcase Command:** `cargo run -p implicate-cli -- play --input ./tests/fixtures/smb3_world1.implicate`
-- **Interactive Gameplay Proof:**
-  - Launches a native $120\text{ FPS}$ Vulkan/Metal window.
-  - The player uses Left/Right Arrow keys to move and Spacebar to jump.
-  - Mario runs across real NES brick terrain, jumps onto an elevated question-mark block ($\Pi_{\text{block}}$), lands solidly with audio synthesized on contact ($0.0\text{ ms}$ latency), and navigates the level in real-time. This proves the concept: playing an interactive video game directly from enfolded video without game code or a Cartesian collision engine.
-
-- [ ] **S4.1 — CLI Subcommand `implicate play` (`implicate-cli`)**
-  - Implement `implicate play --input <corpus.implicate>` launching an interactive `winit` / `wgpu` viewport.
-- [ ] **S4.2 — Real-Time Interactive Loop ($\ge 60\text{ FPS}$)**
-  - Decouple input processing ($1,000\text{ Hz}$ SIMD motor updates) from visual compute shader unfolding ($60\text{--}120\text{ FPS}$).
-- [ ] **S4.3 — Interactive Platforming Verification**
-  - Verify player can run left/right, jump with Space, land on bricks, and traverse the scrolling SMB3 stage.
+### Track S3 — Universal Clifford World Interaction & Lie Motor Agency (implicate-math, implicate-field, implicate-unfold)
+Objective: Encode all world interactions across 2D, 2.5D, and 3D regimes into four closed-form $\mathbb{G}_{3,0,1}$ algebraic operators on Mv301, with zero external physics engine dependencies.
+- S3.1 — Ambient Vacuum Potential $\mathcal{Q}_{\text{Cl, env}}$ & Grade-Polymorphic Constraints:
+- Upgrade ArticulatedFieldHolon to native 64-byte Mv301.
+- Unify gravity, zero-G rail lock, and scroll drift under $-\nabla \langle \mathcal{Q}_{\text{Cl, env}} \rangle_0 - \Gamma B_{\text{vel}}$.
+- Implement Grade-1 chiral planes $\Pi$ (solid, one-way semisolid, elastic) and Grade-2 Plücker corridor rails $L = \Pi_1 \wedge \Pi_2$ with junction turns $J = L_1 \wedge L_2$ and portal motors $M_{\text{portal}} = \Pi_{\text{out}}\widetilde{\Pi}_{\text{in}}$.
+- S3.2 — Universal Lie Motor Agency ($\Omega_{\text{ctrl}} \in \mathfrak{spin}(3,0,1)$):
+- Map human controller inputs and AI verb beacons into the same 6-DOF Lie generator $\Omega_{\text{ctrl}}$ filtered by regime sub-algebra masks (GraviticPlatform, CorridorRail, InertialFlight, Sector6DOF).
+- S3.3 — The 4 Bilinear Holon Couplings:
+1. Chiral Fresnel Reflection/Slide: $\Pi B_{\text{vel}} \widetilde{\Pi}$ (platform landing, wall stop, top-stomp vs. lateral damage).
+2. Soliton Absorption & Idempotent Flip: $\rho_B \to 0$ + $T_{u \to v} = \epsilon_v M \epsilon_u$ (Pac-Man dots/power pellets, Mario coins).
+3. Griffith Cohesion Fracture: Overpressure $|p| > p_{\text{yield}} \implies C \to 0$ (Raptor enemy destruction, brick smashing).
+4. Wavepacket Emission: Spawning transient projectile solitons $\Phi_{\text{proj}}$ (Raptor lasers, Mario fireballs).
+- S3.4 — Cross-Genre Zero-Physics-Engine Verification Gate (pga_world_interaction_gates):
+- Deterministic kinematic proofs for SMB3 (jump, one-way platform pass-through, landing, stomp), Pac-Man (corridor rail lock, $90^\circ$ junction turn, pellet absorption, ghost state flip), and Raptor (banked 2D flight, laser emission, hull fracture).
+Track S4 — The Universal Playable World Engine (implicate-cli play)
+Objective: Launch any enfolded .implicate world (SMB3, Pac-Man, Raptor) as an interactive $60\text{--}120\text{ FPS}$ real-time game starting from the validated S2.5 initial layout and driven by S3 Lie motor agency.
+- S4.1 — Interactive winit/wgpu Runtime (implicate play --input <world.implicate>).
+- S4.2 — Decoupled $1,000\text{ Hz}$ Symplectic PGA Stepping + $60\text{--}120\text{ FPS}$ @rolpa Display & $0.0\text{ ms}$ Foley Audio.
+- S4.3 — Multi-Genre Playability Verification (SMB3, Pac-Man, Raptor).
 
 ---
 
-### Track S5 — The Generative Storybook Engine (`implicate remix`) (PLANNED)
-
-> **Objective:** Enable open-ended narrative scene remixing from natural language prompts.
-
-#### 🎯 Milestone S5 Showcase Example: Remixed Scene
-- **Showcase Command:** `cargo run -p implicate-cli -- remix --video ./tests/fixtures/smb3_world1.implicate --prompt "Mario sprints forward, leaps over the Koopa block, and lands on the brick platform"`
-- **Output Artifact & Visual Proof:**
-  - [`generative_output/smb3_remix_koopa_vault.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_remix_koopa_vault.mp4) (120 frames @ 24 fps with phase-locked 48 kHz stereo audio).
-  - The engine translates prompt verbs into spatial $\mathcal{Q}_{\text{Cl}}$ attractor beacons, rotates the actor's Line of Action $L_{\text{spine}}$ across turnaround idempotents, and synthesizes a new scene without diffusion hallucinations.
-
-- [ ] **S5.1 — CLI Subcommand `implicate remix` (`implicate-cli`)**
-  - Implement `implicate remix --video <corpus.implicate> --prompt "<prompt>"` generating novel scene animations.
-- [ ] **S5.2 — Continuous Turnaround & Wavepacket Unfolding**
-  - Blend smoothly between discrete view-aspect idempotents $\{\epsilon_v\}$ and continuous Clifford Fourier wavepackets based on prompted actions.
-- [ ] **S5.3 — Event-Sampled Foley Soundboard & Sub-Sample Triggering**
-  - Extract transient audio slices ($50\text{--}500\text{ ms}$) from source audio at empirical impulse and contact events ($\|\Delta \mathbf{P}_B\| > \tau_{\text{imp}}$, $P \wedge \Pi = 0$).
-  - Bind slices to entity behaviors: e.g. `(Mario, Action::Jump) -> "jump.wav"`, `(Mario, Event::PlatformLand) -> "land.wav"`, `(Mario, Event::BlockHit) -> "coin_box.wav"`, `(Raptor, Action::Fire) -> "plasma_fire.wav"`.
-  - Trigger sampled playback with sub-sample onset timing ($< 1.0\text{ ms}$) and binaural stereo panning.
-  - *(Note: Word-level dialogue segmentation and speech synthesis are explicitly out of scope until a much later milestone).*
-
----
-
-### Track S6 — 3D Projective Sector-Plane Lifter & Inverse-BSP World Compilation (e.g. *Doom*) (PLANNED)
+### Track S4 — 3D Projective Sector-Plane Lifter & Inverse-BSP World Compilation (e.g. *Doom*) (PLANNED)
 
 > **Objective:** Ramp the unified $\mathbb{G}_{3,0,1}$ architecture from 2D/2.5D planar slices ($e_3 = 0$) to full 3D perspective environments ($e_3 \neq 0$), reconstructing navigable 3D sector manifolds and 8-view actor turnarounds from 3D gameplay footage (e.g. $320 \times 240$ *Doom*).
 > **Design Mandate for S1–S5:** All new features across S1–S5 must assume general 2D or 3D environments in $\mathbb{G}_{3,0,1}$ ([`Mv301`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-math/src/g301.rs#L17-L19))—never hardcoding 2D-only coordinate assumptions—so that S1–S5 modules compose directly into Track S6.
