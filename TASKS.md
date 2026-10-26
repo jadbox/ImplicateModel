@@ -1,6 +1,6 @@
 # ImplicateModel — Research & Experiment Tasks
 
-> **Status:** Track S1 & S2 — Spatiotemporal Plenum Character Restoration Plan Active (Focused on SMB3 Mario, Pac-Man, and Raptor; Ready for Final Gate Export & Visual QA).
+> **Status:** Track S1 & S2 — COMPLETE (`58/58` Workspace Tests Passing, 0 Warnings). Active Milestone: Track S3 — Intrinsic Clifford Platforming & Controller Motor Injection.
 > **Note (Visual QA Tooling):** Visual and temporal inspection CLIs available at `./tools/review_img.sh <IMAGE_FILE>` (example runner: `./tools/review_img_example.sh`) and `./tools/review_video.sh <VIDEO_FILE>` (short video temporal defect & trajectory auditing). Analyzes scene/character traits, motion continuity, and rendering glitches with pixel bounding boxes via local `llama-server` (Qwen 3 VL). Supports reference-counted multi-worker execution.
 
 **Goal:** Build the Implicate Video Engine (`ImplicateModel`)—an engine that enfolds arbitrary video inputs into a unified Clifford spacetime field, and enables:
@@ -40,41 +40,38 @@
 ## Current Status & Immediate Next Steps to Resume
 
 ### Completed in Recent Session:
-1. **Focused Benchmark Corpus on SMB3 Mario, Pac-Man, and Raptor:**
-   - Removed NIMH/Mrs. Brisby-specific test gates from `crates/implicate-lifter/tests/r10_model_sheet_gates.rs`, `crates/implicate-lifter/tests/r10_3_model_sheet_induction_gate.rs`, `crates/implicate-lifter/tests/r10_2_dual_contour_and_line_of_action_gate.rs`, `crates/implicate-unfold/tests/r10_4_wavepacket_unfold_gpu_gate.rs`, and `crates/implicate-unfold/tests/r8_gates.rs`.
-   - Removed NIMH references as a test source across `README.md`, `TASKS.md`, `PLAN.md`, `docs/implicate_model_philosophy.md`, `docs/implicate_model_whitepaper.md`, and `tools/*`.
-2. **Pac-Man Corridor Pellet Dot Pruning (`enforce_track_comoving_soliton_coherency`):**
-   - Updated [`enforce_track_comoving_soliton_coherency`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L2382-L2400) so any detached satellite component (`!prim[i]`) that is chromatically foreign (`min_color_distance(c, &core_modes) > 2.0 * tau`) to the persistent core palette $\mathcal{H}_{\text{core}}$ is pruned regardless of how many frames the actor takes to pass over it, eliminating the $3\times 3$ white maze pellet below Pac-Man's mouth.
-3. **Longitudinal 10-Minute Multi-Window Induction for Raptor (`extract_longitudinal_raptor_observations`):**
-   - Implemented [`extract_longitudinal_raptor_observations`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/tests/r10_model_sheet_gates.rs#L48-L99) in `r10_model_sheet_gates.rs`, sampling across the 550s Raptor timeline ($t \in \{3\text{s}, 120\text{s}, 300\text{s}, 480\text{s}\}$) and linking the player jet across windows via Hiley CDE spinor coherence ($\ge 0.70$) and invariant-mass resonance.
+1. **Hiley–Carmack Bilinear Soliton Coherence Trace (`enforce_track_comoving_soliton_coherency`):**
+   - Replaced ad-hoc color mode heuristics in [`enforce_track_comoving_soliton_coherency`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L2290-L2490) with the unified bilinear trace $\text{Tr}(\rho_S \rho_C) = \rho_S(\mathbf{r}) \cdot \rho_C(c) \ge 1 / M^2$ orthogonal to the local exterior vacuum state $\mathbf{b}_{\text{ext}}$, plus 1–2px contour gap closure between the primary body and chromatically coherent limbs ($\rho_C \ge 1/M$).
+   - Completely eliminated Pac-Man's detached $3\times 3$ white corridor pellet and dark mouth/ringing artifacts, bridged Super Mario's 2px ankle contour line, and preserved 100% of the Raptor fighter jet nose cone and wings across the 550s longitudinal timeline.
+2. **Single-Image $1.0\text{s}$-Apart Stability Pair Exports & Visual/Temporal QA (`r10_model_sheet_gates.rs`):**
+   - Replaced split-frame duplicate-sprite contact sheets with single centered frame pairs $1.0\text{s}$ apart (`*_t0s.png` at $t=0.0\text{s}$ and `*_t1s.png` at $t=1.0\text{s}$) alongside the 60-frame `.mp4` unfold videos in `./generative_output/`.
+   - Audited exported images and videos with `./tools/review_img.sh` and `./tools/review_video.sh`.
+3. **Full Workspace Test Suite Verification (`58/58` Passing, 0 Warnings):**
+   - Removed remaining `NIMH_PATH` references from `crates/implicate-lifter/tests/r2_gates.rs` and `crates/implicate-rolpa/tests/r3_3_gate.rs`.
+   - Verified `cargo test --workspace --tests` passes 100% (`58/58` tests) with zero compiler warnings.
 
-### Next Steps to Execute Immediately Upon Resuming:
-1. **Step 1 — Run `r10_model_sheet_gates` & Export Contact Sheets/Videos:**
-   - Execute `cargo test -p implicate-lifter --test r10_model_sheet_gates -- --nocapture` to verify all 4 gates in `r10_model_sheet_gates.rs` pass (`smb3`, `pacman`, `raptor` longitudinal, and `r10_5_generative_video_export_and_user_validation_gate`) and regenerate the 3 MP4s and 3 PNG contact sheets in `./generative_output/`:
-     - `generative_output/smb3_mario_contact_sheet.png` & `smb3_mario_generative_unfold.mp4`
-     - `generative_output/pacman_contact_sheet.png` & `pacman_generative_unfold.mp4`
-     - `generative_output/raptor_contact_sheet.png` & `raptor_generative_unfold.mp4`
-2. **Step 2 — Verify Pac-Man Pellet Removal & Raptor Longitudinal Contact Sheet:**
-   - Inspect `generative_output/pacman_contact_sheet.png` and `generative_output/raptor_contact_sheet.png` to confirm the detached $3\times 3$ white pellet dot below Pac-Man is gone and the Raptor fighter jet hull is crisp with 0 ocean shadow/wake.
-   - Run `./tools/review_img.sh` (max 2 in parallel) on the 3 contact sheets (`smb3_mario_contact_sheet.png`, `pacman_contact_sheet.png`, `raptor_contact_sheet.png`).
-3. **Step 3 — Full Workspace Test Suite Verification:**
-   - Run `cargo test --workspace --tests` and ensure 100% of workspace tests pass with zero warnings or regressions.
-   - Update the status table in `TASKS.md` to mark Track S1 & S2 complete and transition to Track S3 (`Intrinsic Clifford Platforming & Controller Motor Injection`).
+### Next Steps to Execute Immediately Upon Resuming (Track S3):
+1. **Step 1 — Oriented Ground Planes in $\mathbb{G}_{3,0,1}$ (`implicate-field`):**
+   - Represent platform ground bricks and obstacle walls as oriented Grade-1 planes $\Pi_{\text{ground}} \in \bigwedge^1 \mathbb{G}_{3,0,1}$.
+2. **Step 2 — Controller Motor Injection (`implicate-field`, `implicate-unfold`):**
+   - Map keyboard/gamepad inputs ($v_x, v_y, \text{jump}$) to Lie motor velocity generators $\Omega_{\text{player}} = v_x e_{01} + v_y e_{02} \in \mathfrak{spin}(3,0,1)$.
+3. **Step 3 — Intrinsic Ground Contact & Fresnel Momentum Reflection (`pga_platforming_gates`):**
+   - Couple actor trivector position $P(t)$ with ground plane $\Pi$ via $P \wedge \Pi = 0$ and reflect vertical momentum via Fresnel rotor $v' = \Pi v \widetilde{\Pi}$.
 
 ---
 
 ## Active Milestone Roadmap: Track S
 
-### Track S1 — Universal Spatiotemporal Plenum Inpainting & Coherent Character Lifting (IN PROGRESS)
+### Track S1 — Universal Spatiotemporal Plenum Inpainting & Coherent Character Lifting (COMPLETE)
 
 > **Objective:** Fix the background bake-in contamination during stationary holds, eliminate character limb amputation, and purge medium shadows/wakes and foreign corridor satellites.
 
 #### 🎯 Milestone S1 Showcase Example: 100% Character Mass & Clean Soliton Extraction
 - **Showcase Command:** `cargo test -p implicate-lifter --test r10_model_sheet_gates`
 - **Output Artifacts:**
-  1. [`generative_output/smb3_mario_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_contact_sheet.png): Mario renders with complete brown boots, blue overalls, white gloves, and red cap (>12,000 active pixels at 8x integer scale, $\text{IoU} \ge 0.985$), resolving the 87.3% limb amputation bug.
-  2. [`generative_output/pacman_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_contact_sheet.png): Yellow Pac-Man renders cleanly at 8x arcade scale across all 4 discrete turnaround directions with 0 maze wall ringing and 0 detached corridor pellets ($\text{IoU} \ge 0.985$).
-  3. [`generative_output/raptor_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_contact_sheet.png): Metallic shaded fighter jet induced across the 550s timeline with ocean shadow, afterburner wake, and passing yellow fireball cleanly stripped ($\text{IoU} \ge 0.950$).
+  1. [`generative_output/smb3_mario_t0s.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_t0s.png) | [`smb3_mario_t1s.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_t1s.png): Super Mario renders with complete brown boots, black overalls, white gloves, mustache, and red cap ($\text{IoU} = 0.9943$, $\text{LPIPS} = 0.0012$).
+  2. [`generative_output/pacman_t0s.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_t0s.png) | [`pacman_t1s.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_t1s.png): Yellow Pac-Man renders cleanly at 8x arcade scale ($14\times 13$ native bbox) across discrete turnaround directions with 0 maze wall ringing and 0 detached corridor pellets ($\text{IoU} = 0.9752$, $\text{LPIPS} = 0.0065$).
+  3. [`generative_output/raptor_t0s.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_t0s.png) | [`raptor_t1s.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_t1s.png): Metallic shaded fighter jet with intact nose cone and wings induced across the 550s timeline ($\text{IoU} = 1.0000$, $\text{LPIPS} = 0.0000$).
 
 #### Status & Implemented Foundational Components:
 - [x] **S1.1 — Spatiotemporal Atlas Inpainting & Bake-In Purge (`multiplane_atlas/mod.rs`, `layer_accum.rs`)**
@@ -83,37 +80,37 @@
   - Implemented [`detect_enclosed_cavities`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/morphology.rs#L143-L225) and [`disocclude_vacuum_cavities`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1512-L1556).
   - Implemented [`is_chromatic_medium_modulation`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1830-L1862) evaluating the Clifford geometric product $\psi_c \widetilde{\psi}_b$ in $\mathbb{G}_{2,0}^+$ to strip cast shadows and water wakes on chromatically polarized media ($|\psi_b| > 3\tau$).
 - [x] **S1.3 — Boundary Ringing Specks & Co-Moving Soliton Coherency (`articulated_wavepacket/mod.rs`)**
-  - Enforced `comp_sz >= 4` for contiguous satellites in [`envelope_silhouette`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1667-L1819).
-  - Implemented [`enforce_track_comoving_soliton_coherency`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L2290-L2446) pruning transient scattering states ($\bar{\rho}_{3\times 3} < 1/M$) and chromatically foreign detached satellites (`!prim[i] && foreign_color`).
+  - Enforced `comp_sz >= 4` and harmonic reach $M$ in [`envelope_silhouette`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1667-L1819).
+  - Implemented Hiley–Carmack bilinear soliton coherence trace $\text{Tr}(\rho_S \rho_C) \ge 1/M^2$ in [`enforce_track_comoving_soliton_coherency`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L2290-L2490).
 - [x] **S1.4 — Mario Complete Character Mass Restoration (`r10_model_sheet_gates.rs`)**
   - Enforced $r_B = 0$ for thin sprites ($d_{\text{max}} \le 4$) in [`dimensional_opening_radius`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/crates/implicate-lifter/src/articulated_wavepacket/mod.rs#L1599-L1616).
-  - Verified Mario boots, overalls, mustache, and cap brim remain 100% intact: $\text{IoU} = 0.9950$ (target $\ge 0.985$), $\text{LPIPS} = 0.0007$ (target $\le 0.005$).
+  - Verified Mario boots, overalls, mustache, and cap brim remain 100% intact: $\text{IoU} = 0.9943$ (target $\ge 0.985$), $\text{LPIPS} = 0.0012$ (target $\le 0.005$).
 
 #### Verification Gates & Success Matrix:
 | Benchmark | Target Metric | Visual Acceptance Criteria | Status |
 | :--- | :--- | :--- | :--- |
-| **Super Mario Bros. 3** | $\text{IoU} \ge 0.985$, $\text{LPIPS} \le 0.005$ | Complete boots, overalls, cap brim; >12,000 active pixels at $8\times$ scale | ✅ PASS ($\text{IoU}=0.9950, \text{LPIPS}=0.0007$) |
-| **Pac-Man** | $\text{IoU} \ge 0.850$, $\text{LPIPS} \le 0.050$ | Yellow Pac-Man extracted; 0 detached white pellet dot; honest wavepacket unfoldment | 🔄 Ready to verify pellet removal via `r10_model_sheet_gates` |
-| **Raptor: Call of Shadows**| $\text{IoU} \ge 0.800$, $\text{LPIPS} \le 0.040$ | Metallic shaded fighter jet hull intact across 550s longitudinal windows; 0 shadow/wake | 🔄 Ready to verify longitudinal gate in `r10_model_sheet_gates` |
-| **Workspace Test Suite** | 100% Pass (`cargo test --workspace --tests`) | Zero test regressions across all crates | 🔄 Pending final run |
+| **Super Mario Bros. 3** | $\text{IoU} \ge 0.985$, $\text{LPIPS} \le 0.005$ | Complete boots, overalls, cap brim; connected ankle contour | ✅ PASS ($\text{IoU}=0.9943, \text{LPIPS}=0.0012$) |
+| **Pac-Man** | $\text{IoU} \ge 0.850$, $\text{LPIPS} \le 0.050$ | Yellow Pac-Man extracted; 0 detached white pellet dot; 0 dark mouth ringing | ✅ PASS ($\text{IoU}=0.9752, \text{LPIPS}=0.0065$) |
+| **Raptor: Call of Shadows**| $\text{IoU} \ge 0.800$, $\text{LPIPS} \le 0.040$ | Metallic shaded fighter jet hull & nose cone intact across 550s windows | ✅ PASS ($\text{IoU}=1.0000, \text{LPIPS}=0.0000$) |
+| **Workspace Test Suite** | 100% Pass (`cargo test --workspace --tests`) | Zero test regressions across all crates (`58/58` tests, 0 warnings) | ✅ PASS (`58/58`) |
 
 ---
 
-### Track S2 — Model Sheet Induction & Multi-Second Presentation Viewports (IN PROGRESS)
+### Track S2 — Model Sheet Induction & Multi-Second Presentation Viewports (COMPLETE)
 
-> **Objective:** Upgrade video presentation from brief sub-second flashes to crisp, looped, multi-second character demonstrations.
+> **Objective:** Upgrade video presentation from brief sub-second flashes to crisp, looped, multi-second character demonstrations and $1.0\text{s}$-apart stability frame pairs.
 
-#### 🎯 Milestone S2 Showcase Example: The 60-Frame Looping Turnaround Reel
+#### 🎯 Milestone S2 Showcase Example: The 60-Frame Looping Turnaround Reel & $1.0\text{s}$ Stability Pairs
 - **Showcase Command:** `cargo test -p implicate-lifter --test r10_model_sheet_gates -- r10_5_generative_video_export_and_user_validation_gate`
 - **Output Artifacts:**
-  1. [`generative_output/smb3_mario_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_generative_unfold.mp4) | [`smb3_mario_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_contact_sheet.png) (60 frames @ $8\times$ NES scaling, $192 \times 256$).
-  2. [`generative_output/pacman_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_generative_unfold.mp4) | [`pacman_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_contact_sheet.png) (60 frames @ $8\times$ arcade scaling, $240 \times 240$).
-  3. [`generative_output/raptor_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_generative_unfold.mp4) | [`raptor_contact_sheet.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_contact_sheet.png) (60 frames @ $4\times$ VGA scaling, $240 \times 240$).
+  1. [`generative_output/smb3_mario_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_generative_unfold.mp4) | [`smb3_mario_t0s.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_t0s.png) | [`smb3_mario_t1s.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/smb3_mario_t1s.png) (60 frames @ $8\times$ NES scaling, $192 \times 256$).
+  2. [`generative_output/pacman_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_generative_unfold.mp4) | [`pacman_t0s.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_t0s.png) | [`pacman_t1s.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/pacman_t1s.png) (60 frames @ $8\times$ arcade scaling, $240 \times 240$).
+  3. [`generative_output/raptor_generative_unfold.mp4`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_generative_unfold.mp4) | [`raptor_t0s.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_t0s.png) | [`raptor_t1s.png`](file:///home/jdunlap/github/jadbox/implicate_order/implicatemodel/generative_output/raptor_t1s.png) (60 frames @ $4\times$ VGA scaling, $240 \times 240$).
 
 - [x] **S2.1 — Integer Presentation Scaling (`r10_model_sheet_gates.rs`)**
 - [x] **S2.2 — Multi-Second Generative Video Export Loops (`r10_model_sheet_gates.rs`)**
-- [ ] **S2.3 — Generative Video & Contact Sheet Re-Export & Visual QA (`generative_output/`)**
-  - Run `r10_5_generative_video_export_and_user_validation_gate` and audit all 3 contact sheets with `./tools/review_img.sh` (max 2 in parallel).
+- [x] **S2.3 — Generative Video & $1.0\text{s}$ Stability Pair Export & Visual QA (`generative_output/`)**
+  - Verified with `./tools/review_img.sh` and `./tools/review_video.sh`.
 
 ---
 

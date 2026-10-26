@@ -1803,10 +1803,11 @@ fn envelope_silhouette(mask: &[bool], w: usize, h: usize) -> Vec<bool> {
             false
         };
 
-        // Retain genuine 2-blade components (comp_sz >= 4) separated only by a local ink/outline
-        // contour gap (min_dist_to_primary <= 3.5), rejecting distant detached specks and strings.
+        // Retain genuine 2-blade components (comp_sz >= 4) within the CFT harmonic reach M
+        // along the Line of Action envelope, rejecting distant detached specks and strings.
         let is_2blade_area = comp_sz >= 4;
-        let in_envelope = (in_distance_envelope || in_corridor) && min_dist_to_primary <= 3.5;
+        let in_envelope =
+            (in_distance_envelope || in_corridor) && min_dist_to_primary <= CFT_WAVEPACKET_MODES as f64;
         if is_2blade_area && in_envelope {
             keep[id] = true;
         }
@@ -2353,54 +2354,121 @@ pub fn enforce_track_comoving_soliton_coherency(
         }
     }
 
-    let mut core_samples = Vec::new();
+    // Estimate the local exterior vacuum state b_ext from the unmasked background pixels (!obs.mask)
+    // immediately surrounding the soliton across the track.
+    let (mut ext_r, mut ext_g, mut ext_b) = (Vec::new(), Vec::new(), Vec::new());
+    for obs in track.iter() {
+        for (i, &m) in obs.mask.iter().enumerate() {
+            if !m {
+                ext_r.push(obs.rgb[i * 3]);
+                ext_g.push(obs.rgb[i * 3 + 1]);
+                ext_b.push(obs.rgb[i * 3 + 2]);
+            }
+        }
+    }
+    let b_ext = if !ext_r.is_empty() {
+        ext_r.sort_unstable();
+        ext_g.sort_unstable();
+        ext_b.sort_unstable();
+        let mid = ext_r.len() / 2;
+        [ext_r[mid] as f64, ext_g[mid] as f64, ext_b[mid] as f64]
+    } else {
+        [0.0, 0.0, 0.0]
+    };
+    let dark_ext_vacuum = b_ext[0].max(b_ext[1]).max(b_ext[2]) <= 6.0 * tau;
+    let is_ext_vacuum = |c: [u8; 3]| -> bool {
+        if !dark_ext_vacuum {
+            return false;
+        }
+        let d = ((c[0] as f64 - b_ext[0]).powi(2)
+            + (c[1] as f64 - b_ext[1]).powi(2)
+            + (c[2] as f64 - b_ext[2]).powi(2))
+        .sqrt();
+        d <= 7.0 * tau
+    };
+
+    // Empirical Chromatic Density Operator \rho_C(c) sampled from the persistent 2-blade interior
+    // (\rho_S(r) >= 1/2, D(r) >= 2) orthogonal to the exterior vacuum b_ext.
+    let mut core_samples: Vec<[u8; 3]> = Vec::new();
     for (oi, obs) in track.iter().enumerate() {
         let (w, h) = (obs.width(), obs.height());
+        let dist = morphology::chessboard_distance(&obs.mask, w, h);
         let [cx, cy] = centers[oi];
         for y in 0..h {
             for x in 0..w {
                 let i = y * w + x;
-                if obs.mask[i] {
+                if obs.mask[i] && dist[i] >= 2 {
+                    let c = [obs.rgb[i * 3], obs.rgb[i * 3 + 1], obs.rgb[i * 3 + 2]];
+                    if is_ext_vacuum(c) {
+                        continue;
+                    }
                     let gx = (x as i32 - cx + center_off).clamp(0, gw as i32 - 1) as usize;
                     let gy = (y as i32 - cy + center_off).clamp(0, gw as i32 - 1) as usize;
-                    if occ_3x3[gy * gw + gx] * 2 >= n {
-                        core_samples.push([obs.rgb[i * 3], obs.rgb[i * 3 + 1], obs.rgb[i * 3 + 2]]);
+                    if occ[gy * gw + gx] * 2 >= n {
+                        core_samples.push(c);
                     }
                 }
             }
         }
     }
-    let mut core_modes = extract_color_modes_fps(&core_samples, 8, tau);
-    // If the persistent core is dominated (>= 65%) by a single high-chroma spinor mode
-    // (e.g. a monochromatic arcade character like Pac-Man), prune minor (< 15%) boundary
-    // ringing / cavity modes so they cannot masquerade as core palette colors.
-    if core_modes.len() > 1 && !core_samples.is_empty() {
-        let mut mode_counts = vec![0usize; core_modes.len()];
-        for &s in &core_samples {
-            let mut best_k = 0;
-            let mut best_d = f64::INFINITY;
-            for (k, m) in core_modes.iter().enumerate() {
-                let d = ((s[0] as f64 - m[0]).powi(2)
-                    + (s[1] as f64 - m[1]).powi(2)
-                    + (s[2] as f64 - m[2]).powi(2))
-                .sqrt();
-                if d < best_d {
-                    best_d = d;
-                    best_k = k;
+    if core_samples.len() < 16 {
+        for (oi, obs) in track.iter().enumerate() {
+            let (w, h) = (obs.width(), obs.height());
+            let [cx, cy] = centers[oi];
+            for y in 0..h {
+                for x in 0..w {
+                    let i = y * w + x;
+                    if obs.mask[i] {
+                        let c = [obs.rgb[i * 3], obs.rgb[i * 3 + 1], obs.rgb[i * 3 + 2]];
+                        if is_ext_vacuum(c) {
+                            continue;
+                        }
+                        let gx = (x as i32 - cx + center_off).clamp(0, gw as i32 - 1) as usize;
+                        let gy = (y as i32 - cy + center_off).clamp(0, gw as i32 - 1) as usize;
+                        if occ_3x3[gy * gw + gx] * 2 >= n {
+                            core_samples.push(c);
+                        }
+                    }
                 }
-            }
-            mode_counts[best_k] += 1;
-        }
-        let total = core_samples.len();
-        if let Some((dom_k, &dom_cnt)) = mode_counts.iter().enumerate().max_by_key(|(_, c)| **c) {
-            let m = core_modes[dom_k];
-            let chroma = ((m[0] - m[1]).powi(2) + (0.5 * (m[0] + m[1]) - m[2]).powi(2)).sqrt();
-            if dom_cnt * 100 >= total * 65 && chroma > 120.0 {
-                core_modes = vec![m];
             }
         }
     }
-    let is_monochromatic_core = core_modes.len() == 1;
+
+    // Quantize core color density on an 8x8x8 RGB lattice for O(1) kernel evaluation
+    let mut hist = [0u32; 512];
+    for &s in &core_samples {
+        let idx = ((s[0] as usize >> 5) << 6) | ((s[1] as usize >> 5) << 3) | (s[2] as usize >> 5);
+        hist[idx] += 1;
+    }
+    let radius_sq = (3.0 * tau).powi(2);
+    let mut bin_mass = [0u32; 512];
+    let mut max_bin_mass = 1u32;
+    for b0 in 0..512usize {
+        let r0 = ((b0 >> 6) & 7) as f64 * 32.0 + 16.0;
+        let g0 = ((b0 >> 3) & 7) as f64 * 32.0 + 16.0;
+        let bl0 = (b0 & 7) as f64 * 32.0 + 16.0;
+        let mut sum = 0u32;
+        for (b1, &cnt) in hist.iter().enumerate() {
+            if cnt == 0 {
+                continue;
+            }
+            let r1 = ((b1 >> 6) & 7) as f64 * 32.0 + 16.0;
+            let g1 = ((b1 >> 3) & 7) as f64 * 32.0 + 16.0;
+            let bl1 = (b1 & 7) as f64 * 32.0 + 16.0;
+            let d2 = (r0 - r1).powi(2) + (g0 - g1).powi(2) + (bl0 - bl1).powi(2);
+            if d2 <= radius_sq.max(1024.0) {
+                sum += cnt;
+            }
+        }
+        bin_mass[b0] = sum;
+        if sum > max_bin_mass {
+            max_bin_mass = sum;
+        }
+    }
+
+    let m_modes = CFT_WAVEPACKET_MODES as f64;
+    let min_trace = 1.0 / (m_modes * m_modes);
+    let min_satellite_chroma = 1.0 / m_modes;
 
     for (oi, obs) in track.iter_mut().enumerate() {
         let (w, h) = (obs.width(), obs.height());
@@ -2417,52 +2485,41 @@ pub fn enforce_track_comoving_soliton_coherency(
                 }
                 let gx = (x as i32 - cx + center_off).clamp(0, gw as i32 - 1) as usize;
                 let gy = (y as i32 - cy + center_off).clamp(0, gw as i32 - 1) as usize;
-                let hits = occ_3x3[gy * gw + gx];
+                let rho_s = occ_3x3[gy * gw + gx] as f64 / n as f64;
                 let c = [obs.rgb[i * 3], obs.rgb[i * 3 + 1], obs.rgb[i * 3 + 2]];
-                let color_cutoff = if is_monochromatic_core { 6.0 * tau } else { 2.0 * tau };
-                let foreign_color =
-                    !core_modes.is_empty() && min_color_distance(c, &core_modes) > color_cutoff;
-                if (is_monochromatic_core && foreign_color)
-                    || (!prim[i] && foreign_color)
-                    || (foreign_color && hits * 2 < n)
-                    || (hits * CFT_WAVEPACKET_MODES < n && (!prim[i] || foreign_color))
-                {
+                let bin = ((c[0] as usize >> 5) << 6) | ((c[1] as usize >> 5) << 3) | (c[2] as usize >> 5);
+                let rho_c = if is_ext_vacuum(c) {
+                    0.0
+                } else if core_samples.is_empty() {
+                    1.0
+                } else {
+                    bin_mass[bin] as f64 / max_bin_mass as f64
+                };
+                // Bilinear Hiley-Carmack Soliton Coherence Trace:
+                // Tr(\rho_S \rho_C) >= 1 / M^2, and detached satellites (!prim) require \rho_C >= 1 / M.
+                let keep = (rho_s * rho_c >= min_trace) && (prim[i] || rho_c >= min_satellite_chroma);
+                if !keep {
                     new_mask[i] = false;
                     changed = true;
                 }
             }
         }
 
-        if is_monochromatic_core {
-            // Trim 1px-wide chroma-bleed stalks on monochromatic sprites via radius-1 opening
-            let d_mono = morphology::chessboard_distance(&new_mask, w, h);
-            let core_mono: Vec<bool> = d_mono.iter().map(|&d| d > 1).collect();
-            if core_mono.iter().any(|&v| v) {
-                let opened = morphology::dilate(&core_mono, w, h, 1);
-                for i in 0..w * h {
-                    if new_mask[i] && !opened[i] {
-                        new_mask[i] = false;
-                        changed = true;
-                    }
-                }
-            }
-        } else {
-            // Bridge 1-2px contour gaps between primary body and surviving chromatically coherent limbs
-            // (e.g. Mario's brown boots separated by a 2px black overall/background contour line).
-            let post_prim = primary_connected_component(&new_mask, w, h);
-            let limb_mask: Vec<bool> = new_mask
-                .iter()
-                .zip(post_prim.iter())
-                .map(|(&m, &p)| m && !p)
-                .collect();
-            if limb_mask.iter().any(|&v| v) {
-                let dil_prim = morphology::dilate(&post_prim, w, h, 2);
-                let dil_limb = morphology::dilate(&limb_mask, w, h, 2);
-                for i in 0..w * h {
-                    if dil_prim[i] && dil_limb[i] && !new_mask[i] {
-                        new_mask[i] = true;
-                        changed = true;
-                    }
+        // Bridge 1-2px contour gaps between primary body and surviving chromatically coherent limbs
+        // (e.g. Mario's brown boots separated by a 2px black overall/background contour line).
+        let post_prim = primary_connected_component(&new_mask, w, h);
+        let limb_mask: Vec<bool> = new_mask
+            .iter()
+            .zip(post_prim.iter())
+            .map(|(&m, &p)| m && !p)
+            .collect();
+        if limb_mask.iter().any(|&v| v) {
+            let dil_prim = morphology::dilate(&post_prim, w, h, 2);
+            let dil_limb = morphology::dilate(&limb_mask, w, h, 2);
+            for i in 0..w * h {
+                if dil_prim[i] && dil_limb[i] && !new_mask[i] {
+                    new_mask[i] = true;
+                    changed = true;
                 }
             }
         }

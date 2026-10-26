@@ -7,7 +7,12 @@ use implicate_rolpa::{
     simulate_raw_wavepacket_splat,
 };
 
-const NIMH_PATH: &str = "/mnt/storage/DDownloads/The Secret Of NIMH (1982) [BluRay] [1080p] [YTS.AM]/The.Secret.Of.NIMH.1982.1080p.BluRay.x264-[YTS.AM].mp4";
+const PACMAN_PATH: &str =
+    "/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d_pacman/pacman_240x308.mp4";
+const SMB3_PATH: &str =
+    "/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d/smb3_w1_1_256x240.mp4";
+const RAPTOR_PATH: &str =
+    "/home/jdunlap/github/jadbox/implicate_order/holonengine/example_input2d_raptor/raptor_320x240.mp4";
 
 #[test]
 fn r3_3_cliffordnet_rolpa_gpu_refiner_benchmark() {
@@ -38,24 +43,28 @@ fn r3_3_cliffordnet_rolpa_gpu_refiner_benchmark() {
     );
 
     // 2. Evaluate PSNR gain (>= 2.5 dB), LPIPS reduction (>= 20%), and temporal warping error (E_warp < 0.002)
-    // across 3 test shots of The Secret of NIMH using hardware GPU execution.
+    // across our 3 benchmark videos (SMB3, Pac-Man, Raptor) using hardware GPU execution.
     let eval_w = 640usize;
     let eval_h = 352usize;
-    let shot_times = [194.0, 226.0, 350.0];
+    let benchmarks = [
+        ("SMB3", SMB3_PATH, 1.0),
+        ("Pac-Man", PACMAN_PATH, 1.0),
+        ("Raptor", RAPTOR_PATH, 3.0),
+    ];
 
     let mut total_psnr_gain = 0.0f64;
     let mut total_lpips_red = 0.0f64;
     let mut max_ewarp = 0.0f64;
 
-    for (shot_idx, &t0) in shot_times.iter().enumerate() {
+    for (shot_idx, &(name, path, t0)) in benchmarks.iter().enumerate() {
         let frames_u8 = read_frames_scaled(
-            Path::new(NIMH_PATH),
+            Path::new(path),
             Some(t0),
             Some(0.5),
             eval_w as u32,
             eval_h as u32,
         )
-        .expect("decode NIMH test shot for R3.3");
+        .expect("decode benchmark test shot for R3.3");
         assert!(frames_u8.len() >= 6);
 
         let gt_frames: Vec<Vec<[f32; 3]>> = frames_u8
@@ -129,7 +138,8 @@ fn r3_3_cliffordnet_rolpa_gpu_refiner_benchmark() {
         shot_ewarp /= (refined_frames.len() - 1) as f64;
 
         println!(
-            "[R3.3 NIMH Shot {} @ {:.1}s] Base PSNR={:.2} dB -> Refined PSNR={:.2} dB (+{:.2} dB) | LPIPS {:.4} -> {:.4} (-{:.1}%) | E_warp={:.6}",
+            "[R3.3 {} Shot {} @ {:.1}s] Base PSNR={:.2} dB -> Refined PSNR={:.2} dB (+{:.2} dB) | LPIPS {:.4} -> {:.4} (-{:.1}%) | E_warp={:.6}",
+            name,
             shot_idx + 1,
             t0,
             shot_psnr_base,
@@ -146,8 +156,8 @@ fn r3_3_cliffordnet_rolpa_gpu_refiner_benchmark() {
         max_ewarp = max_ewarp.max(shot_ewarp);
     }
 
-    let mean_psnr_gain = total_psnr_gain / (shot_times.len() as f64);
-    let mean_lpips_red = total_lpips_red / (shot_times.len() as f64);
+    let mean_psnr_gain = total_psnr_gain / (benchmarks.len() as f64);
+    let mean_lpips_red = total_lpips_red / (benchmarks.len() as f64);
     println!(
         "[R3.3 Summary] Mean PSNR Gain = +{:.2} dB (gate >= +2.50 dB) | Mean LPIPS Reduction = {:.1}% (gate >= 20.0%) | Max E_warp = {:.6} (gate < 0.002000)",
         mean_psnr_gain,

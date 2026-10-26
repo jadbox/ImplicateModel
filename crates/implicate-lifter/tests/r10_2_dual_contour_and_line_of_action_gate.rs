@@ -2,7 +2,7 @@ use std::path::Path;
 
 use implicate_lifter::{
     MultiPlaneOptions, build_multiplane_atlas, decompose_observation_dual_product,
-    dominant_silhouette, extract_character_observation_tracks, video_io,
+    extract_character_observation_tracks, video_io,
 };
 
 const SMB3_PATH: &str =
